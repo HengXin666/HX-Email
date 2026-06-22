@@ -2,12 +2,91 @@ import { Mail, ShieldCheck } from "lucide-react";
 
 import { Button } from "./components/ui/button";
 
-type AppProps = {
-  registrationEnabled?: boolean;
+type UsableEmail = {
+  id: number;
+  address: string;
+  label: string;
+  kind: "primary" | "alias" | "temp" | "custom";
+  status: "active" | "inactive" | "archived";
 };
 
-export function App({ registrationEnabled = false }: AppProps) {
+type Session = {
+  username: string;
+  usableEmails: UsableEmail[];
+};
+
+type AppProps = {
+  registrationEnabled?: boolean;
+  session?: Session;
+};
+
+const kindLabels: Record<UsableEmail["kind"], string> = {
+  primary: "主邮箱地址",
+  alias: "别名邮箱地址",
+  temp: "临时邮箱地址",
+  custom: "可用邮箱",
+};
+
+const statusLabels: Record<UsableEmail["status"], string> = {
+  active: "可用",
+  inactive: "已停用",
+  archived: "已归档",
+};
+
+function Workbench({ session }: { session: Session }) {
+  return (
+    <main className="min-h-screen bg-slate-950 px-4 py-6 text-slate-100">
+      <section className="mx-auto flex w-full max-w-6xl flex-col gap-6">
+        <header className="flex flex-col justify-between gap-4 border-b border-white/10 pb-5 md:flex-row md:items-end">
+          <div>
+            <p className="text-sm text-emerald-200/80">{session.username}</p>
+            <h1 className="mt-1 text-2xl font-semibold text-white">可用邮箱工作台</h1>
+          </div>
+          <Button type="button">
+            <Mail size={16} />
+            添加邮箱账号
+          </Button>
+        </header>
+
+        <div className="overflow-hidden rounded-lg border border-white/10 bg-slate-900">
+          <table className="w-full border-collapse text-left text-sm">
+            <thead className="bg-slate-800 text-slate-300">
+              <tr>
+                <th className="px-4 py-3 font-medium">地址</th>
+                <th className="px-4 py-3 font-medium">类型</th>
+                <th className="px-4 py-3 font-medium">标签</th>
+                <th className="px-4 py-3 font-medium">状态</th>
+                <th className="px-4 py-3 text-right font-medium">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {session.usableEmails.map((usableEmail) => (
+                <tr className="border-t border-white/10" key={usableEmail.id}>
+                  <td className="px-4 py-4 font-medium text-white">{usableEmail.address}</td>
+                  <td className="px-4 py-4 text-slate-300">{kindLabels[usableEmail.kind]}</td>
+                  <td className="px-4 py-4 text-slate-300">{usableEmail.label}</td>
+                  <td className="px-4 py-4 text-slate-300">{statusLabels[usableEmail.status]}</td>
+                  <td className="px-4 py-4 text-right">
+                    <Button disabled={usableEmail.status !== "active"} type="button">
+                      停用
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+export function App({ registrationEnabled = false, session }: AppProps) {
   document.documentElement.classList.add("dark");
+
+  if (session) {
+    return <Workbench session={session} />;
+  }
 
   return (
     <main className="min-h-screen overflow-hidden bg-[radial-gradient(circle_at_20%_20%,rgba(45,212,191,0.16),transparent_34%),linear-gradient(135deg,#08111f_0%,#121827_45%,#06141a_100%)] px-4 py-8 text-foreground">

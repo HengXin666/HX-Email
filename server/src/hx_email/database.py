@@ -5,6 +5,11 @@ from hx_email.config import Settings
 from hx_email.security import hash_password
 
 
+def column_exists(connection: sqlite3.Connection, table: str, column: str) -> bool:
+    rows = connection.execute(f"PRAGMA table_info({table})").fetchall()
+    return any(row[1] == column for row in rows)
+
+
 def connect(settings: Settings) -> sqlite3.Connection:
     connection = sqlite3.connect(settings.database_path)
     connection.row_factory = sqlite3.Row
@@ -47,10 +52,35 @@ def migrate(settings: Settings) -> Path:
             CREATE TABLE IF NOT EXISTS usable_emails (
                 id INTEGER PRIMARY KEY,
                 user_id INTEGER NOT NULL REFERENCES users(id),
+                email_account_id INTEGER REFERENCES email_accounts(id),
                 address TEXT NOT NULL,
                 label TEXT NOT NULL DEFAULT '',
+                kind TEXT NOT NULL DEFAULT 'primary',
+                status TEXT NOT NULL DEFAULT 'active',
                 active INTEGER NOT NULL DEFAULT 1,
                 UNIQUE(user_id, address)
+            )
+            """
+        )
+        if not column_exists(connection, "usable_emails", "email_account_id"):
+            connection.execute("ALTER TABLE usable_emails ADD COLUMN email_account_id INTEGER REFERENCES email_accounts(id)")
+        if not column_exists(connection, "usable_emails", "kind"):
+            connection.execute("ALTER TABLE usable_emails ADD COLUMN kind TEXT NOT NULL DEFAULT 'custom'")
+        if not column_exists(connection, "usable_emails", "status"):
+            connection.execute("ALTER TABLE usable_emails ADD COLUMN status TEXT NOT NULL DEFAULT 'active'")
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS email_accounts (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id),
+                provider TEXT NOT NULL,
+                primary_address TEXT NOT NULL,
+                display_name TEXT NOT NULL DEFAULT '',
+                imap_host TEXT NOT NULL DEFAULT '',
+                imap_port INTEGER,
+                username TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'active',
+                UNIQUE(user_id, primary_address)
             )
             """
         )
@@ -67,6 +97,6 @@ def migrate(settings: Settings) -> Path:
             """,
             (settings.admin_username, hash_password(settings.admin_password)),
         )
-        connection.execute("PRAGMA user_version = 2")
+        connection.execute("PRAGMA user_version = 3")
 
     return database_path

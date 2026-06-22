@@ -20,3 +20,27 @@ test("shows the registration form when registration is enabled", () => {
   expect(screen.getByRole("heading", { name: "注册 HX Email" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "注册" })).toBeEnabled();
 });
+
+test("shows the primary usable email workbench when signed in", () => {
+  render(
+    <App
+      session={{
+        username: "alice",
+        usableEmails: [
+          {
+            id: 1,
+            address: "alice@example.com",
+            label: "Alice IMAP",
+            kind: "primary",
+            status: "active",
+          },
+        ],
+      }}
+    />,
+  );
+
+  expect(screen.getByRole("heading", { name: "可用邮箱工作台" })).toBeInTheDocument();
+  expect(screen.getByText("alice@example.com")).toBeInTheDocument();
+  expect(screen.getByText("主邮箱地址")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "停用" })).toBeEnabled();
+});

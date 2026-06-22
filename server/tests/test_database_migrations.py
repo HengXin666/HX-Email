@@ -20,7 +20,15 @@ def test_migrate_creates_sqlite_database_in_configured_data_dir(tmp_path):
         admin = connection.execute(
             "SELECT username, is_admin FROM users WHERE username = 'admin'"
         ).fetchone()
+        email_accounts_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(email_accounts)").fetchall()
+        }
+        usable_email_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(usable_emails)").fetchall()
+        }
 
-    assert version == 2
+    assert version == 3
     assert registration_enabled == "false"
     assert admin == ("admin", 1)
+    assert {"provider", "primary_address", "status"}.issubset(email_accounts_columns)
+    assert {"email_account_id", "kind", "status"}.issubset(usable_email_columns)

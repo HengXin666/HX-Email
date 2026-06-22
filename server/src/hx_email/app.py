@@ -15,7 +15,8 @@ from hx_email.auth import (
     update_credentials,
 )
 from hx_email.config import Settings
-from hx_email.usable_emails import add_usable_email, list_usable_emails
+from hx_email.email_accounts import add_email_account, deactivate_email_account
+from hx_email.usable_emails import UsableEmail, add_usable_email, get_usable_email, list_usable_emails
 
 
 class Credentials(BaseModel):
@@ -30,6 +31,25 @@ class RegistrationSettingUpdate(BaseModel):
 class UsableEmailCreate(BaseModel):
     address: str
     label: str = ""
+
+
+class EmailAccountCreate(BaseModel):
+    provider: str
+    primary_address: str
+    display_name: str
+    imap_host: str = ""
+    imap_port: int | None = None
+    username: str = ""
+
+
+def serialize_usable_email(usable_email: UsableEmail) -> dict[str, object]:
+    return {
+        "id": usable_email.id,
+        "address": usable_email.address,
+        "label": usable_email.label,
+        "kind": usable_email.kind,
+        "status": usable_email.status,
+    }
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -128,7 +148,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> dict[str, object]:
         user = require_user(authorization)
         usable_email = add_usable_email(settings, user.id, payload.address, payload.label)
-        return {"id": usable_email.id, "address": usable_email.address, "label": usable_email.label}
+        return serialize_usable_email(usable_email)
 
     @app.get("/usable-emails")
     def get_usable_emails(
@@ -136,10 +156,58 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> dict[str, list[dict[str, object]]]:
         user = require_user(authorization)
         return {
-            "usable_emails": [
-                {"id": usable_email.id, "address": usable_email.address, "label": usable_email.label}
-                for usable_email in list_usable_emails(settings, user.id)
-            ]
+            "usable_emails": [serialize_usable_email(usable_email) for usable_email in list_usable_emails(settings, user.id)]
+        }
+
+    @app.get("/usable-emails/{usable_email_id}")
+    def get_usable_email_detail(
+        usable_email_id: int,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        user = require_user(authorization)
+        usable_email = get_usable_email(settings, user.id, usable_email_id)
+        if usable_email is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usable email not found")
+        return serialize_usable_email(usable_email)
+
+    @app.post("/email-accounts", status_code=status.HTTP_201_CREATED)
+    def create_email_account(
+        payload: EmailAccountCreate,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        user = require_user(authorization)
+        account = add_email_account(
+            settings,
+            user.id,
+            payload.provider,
+            payload.primary_address,
+            payload.display_name,
+            payload.imap_host,
+            payload.imap_port,
+            payload.username,
+        )
+        return {
+            "id": account.id,
+            "provider": account.provider,
+            "primary_address": account.primary_address,
+            "display_name": account.display_name,
+            "status": account.status,
+            "primary_usable_email": serialize_usable_email(account.primary_usable_email),
+        }
+
+    @app.post("/email-accounts/{account_id}/deactivate")
+    def deactivate_account(
+        account_id: int,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        user = require_user(authorization)
+        account = deactivate_email_account(settings, user.id, account_id)
+        if account is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Email account not found")
+        return {
+            "id": account.id,
+            "status": account.status,
+            "primary_usable_email": serialize_usable_email(account.primary_usable_email),
         }
 
     return app

@@ -47,8 +47,24 @@ def test_users_only_see_usable_emails_in_their_own_workspace(tmp_path):
     assert alice_create.status_code == 201
     assert bob_create.status_code == 201
     assert alice_list.json() == {
-        "usable_emails": [{"id": alice_create.json()["id"], "address": "shared@example.com", "label": "Alice"}]
+        "usable_emails": [
+            {
+                "id": alice_create.json()["id"],
+                "address": "shared@example.com",
+                "label": "Alice",
+                "kind": "custom",
+                "status": "active",
+            }
+        ]
     }
     assert bob_list.json() == {
-        "usable_emails": [{"id": bob_create.json()["id"], "address": "shared@example.com", "label": "Bob"}]
+        "usable_emails": [
+            {
+                "id": bob_create.json()["id"],
+                "address": "shared@example.com",
+                "label": "Bob",
+                "kind": "custom",
+                "status": "active",
+            }
+        ]
     }
