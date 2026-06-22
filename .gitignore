@@ -1,0 +1,60 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+venv/
+env/
+ENV/
+.venv/
+
+# 数据库文件
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# 环境变量
+.env
+
+# IDE 配置
+.vscode/
+.idea/
+*.swp
+*.swo
+.kiro/
+
+# 测试缓存
+.pytest_cache/
+.coverage
+coverage.xml
+
+# Node.js
+node_modules/
+package.json
+package-lock.json
+
+# 临时文件
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+.mcp.json
+.ace-tool/
+
+# Cloudflare 部署（含 node_modules 和敏感配置，不入库）
+cf-deploy/
+.wrangler/
+
+# Linter 缓存
+.ruff_cache/
+
+# Windows 特殊文件
+NUL
+
+# ---
+ref/
