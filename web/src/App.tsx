@@ -2,7 +2,11 @@ import { Mail, ShieldCheck } from "lucide-react";
 
 import { Button } from "./components/ui/button";
 
-export function App() {
+type AppProps = {
+  registrationEnabled?: boolean;
+};
+
+export function App({ registrationEnabled = false }: AppProps) {
   document.documentElement.classList.add("dark");
 
   return (
@@ -42,10 +46,44 @@ export function App() {
               />
             </label>
 
-            <Button className="w-full" disabled type="button">
+            <Button className="w-full" type="button">
               <ShieldCheck size={16} />
               登录
             </Button>
+
+            {registrationEnabled ? (
+              <div className="mt-8 border-t border-white/10 pt-7">
+                <h2 className="text-lg font-semibold text-white">注册 HX Email</h2>
+                <p className="mt-1 text-sm text-slate-300">
+                  创建本地用户后会进入独立的数据空间。
+                </p>
+                <label className="mt-5 block">
+                  <span className="mb-2 block text-sm font-medium text-slate-200">
+                    新用户名
+                  </span>
+                  <input
+                    aria-label="新用户名"
+                    className="h-11 w-full rounded-md border border-slate-500/70 bg-transparent px-3 text-base text-white outline-none transition focus:border-emerald-200"
+                    placeholder="新用户名"
+                    type="text"
+                  />
+                </label>
+                <label className="mt-4 block">
+                  <span className="mb-2 block text-sm font-medium text-slate-200">
+                    新密码
+                  </span>
+                  <input
+                    aria-label="新密码"
+                    className="h-11 w-full rounded-md border border-slate-500/70 bg-transparent px-3 text-base text-white outline-none transition focus:border-emerald-200"
+                    placeholder="新密码"
+                    type="password"
+                  />
+                </label>
+                <Button className="mt-5 w-full" type="button">
+                  注册
+                </Button>
+              </div>
+            ) : null}
           </form>
 
           <aside className="relative z-20 -mt-6 min-h-[360px] rounded-lg border border-emerald-200/25 bg-[linear-gradient(145deg,rgba(236,253,245,0.96),rgba(187,247,208,0.92))] p-8 text-slate-950 shadow-xl shadow-emerald-950/30 md:-ml-8 md:mt-0">

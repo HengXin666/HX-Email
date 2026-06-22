@@ -14,5 +14,13 @@ def test_migrate_creates_sqlite_database_in_configured_data_dir(tmp_path):
 
     with sqlite3.connect(database_path) as connection:
         version = connection.execute("PRAGMA user_version").fetchone()[0]
+        registration_enabled = connection.execute(
+            "SELECT value FROM system_settings WHERE key = 'registration_enabled'"
+        ).fetchone()[0]
+        admin = connection.execute(
+            "SELECT username, is_admin FROM users WHERE username = 'admin'"
+        ).fetchone()
 
-    assert version == 1
+    assert version == 2
+    assert registration_enabled == "false"
+    assert admin == ("admin", 1)
