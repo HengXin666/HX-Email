@@ -68,6 +68,8 @@ def migrate(settings: Settings) -> Path:
             connection.execute("ALTER TABLE usable_emails ADD COLUMN kind TEXT NOT NULL DEFAULT 'custom'")
         if not column_exists(connection, "usable_emails", "status"):
             connection.execute("ALTER TABLE usable_emails ADD COLUMN status TEXT NOT NULL DEFAULT 'active'")
+        if not column_exists(connection, "usable_emails", "group_id"):
+            connection.execute("ALTER TABLE usable_emails ADD COLUMN group_id INTEGER REFERENCES groups(id)")
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS email_accounts (
@@ -86,6 +88,37 @@ def migrate(settings: Settings) -> Path:
         )
         connection.execute(
             """
+            CREATE TABLE IF NOT EXISTS groups (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id),
+                name TEXT NOT NULL,
+                color TEXT NOT NULL DEFAULT '#58a6ff',
+                UNIQUE(user_id, name)
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS tags (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id),
+                name TEXT NOT NULL,
+                color TEXT NOT NULL DEFAULT '#238636',
+                UNIQUE(user_id, name)
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS usable_email_tags (
+                usable_email_id INTEGER NOT NULL REFERENCES usable_emails(id),
+                tag_id INTEGER NOT NULL REFERENCES tags(id),
+                PRIMARY KEY (usable_email_id, tag_id)
+            )
+            """
+        )
+        connection.execute(
+            """
             INSERT OR IGNORE INTO system_settings (key, value)
             VALUES ('registration_enabled', 'false')
             """
@@ -97,6 +130,6 @@ def migrate(settings: Settings) -> Path:
             """,
             (settings.admin_username, hash_password(settings.admin_password)),
         )
-        connection.execute("PRAGMA user_version = 3")
+        connection.execute("PRAGMA user_version = 4")
 
     return database_path

@@ -8,11 +8,17 @@ type UsableEmail = {
   label: string;
   kind: "primary" | "alias" | "temp" | "custom";
   status: "active" | "inactive" | "archived";
+  group?: { id: number; name: string; color: string } | null;
+  tags?: { id: number; name: string; color: string }[];
+  platformBindingCount?: number;
 };
 
 type Session = {
   username: string;
   usableEmails: UsableEmail[];
+  page?: number;
+  pageSize?: number;
+  total?: number;
 };
 
 type AppProps = {
@@ -34,6 +40,8 @@ const statusLabels: Record<UsableEmail["status"], string> = {
 };
 
 function Workbench({ session }: { session: Session }) {
+  const total = session.total ?? session.usableEmails.length;
+  const page = session.page ?? 1;
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-6 text-slate-100">
       <section className="mx-auto flex w-full max-w-6xl flex-col gap-6">
@@ -48,6 +56,53 @@ function Workbench({ session }: { session: Session }) {
           </Button>
         </header>
 
+        <div className="grid gap-3 rounded-lg border border-white/10 bg-slate-900 p-3 md:grid-cols-[1.5fr_repeat(3,1fr)]">
+          <label className="block">
+            <span className="mb-1 block text-xs text-slate-400">关键词</span>
+            <input
+              aria-label="关键词"
+              className="h-10 w-full rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-white outline-none focus:border-emerald-300"
+              placeholder="地址或标签"
+              type="search"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs text-slate-400">类型</span>
+            <select
+              aria-label="类型"
+              className="h-10 w-full rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-white outline-none focus:border-emerald-300"
+            >
+              <option>全部类型</option>
+              <option>主邮箱地址</option>
+              <option>别名邮箱地址</option>
+              <option>临时邮箱地址</option>
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs text-slate-400">状态</span>
+            <select
+              aria-label="状态"
+              className="h-10 w-full rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-white outline-none focus:border-emerald-300"
+            >
+              <option>全部状态</option>
+              <option>可用</option>
+              <option>已停用</option>
+              <option>已归档</option>
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs text-slate-400">平台绑定</span>
+            <select
+              aria-label="平台绑定"
+              className="h-10 w-full rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-white outline-none focus:border-emerald-300"
+            >
+              <option>全部绑定</option>
+              <option>未绑定平台</option>
+              <option>已绑定平台</option>
+            </select>
+          </label>
+        </div>
+
         <div className="overflow-hidden rounded-lg border border-white/10 bg-slate-900">
           <table className="w-full border-collapse text-left text-sm">
             <thead className="bg-slate-800 text-slate-300">
@@ -55,6 +110,8 @@ function Workbench({ session }: { session: Session }) {
                 <th className="px-4 py-3 font-medium">地址</th>
                 <th className="px-4 py-3 font-medium">类型</th>
                 <th className="px-4 py-3 font-medium">标签</th>
+                <th className="px-4 py-3 font-medium">分组</th>
+                <th className="px-4 py-3 font-medium">平台绑定</th>
                 <th className="px-4 py-3 font-medium">状态</th>
                 <th className="px-4 py-3 text-right font-medium">操作</th>
               </tr>
@@ -64,7 +121,40 @@ function Workbench({ session }: { session: Session }) {
                 <tr className="border-t border-white/10" key={usableEmail.id}>
                   <td className="px-4 py-4 font-medium text-white">{usableEmail.address}</td>
                   <td className="px-4 py-4 text-slate-300">{kindLabels[usableEmail.kind]}</td>
-                  <td className="px-4 py-4 text-slate-300">{usableEmail.label}</td>
+                  <td className="px-4 py-4 text-slate-300">
+                    <div>{usableEmail.label}</div>
+                    {usableEmail.tags?.length ? (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {usableEmail.tags.map((tag) => (
+                          <span
+                            className="rounded border border-white/10 px-2 py-0.5 text-xs"
+                            key={tag.id}
+                            style={{ color: tag.color }}
+                          >
+                            {tag.name}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </td>
+                  <td className="px-4 py-4 text-slate-300">
+                    {usableEmail.group ? (
+                      <span className="inline-flex items-center gap-2">
+                        <span
+                          className="size-2 rounded-full"
+                          style={{ backgroundColor: usableEmail.group.color }}
+                        />
+                        {usableEmail.group.name}
+                      </span>
+                    ) : (
+                      "未分组"
+                    )}
+                  </td>
+                  <td className="px-4 py-4 text-slate-300">
+                    {(usableEmail.platformBindingCount ?? 0) > 0
+                      ? `${usableEmail.platformBindingCount} 个平台`
+                      : "未绑定平台"}
+                  </td>
                   <td className="px-4 py-4 text-slate-300">{statusLabels[usableEmail.status]}</td>
                   <td className="px-4 py-4 text-right">
                     <Button disabled={usableEmail.status !== "active"} type="button">
@@ -76,6 +166,18 @@ function Workbench({ session }: { session: Session }) {
             </tbody>
           </table>
         </div>
+
+        <footer className="flex items-center justify-between text-sm text-slate-400">
+          <span>{`第 ${page} 页 / 共 ${total} 条`}</span>
+          <div className="flex gap-2">
+            <Button disabled={page <= 1} type="button">
+              上一页
+            </Button>
+            <Button disabled={total <= page * (session.pageSize ?? 50)} type="button">
+              下一页
+            </Button>
+          </div>
+        </footer>
       </section>
     </main>
   );

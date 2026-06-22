@@ -29,6 +29,15 @@ from hx_email.usable_emails import (
     get_usable_email,
     list_usable_emails,
 )
+from hx_email.workbench import (
+    Group,
+    Tag,
+    WorkbenchEmail,
+    create_group,
+    create_tag,
+    list_workbench_emails,
+    organize_usable_email,
+)
 
 
 class Credentials(BaseModel):
@@ -60,6 +69,22 @@ class AliasCreate(BaseModel):
     label: str = ""
 
 
+class GroupCreate(BaseModel):
+    name: str
+    color: str = "#58a6ff"
+
+
+class TagCreate(BaseModel):
+    name: str
+    color: str = "#238636"
+
+
+class UsableEmailOrganization(BaseModel):
+    label: str | None = None
+    group_id: int | None = None
+    tag_ids: list[int] = []
+
+
 def serialize_usable_email(usable_email: UsableEmail) -> dict[str, object]:
     return {
         "id": usable_email.id,
@@ -67,6 +92,29 @@ def serialize_usable_email(usable_email: UsableEmail) -> dict[str, object]:
         "label": usable_email.label,
         "kind": usable_email.kind,
         "status": usable_email.status,
+    }
+
+
+def serialize_group(group: Group | None) -> dict[str, object] | None:
+    if group is None:
+        return None
+    return {"id": group.id, "name": group.name, "color": group.color}
+
+
+def serialize_tag(tag: Tag) -> dict[str, object]:
+    return {"id": tag.id, "name": tag.name, "color": tag.color}
+
+
+def serialize_workbench_email(usable_email: WorkbenchEmail) -> dict[str, object]:
+    return {
+        "id": usable_email.id,
+        "address": usable_email.address,
+        "label": usable_email.label,
+        "kind": usable_email.kind,
+        "status": usable_email.status,
+        "group": serialize_group(usable_email.group),
+        "tags": [serialize_tag(tag) for tag in usable_email.tags],
+        "platform_binding_count": usable_email.platform_binding_count,
     }
 
 
@@ -171,6 +219,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         require_admin(authorization)
         return {"registration_enabled": set_registration_enabled(settings, payload.enabled)}
 
+    @app.post("/groups", status_code=status.HTTP_201_CREATED)
+    def create_user_group(
+        payload: GroupCreate,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        user = require_user(authorization)
+        group = create_group(settings, user.id, payload.name, payload.color)
+        return {"id": group.id, "name": group.name, "color": group.color}
+
+    @app.post("/tags", status_code=status.HTTP_201_CREATED)
+    def create_user_tag(
+        payload: TagCreate,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        user = require_user(authorization)
+        tag = create_tag(settings, user.id, payload.name, payload.color)
+        return {"id": tag.id, "name": tag.name, "color": tag.color}
+
     @app.post("/usable-emails", status_code=status.HTTP_201_CREATED)
     def create_usable_email(
         payload: UsableEmailCreate,
@@ -189,6 +255,40 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "usable_emails": [serialize_usable_email(usable_email) for usable_email in list_usable_emails(settings, user.id)]
         }
 
+    @app.get("/workbench/usable-emails")
+    def get_workbench_usable_emails(
+        authorization: Annotated[str | None, Header()] = None,
+        kind: str | None = None,
+        status: str | None = None,
+        group_id: int | None = None,
+        tag_id: int | None = None,
+        keyword: str | None = None,
+        platform_binding: str | None = None,
+        page: int = 1,
+        page_size: int = 50,
+    ) -> dict[str, object]:
+        user = require_user(authorization)
+        result = list_workbench_emails(
+            settings,
+            user.id,
+            kind=kind,
+            status=status,
+            group_id=group_id,
+            tag_id=tag_id,
+            keyword=keyword,
+            platform_binding=platform_binding,
+            page=page,
+            page_size=page_size,
+        )
+        return {
+            "usable_emails": [
+                serialize_workbench_email(usable_email) for usable_email in result.usable_emails
+            ],
+            "total": result.total,
+            "page": result.page,
+            "page_size": result.page_size,
+        }
+
     @app.get("/usable-emails/{usable_email_id}")
     def get_usable_email_detail(
         usable_email_id: int,
@@ -199,6 +299,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if usable_email is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usable email not found")
         return serialize_usable_email(usable_email)
+
+    @app.put("/usable-emails/{usable_email_id}/organize")
+    def organize_email(
+        usable_email_id: int,
+        payload: UsableEmailOrganization,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        user = require_user(authorization)
+        usable_email = organize_usable_email(
+            settings,
+            user.id,
+            usable_email_id,
+            payload.label,
+            payload.group_id,
+            payload.tag_ids,
+        )
+        if usable_email is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usable email not found")
+        return serialize_workbench_email(usable_email)
 
     @app.post("/usable-emails/{usable_email_id}/deactivate")
     def deactivate_email(
