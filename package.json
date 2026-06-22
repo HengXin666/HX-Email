@@ -1,0 +1,9 @@
+{
+  "name": "hx-email",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "test": "npm run test --prefix web && uv run --directory server pytest",
+    "build": "npm run build --prefix web"
+  }
+}
