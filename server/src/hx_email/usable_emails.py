@@ -71,3 +71,27 @@ def get_usable_email(settings: Settings, user_id: int, usable_email_id: int) -> 
         kind=row["kind"],
         status=row["status"],
     )
+
+
+def deactivate_usable_email(settings: Settings, user_id: int, usable_email_id: int) -> UsableEmail | None:
+    with connect(settings) as connection:
+        row = connection.execute(
+            """
+            UPDATE usable_emails
+            SET status = 'inactive', active = 0
+            WHERE id = ? AND user_id = ?
+            RETURNING id, address, label, kind, status
+            """,
+            (usable_email_id, user_id),
+        ).fetchone()
+
+    if row is None:
+        return None
+
+    return UsableEmail(
+        id=row["id"],
+        address=row["address"],
+        label=row["label"],
+        kind=row["kind"],
+        status=row["status"],
+    )

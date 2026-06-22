@@ -16,7 +16,19 @@ from hx_email.auth import (
 )
 from hx_email.config import Settings
 from hx_email.email_accounts import add_email_account, deactivate_email_account
-from hx_email.usable_emails import UsableEmail, add_usable_email, get_usable_email, list_usable_emails
+from hx_email.email_accounts import (
+    DuplicateUsableEmailError,
+    InvalidAliasAddressError,
+    add_alias_to_email_account,
+    get_email_account,
+)
+from hx_email.usable_emails import (
+    UsableEmail,
+    add_usable_email,
+    deactivate_usable_email,
+    get_usable_email,
+    list_usable_emails,
+)
 
 
 class Credentials(BaseModel):
@@ -40,6 +52,12 @@ class EmailAccountCreate(BaseModel):
     imap_host: str = ""
     imap_port: int | None = None
     username: str = ""
+    alias_addresses: list[str] = []
+
+
+class AliasCreate(BaseModel):
+    address: str
+    label: str = ""
 
 
 def serialize_usable_email(usable_email: UsableEmail) -> dict[str, object]:
@@ -49,6 +67,18 @@ def serialize_usable_email(usable_email: UsableEmail) -> dict[str, object]:
         "label": usable_email.label,
         "kind": usable_email.kind,
         "status": usable_email.status,
+    }
+
+
+def serialize_email_account(account) -> dict[str, object]:
+    return {
+        "id": account.id,
+        "provider": account.provider,
+        "primary_address": account.primary_address,
+        "display_name": account.display_name,
+        "status": account.status,
+        "primary_usable_email": serialize_usable_email(account.primary_usable_email),
+        "usable_emails": [serialize_usable_email(usable_email) for usable_email in account.usable_emails],
     }
 
 
@@ -170,30 +200,74 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usable email not found")
         return serialize_usable_email(usable_email)
 
+    @app.post("/usable-emails/{usable_email_id}/deactivate")
+    def deactivate_email(
+        usable_email_id: int,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        user = require_user(authorization)
+        usable_email = deactivate_usable_email(settings, user.id, usable_email_id)
+        if usable_email is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usable email not found")
+        return serialize_usable_email(usable_email)
+
     @app.post("/email-accounts", status_code=status.HTTP_201_CREATED)
     def create_email_account(
         payload: EmailAccountCreate,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
         user = require_user(authorization)
-        account = add_email_account(
-            settings,
-            user.id,
-            payload.provider,
-            payload.primary_address,
-            payload.display_name,
-            payload.imap_host,
-            payload.imap_port,
-            payload.username,
-        )
-        return {
-            "id": account.id,
-            "provider": account.provider,
-            "primary_address": account.primary_address,
-            "display_name": account.display_name,
-            "status": account.status,
-            "primary_usable_email": serialize_usable_email(account.primary_usable_email),
-        }
+        try:
+            account = add_email_account(
+                settings,
+                user.id,
+                payload.provider,
+                payload.primary_address,
+                payload.display_name,
+                payload.imap_host,
+                payload.imap_port,
+                payload.username,
+                payload.alias_addresses,
+            )
+        except InvalidAliasAddressError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        except DuplicateUsableEmailError as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+        return serialize_email_account(account)
+
+    @app.get("/email-accounts/{account_id}")
+    def get_account(
+        account_id: int,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        user = require_user(authorization)
+        account = get_email_account(settings, user.id, account_id)
+        if account is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Email account not found")
+        return serialize_email_account(account)
+
+    @app.post("/email-accounts/{account_id}/aliases", status_code=status.HTTP_201_CREATED)
+    def create_account_alias(
+        account_id: int,
+        payload: AliasCreate,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        user = require_user(authorization)
+        try:
+            alias = add_alias_to_email_account(
+                settings,
+                user.id,
+                account_id,
+                payload.address,
+                payload.label or payload.address,
+            )
+        except InvalidAliasAddressError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        except DuplicateUsableEmailError as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+        if alias is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Email account not found")
+        return serialize_usable_email(alias)
 
     @app.post("/email-accounts/{account_id}/deactivate")
     def deactivate_account(
@@ -204,11 +278,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         account = deactivate_email_account(settings, user.id, account_id)
         if account is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Email account not found")
-        return {
-            "id": account.id,
-            "status": account.status,
-            "primary_usable_email": serialize_usable_email(account.primary_usable_email),
-        }
+        return serialize_email_account(account)
 
     return app
 

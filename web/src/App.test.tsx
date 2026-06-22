@@ -44,3 +44,33 @@ test("shows the primary usable email workbench when signed in", () => {
   expect(screen.getByText("主邮箱地址")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "停用" })).toBeEnabled();
 });
+
+test("shows alias usable emails as independent rows", () => {
+  render(
+    <App
+      session={{
+        username: "alice",
+        usableEmails: [
+          {
+            id: 1,
+            address: "alice@example.com",
+            label: "Alice IMAP",
+            kind: "primary",
+            status: "active",
+          },
+          {
+            id: 2,
+            address: "alias@example.com",
+            label: "Campaign alias",
+            kind: "alias",
+            status: "active",
+          },
+        ],
+      }}
+    />,
+  );
+
+  expect(screen.getByText("alias@example.com")).toBeInTheDocument();
+  expect(screen.getByText("别名邮箱地址")).toBeInTheDocument();
+  expect(screen.getAllByRole("button", { name: "停用" })).toHaveLength(2);
+});
