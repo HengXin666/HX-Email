@@ -1,0 +1,22 @@
+# 提交即验证 (uv 驱动): 给 Agent 明确的 pass/fail 信号
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        # args: [--fix]
+      - id: ruff-format
+  - repo: local
+    hooks:
+      - id: type-check
+        name: type-check (mypy)
+        entry: uv run mypy .
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: arch-check
+        name: arch-check (300行/文件数/_前缀/中文命名)
+        entry: uv run python scripts/check_arch.py
+        language: system
+        pass_filenames: false
+        always_run: true

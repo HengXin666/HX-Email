@@ -15,3 +15,6 @@ dist/
 # Env
 .env
 .env.*
+
+# 参考项目
+ref/
