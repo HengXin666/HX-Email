@@ -27,7 +27,20 @@ The FastAPI app exposes:
   groups, tags, platforms and platform bindings for the authenticated user only.
 
 Configuration is loaded from environment variables with the `HX_EMAIL_` prefix.
-The SQLite data directory defaults to `.data`; override it with:
+The initial admin login defaults to:
+
+- username: `admin`
+- password: `admin`
+
+Override it with:
+
+```bash
+HX_EMAIL_ADMIN_USERNAME=your-admin \
+HX_EMAIL_ADMIN_PASSWORD=your-password \
+uv run hx-email migrate
+```
+
+The SQLite data directory defaults to `data`; override it with:
 
 ```bash
 HX_EMAIL_DATA_DIR=/path/to/data uv run hx-email migrate

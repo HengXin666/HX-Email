@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="HX_EMAIL_")
 
-    data_dir: Path = Path(".data")
+    data_dir: Path = Path("data")
     admin_username: str = "admin"
     admin_password: str = "admin"
 
