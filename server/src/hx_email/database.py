@@ -63,13 +63,24 @@ def migrate(settings: Settings) -> Path:
             """
         )
         if not column_exists(connection, "usable_emails", "email_account_id"):
-            connection.execute("ALTER TABLE usable_emails ADD COLUMN email_account_id INTEGER REFERENCES email_accounts(id)")
+            connection.execute(
+                """
+                ALTER TABLE usable_emails
+                ADD COLUMN email_account_id INTEGER REFERENCES email_accounts(id)
+                """
+            )
         if not column_exists(connection, "usable_emails", "kind"):
-            connection.execute("ALTER TABLE usable_emails ADD COLUMN kind TEXT NOT NULL DEFAULT 'custom'")
+            connection.execute(
+                "ALTER TABLE usable_emails ADD COLUMN kind TEXT NOT NULL DEFAULT 'custom'"
+            )
         if not column_exists(connection, "usable_emails", "status"):
-            connection.execute("ALTER TABLE usable_emails ADD COLUMN status TEXT NOT NULL DEFAULT 'active'")
+            connection.execute(
+                "ALTER TABLE usable_emails ADD COLUMN status TEXT NOT NULL DEFAULT 'active'"
+            )
         if not column_exists(connection, "usable_emails", "group_id"):
-            connection.execute("ALTER TABLE usable_emails ADD COLUMN group_id INTEGER REFERENCES groups(id)")
+            connection.execute(
+                "ALTER TABLE usable_emails ADD COLUMN group_id INTEGER REFERENCES groups(id)"
+            )
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS email_accounts (
@@ -119,6 +130,57 @@ def migrate(settings: Settings) -> Path:
         )
         connection.execute(
             """
+            CREATE TABLE IF NOT EXISTS temp_mailboxes (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id),
+                usable_email_id INTEGER NOT NULL REFERENCES usable_emails(id),
+                provider TEXT NOT NULL,
+                provider_mailbox_id TEXT NOT NULL,
+                UNIQUE(user_id, usable_email_id),
+                UNIQUE(user_id, provider, provider_mailbox_id)
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS platforms (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id),
+                name TEXT NOT NULL,
+                UNIQUE(user_id, name)
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS platform_bindings (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id),
+                usable_email_id INTEGER NOT NULL REFERENCES usable_emails(id),
+                platform_id INTEGER NOT NULL REFERENCES platforms(id),
+                status TEXT NOT NULL DEFAULT 'active',
+                notes TEXT NOT NULL DEFAULT '',
+                UNIQUE(user_id, usable_email_id, platform_id)
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS verification_readings (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id),
+                usable_email_id INTEGER NOT NULL REFERENCES usable_emails(id),
+                code TEXT,
+                link TEXT,
+                recipient_address TEXT,
+                certainty TEXT NOT NULL,
+                subject TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        connection.execute(
+            """
             INSERT OR IGNORE INTO system_settings (key, value)
             VALUES ('registration_enabled', 'false')
             """
@@ -130,6 +192,6 @@ def migrate(settings: Settings) -> Path:
             """,
             (settings.admin_username, hash_password(settings.admin_password)),
         )
-        connection.execute("PRAGMA user_version = 4")
+        connection.execute("PRAGMA user_version = 5")
 
     return database_path

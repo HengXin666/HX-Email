@@ -26,9 +26,25 @@ def test_migrate_creates_sqlite_database_in_configured_data_dir(tmp_path):
         usable_email_columns = {
             row[1] for row in connection.execute("PRAGMA table_info(usable_emails)").fetchall()
         }
+        temp_mailbox_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(temp_mailboxes)").fetchall()
+        }
+        platform_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(platforms)").fetchall()
+        }
+        platform_binding_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(platform_bindings)").fetchall()
+        }
 
-    assert version == 4
+    assert version == 5
     assert registration_enabled == "false"
     assert admin == ("admin", 1)
     assert {"provider", "primary_address", "status"}.issubset(email_accounts_columns)
     assert {"email_account_id", "kind", "status", "group_id"}.issubset(usable_email_columns)
+    assert {"user_id", "usable_email_id", "provider", "provider_mailbox_id"}.issubset(
+        temp_mailbox_columns
+    )
+    assert {"user_id", "name"}.issubset(platform_columns)
+    assert {"user_id", "usable_email_id", "platform_id", "status", "notes"}.issubset(
+        platform_binding_columns
+    )

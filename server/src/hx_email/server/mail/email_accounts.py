@@ -1,9 +1,11 @@
-from dataclasses import dataclass
 import sqlite3
+from dataclasses import dataclass
+from sqlite3 import Connection, Row
 
 from hx_email.config import Settings
 from hx_email.database import connect
-from hx_email.usable_emails import UsableEmail
+from hx_email.server.auth import require_inserted_id
+from hx_email.server.mail.usable_emails import UsableEmail
 
 
 @dataclass(frozen=True)
@@ -30,7 +32,7 @@ def is_plus_subaddress(address: str) -> bool:
     return bool(separator) and "+" in local_part
 
 
-def usable_email_from_row(row) -> UsableEmail:
+def usable_email_from_row(row: Row) -> UsableEmail:
     return UsableEmail(
         id=row["id"],
         address=row["address"],
@@ -41,7 +43,7 @@ def usable_email_from_row(row) -> UsableEmail:
 
 
 def add_alias_email(
-    connection,
+    connection: Connection,
     user_id: int,
     account_id: int,
     address: str,
@@ -53,15 +55,25 @@ def add_alias_email(
     try:
         cursor = connection.execute(
             """
-            INSERT INTO usable_emails (user_id, email_account_id, address, label, kind, status, active)
+            INSERT INTO usable_emails (
+                user_id, email_account_id, address, label, kind, status, active
+            )
             VALUES (?, ?, ?, ?, 'alias', 'active', 1)
             """,
             (user_id, account_id, address, label),
         )
     except sqlite3.IntegrityError as error:
-        raise DuplicateUsableEmailError("Usable email address already exists for this user") from error
+        raise DuplicateUsableEmailError(
+            "Usable email address already exists for this user"
+        ) from error
 
-    return UsableEmail(id=cursor.lastrowid, address=address, label=label, kind="alias", status="active")
+    return UsableEmail(
+        id=require_inserted_id(cursor.lastrowid),
+        address=address,
+        label=label,
+        kind="alias",
+        status="active",
+    )
 
 
 def add_email_account(
@@ -81,32 +93,39 @@ def add_email_account(
             account_cursor = connection.execute(
                 """
                 INSERT INTO email_accounts (
-                    user_id, provider, primary_address, display_name, imap_host, imap_port, username
+                    user_id, provider, primary_address, display_name, imap_host,
+                    imap_port, username
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (user_id, provider, primary_address, display_name, imap_host, imap_port, username),
             )
         except sqlite3.IntegrityError as error:
-            raise DuplicateUsableEmailError("Email account primary address already exists for this user") from error
-        account_id = account_cursor.lastrowid
+            raise DuplicateUsableEmailError(
+                "Email account primary address already exists for this user"
+            ) from error
+        account_id = require_inserted_id(account_cursor.lastrowid)
         try:
             email_cursor = connection.execute(
                 """
-                INSERT INTO usable_emails (user_id, email_account_id, address, label, kind, status, active)
+                INSERT INTO usable_emails (
+                    user_id, email_account_id, address, label, kind, status, active
+                )
                 VALUES (?, ?, ?, ?, 'primary', 'active', 1)
                 """,
                 (user_id, account_id, primary_address, display_name),
             )
         except sqlite3.IntegrityError as error:
-            raise DuplicateUsableEmailError("Usable email address already exists for this user") from error
+            raise DuplicateUsableEmailError(
+                "Usable email address already exists for this user"
+            ) from error
         alias_emails = [
             add_alias_email(connection, user_id, account_id, alias_address, alias_address)
             for alias_address in alias_addresses
         ]
 
     primary_usable_email = UsableEmail(
-        id=email_cursor.lastrowid,
+        id=require_inserted_id(email_cursor.lastrowid),
         address=primary_address,
         label=display_name,
         kind="primary",
@@ -123,7 +142,9 @@ def add_email_account(
     )
 
 
-def deactivate_email_account(settings: Settings, user_id: int, account_id: int) -> EmailAccount | None:
+def deactivate_email_account(
+    settings: Settings, user_id: int, account_id: int
+) -> EmailAccount | None:
     with connect(settings) as connection:
         account = connection.execute(
             """

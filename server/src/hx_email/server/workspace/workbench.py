@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from hx_email.config import Settings
 from hx_email.database import connect
+from hx_email.server.auth import require_inserted_id
 
 
 @dataclass(frozen=True)
@@ -44,7 +45,7 @@ def create_group(settings: Settings, user_id: int, name: str, color: str) -> Gro
             "INSERT INTO groups (user_id, name, color) VALUES (?, ?, ?)",
             (user_id, name, color),
         )
-    return Group(id=cursor.lastrowid, name=name, color=color)
+    return Group(id=require_inserted_id(cursor.lastrowid), name=name, color=color)
 
 
 def create_tag(settings: Settings, user_id: int, name: str, color: str) -> Tag:
@@ -53,7 +54,7 @@ def create_tag(settings: Settings, user_id: int, name: str, color: str) -> Tag:
             "INSERT INTO tags (user_id, name, color) VALUES (?, ?, ?)",
             (user_id, name, color),
         )
-    return Tag(id=cursor.lastrowid, name=name, color=color)
+    return Tag(id=require_inserted_id(cursor.lastrowid), name=name, color=color)
 
 
 def organize_usable_email(
@@ -63,7 +64,7 @@ def organize_usable_email(
     label: str | None,
     group_id: int | None,
     tag_ids: list[int],
-):
+) -> WorkbenchEmail | None:
     with connect(settings) as connection:
         usable_email = connection.execute(
             "SELECT id FROM usable_emails WHERE id = ? AND user_id = ?",
@@ -99,7 +100,9 @@ def organize_usable_email(
                 "UPDATE usable_emails SET group_id = ? WHERE id = ? AND user_id = ?",
                 (group_id, usable_email_id, user_id),
             )
-        connection.execute("DELETE FROM usable_email_tags WHERE usable_email_id = ?", (usable_email_id,))
+        connection.execute(
+            "DELETE FROM usable_email_tags WHERE usable_email_id = ?", (usable_email_id,)
+        )
         connection.executemany(
             "INSERT INTO usable_email_tags (usable_email_id, tag_id) VALUES (?, ?)",
             [(usable_email_id, tag_id) for tag_id in dict.fromkeys(tag_ids)],
@@ -108,7 +111,9 @@ def organize_usable_email(
     return get_workbench_email(settings, user_id, usable_email_id)
 
 
-def get_workbench_email(settings: Settings, user_id: int, usable_email_id: int) -> WorkbenchEmail | None:
+def get_workbench_email(
+    settings: Settings, user_id: int, usable_email_id: int
+) -> WorkbenchEmail | None:
     page = list_workbench_emails(settings, user_id, usable_email_id=usable_email_id)
     if not page.usable_emails:
         return None
@@ -134,7 +139,11 @@ def list_workbench_emails(
     where = ["usable_emails.user_id = ?"]
     params: list[object] = [user_id]
     joins = [
-        "LEFT JOIN groups ON groups.id = usable_emails.group_id AND groups.user_id = usable_emails.user_id"
+        """
+        LEFT JOIN groups
+            ON groups.id = usable_emails.group_id
+            AND groups.user_id = usable_emails.user_id
+        """
     ]
 
     if usable_email_id is not None:
@@ -150,7 +159,9 @@ def list_workbench_emails(
         where.append("usable_emails.group_id = ?")
         params.append(group_id)
     if tag_id is not None:
-        joins.append("JOIN usable_email_tags filter_tags ON filter_tags.usable_email_id = usable_emails.id")
+        joins.append(
+            "JOIN usable_email_tags filter_tags ON filter_tags.usable_email_id = usable_emails.id"
+        )
         where.append("filter_tags.tag_id = ?")
         params.append(tag_id)
     if keyword:
@@ -158,9 +169,27 @@ def list_workbench_emails(
         like = f"%{keyword}%"
         params.extend([like, like])
     if platform_binding == "bound":
-        where.append("0 = 1")
+        where.append(
+            """
+            EXISTS (
+                SELECT 1
+                FROM platform_bindings
+                WHERE platform_bindings.user_id = usable_emails.user_id
+                    AND platform_bindings.usable_email_id = usable_emails.id
+            )
+            """
+        )
     elif platform_binding == "unbound":
-        where.append("1 = 1")
+        where.append(
+            """
+            NOT EXISTS (
+                SELECT 1
+                FROM platform_bindings
+                WHERE platform_bindings.user_id = usable_emails.user_id
+                    AND platform_bindings.usable_email_id = usable_emails.id
+            )
+            """
+        )
 
     where_sql = " AND ".join(where)
     join_sql = " ".join(joins)
@@ -180,9 +209,12 @@ def list_workbench_emails(
             f"""
             SELECT usable_emails.id, usable_emails.address, usable_emails.label,
                    usable_emails.kind, usable_emails.status,
-                   groups.id AS group_id, groups.name AS group_name, groups.color AS group_color
+                   groups.id AS group_id, groups.name AS group_name, groups.color AS group_color,
+                   COUNT(DISTINCT platform_bindings.id) AS platform_binding_count
             FROM usable_emails
             {join_sql}
+            LEFT JOIN platform_bindings ON platform_bindings.user_id = usable_emails.user_id
+                AND platform_bindings.usable_email_id = usable_emails.id
             WHERE {where_sql}
             GROUP BY usable_emails.id
             ORDER BY usable_emails.id
@@ -220,7 +252,7 @@ def list_workbench_emails(
             if row["group_id"] is not None
             else None,
             tags=tuple(tags_by_email[row["id"]]),
-            platform_binding_count=0,
+            platform_binding_count=row["platform_binding_count"],
         )
         for row in rows
     )

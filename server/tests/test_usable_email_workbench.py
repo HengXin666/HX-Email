@@ -1,5 +1,4 @@
 from fastapi.testclient import TestClient
-
 from hx_email.app import create_app
 from hx_email.config import Settings
 from hx_email.database import migrate
@@ -107,12 +106,16 @@ def test_workbench_filters_are_isolated_to_current_user(tmp_path):
         json={"enabled": True},
         headers=admin_headers,
     )
-    alice = client.post("/auth/register", json={"username": "alice", "password": "alice-pass"}).json()
+    alice = client.post(
+        "/auth/register", json={"username": "alice", "password": "alice-pass"}
+    ).json()
     bob = client.post("/auth/register", json={"username": "bob", "password": "bob-pass"}).json()
     alice_headers = {"Authorization": f"Bearer {alice['access_token']}"}
     bob_headers = {"Authorization": f"Bearer {bob['access_token']}"}
 
-    alice_account = create_account(client, alice_headers, "alice@example.com", ["shared@example.com"])
+    alice_account = create_account(
+        client, alice_headers, "alice@example.com", ["shared@example.com"]
+    )
     bob_account = create_account(client, bob_headers, "bob@example.com", ["shared@example.com"])
     alice_group = client.post(
         "/groups",

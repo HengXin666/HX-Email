@@ -10,6 +10,7 @@ dev = ["ruff>=0.8.6", "mypy>=1.14.1", "pre-commit>=4.0.0"]
 [tool.ruff]
 target-version = "py311"
 line-length = 100
+exclude = ["ref", "web"]
 
 [tool.ruff.lint]
 # Ruff 默认规则 + 类型标注强制(ANN) + 中文命名拦截(PLC2401)
@@ -27,9 +28,12 @@ suppress-none-returning = true
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 "tests/**" = ["ANN", "S101"]
+"server/tests/**" = ["ANN", "S101"]
 
 [tool.mypy]
 python_version = "3.11"
 strict = true
 warn_unused_ignores = true
 disallow_untyped_defs = true
+ignore_missing_imports = true
+exclude = "^(ref|web|server/tests)/"

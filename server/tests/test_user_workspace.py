@@ -1,5 +1,4 @@
 from fastapi.testclient import TestClient
-
 from hx_email.app import create_app
 from hx_email.config import Settings
 from hx_email.database import migrate

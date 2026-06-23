@@ -13,6 +13,12 @@ class AuthenticatedUser:
     is_admin: bool
 
 
+def require_inserted_id(value: int | None) -> int:
+    if value is None:
+        raise RuntimeError("SQLite did not return an inserted row id")
+    return value
+
+
 def login(settings: Settings, username: str, password: str) -> tuple[AuthenticatedUser, str] | None:
     with connect(settings) as connection:
         row = connection.execute(
@@ -64,7 +70,8 @@ def registration_enabled(settings: Settings) -> bool:
             "SELECT value FROM system_settings WHERE key = 'registration_enabled'"
         ).fetchone()["value"]
 
-    return value == "true"
+    setting_value: str = str(value)
+    return setting_value == "true"
 
 
 def set_registration_enabled(settings: Settings, enabled: bool) -> bool:
@@ -91,7 +98,11 @@ def register_user(settings: Settings, username: str, password: str) -> Authentic
             (username, hash_password(password)),
         )
 
-    return AuthenticatedUser(id=cursor.lastrowid, username=username, is_admin=False)
+    return AuthenticatedUser(
+        id=require_inserted_id(cursor.lastrowid),
+        username=username,
+        is_admin=False,
+    )
 
 
 def create_session(settings: Settings, user: AuthenticatedUser, token: str | None = None) -> str:

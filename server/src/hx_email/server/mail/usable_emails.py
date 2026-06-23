@@ -1,7 +1,8 @@
 from dataclasses import dataclass
 
-from hx_email.database import connect
 from hx_email.config import Settings
+from hx_email.database import connect
+from hx_email.server.auth import require_inserted_id
 
 
 @dataclass(frozen=True)
@@ -23,7 +24,13 @@ def add_usable_email(settings: Settings, user_id: int, address: str, label: str)
             (user_id, address, label),
         )
 
-    return UsableEmail(id=cursor.lastrowid, address=address, label=label, kind="custom", status="active")
+    return UsableEmail(
+        id=require_inserted_id(cursor.lastrowid),
+        address=address,
+        label=label,
+        kind="custom",
+        status="active",
+    )
 
 
 def list_usable_emails(settings: Settings, user_id: int) -> list[UsableEmail]:
@@ -73,7 +80,9 @@ def get_usable_email(settings: Settings, user_id: int, usable_email_id: int) -> 
     )
 
 
-def deactivate_usable_email(settings: Settings, user_id: int, usable_email_id: int) -> UsableEmail | None:
+def deactivate_usable_email(
+    settings: Settings, user_id: int, usable_email_id: int
+) -> UsableEmail | None:
     with connect(settings) as connection:
         row = connection.execute(
             """

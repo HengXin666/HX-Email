@@ -17,7 +17,17 @@ MAX_LINES: int = 300
 MIN_PY_PER_DIR: int = 2
 MAX_PY_PER_DIR: int = 5
 SKIP_DIRS: frozenset[str] = frozenset(
-    {".git", ".venv", "venv", "__pycache__", ".claude", "scripts", "tests"}
+    {
+        ".git",
+        ".venv",
+        "venv",
+        "__pycache__",
+        ".claude",
+        "scripts",
+        "tests",
+        "ref",
+        "web",
+    }
 )
 SKIP_FILES: frozenset[str] = frozenset({"bootstrap.py"})
 CJK_RANGES: tuple[tuple[str, str], ...] = (
@@ -71,8 +81,9 @@ def check_private_funcs(files: list[Path]) -> list[str]:
         if "impl" in f.parts or f.name == "__init__.py":
             continue
         for node in ast.parse(f.read_text(encoding="utf-8")).body:
-            is_fn = isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
-            if is_fn and node.name.startswith("_"):
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name.startswith(
+                "_"
+            ):
                 errs.append(
                     f"[私有越界] {f}:{node.lineno} def {node.name} "
                     f"公开文件禁止 _ 前缀, 请移入 impl/"
@@ -86,17 +97,12 @@ def check_chinese_names(files: list[Path]) -> list[str]:
         if _has_cjk(f.stem):
             errs.append(f"[中文命名] 文件名 {f.name} 含中文, 疑似 AI 幻觉, 改英文")
         for node in ast.walk(ast.parse(f.read_text(encoding="utf-8"))):
-            named = isinstance(
-                node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef
-            )
-            if named and _has_cjk(node.name):
-                errs.append(
-                    f"[中文命名] {f}:{node.lineno} {node.name} 中文标识符, 用英文"
-                )
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef) and _has_cjk(
+                node.name
+            ):
+                errs.append(f"[中文命名] {f}:{node.lineno} {node.name} 中文标识符, 用英文")
             elif (
-                isinstance(node, ast.Name)
-                and isinstance(node.ctx, ast.Store)
-                and _has_cjk(node.id)
+                isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store) and _has_cjk(node.id)
             ):
                 errs.append(f"[中文命名] {f}:{node.lineno} 变量 {node.id} 含中文")
             elif isinstance(node, ast.arg) and _has_cjk(node.arg):
