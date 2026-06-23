@@ -22,6 +22,9 @@ The FastAPI app exposes:
 
 - `GET /health` for health checks
 - `hx-email migrate` for the initial SQLite migration entrypoint
+- `GET /data/export` and `POST /data/import` for core first-phase data backup
+  and migration. The payload covers email accounts, usable emails, aliases,
+  groups, tags, platforms and platform bindings for the authenticated user only.
 
 Configuration is loaded from environment variables with the `HX_EMAIL_` prefix.
 The SQLite data directory defaults to `.data`; override it with:
@@ -50,3 +53,11 @@ the task-1 scope to a usable route shell.
 npm test
 npm run build
 ```
+
+## Migration Scope
+
+The rewrite preserves the first-phase core data model. Import/export is scoped
+to the authenticated user's email accounts, usable emails, aliases, groups,
+tags, platforms and platform bindings. Browser extension features, a full
+public API, notifications, one-click updates, AI enhancements and plugin-based
+temporary mail providers remain deferred follow-up capabilities.
