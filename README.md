@@ -26,24 +26,28 @@ The FastAPI app exposes:
   and migration. The payload covers email accounts, usable emails, aliases,
   groups, tags, platforms and platform bindings for the authenticated user only.
 
-Configuration is loaded from environment variables with the `HX_EMAIL_` prefix.
+Configuration is loaded from `.env`. Copy `.env.example` before first startup:
+
+```bash
+cp .env.example .env
+```
+
 The initial admin login defaults to:
 
 - username: `admin`
 - password: `admin`
 
-Override it with:
+Configure it in `.env`:
 
-```bash
-HX_EMAIL_ADMIN_USERNAME=your-admin \
-HX_EMAIL_ADMIN_PASSWORD=your-password \
-uv run hx-email migrate
+```dotenv
+HX_EMAIL_ADMIN_USERNAME=your-admin
+HX_EMAIL_ADMIN_PASSWORD=your-password
 ```
 
-The SQLite data directory defaults to `data`; override it with:
+The SQLite data directory defaults to `data`; configure it in `.env`:
 
-```bash
-HX_EMAIL_DATA_DIR=/path/to/data uv run hx-email migrate
+```dotenv
+HX_EMAIL_DATA_DIR=data
 ```
 
 ## Frontend

@@ -5,7 +5,7 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .venv/
-.data/
+data/
 
 # Node
 node_modules/
@@ -15,6 +15,7 @@ dist/
 # Env
 .env
 .env.*
+!.env.example
 
 # 参考项目
 ref/
