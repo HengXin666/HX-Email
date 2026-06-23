@@ -14,7 +14,8 @@ def export_core_data(settings: Settings, user_id: int) -> dict[str, object]:
         email_accounts = rows(
             connection,
             """
-            SELECT id, provider, primary_address, display_name, imap_host, imap_port, username, status
+            SELECT id, provider, primary_address, display_name,
+                   imap_host, imap_port, username, status
             FROM email_accounts
             WHERE user_id = ?
             ORDER BY id
@@ -129,7 +130,8 @@ def import_email_accounts(
         cursor = connection.execute(
             """
             INSERT INTO email_accounts (
-                user_id, provider, primary_address, display_name, imap_host, imap_port, username, status
+                user_id, provider, primary_address, display_name,
+                imap_host, imap_port, username, status
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
