@@ -15,6 +15,19 @@ class UsableEmailCreate(BaseModel):
     label: str = ""
 
 
+class MailPoolEntryCreate(BaseModel):
+    usable_email_id: int
+
+
+class MailPoolClaimRequest(BaseModel):
+    project_key: str
+    claim_key: str = ""
+
+
+class MailPoolCompleteRequest(BaseModel):
+    project_key: str
+
+
 class TempMailboxCreate(BaseModel):
     address: str | None = None
     label: str = ""

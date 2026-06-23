@@ -1,4 +1,5 @@
 from hx_email.server.mail.email_accounts import EmailAccount
+from hx_email.server.mail.mail_pool import MailPoolEntry
 from hx_email.server.mail.temp_mail import TempMailbox
 from hx_email.server.mail.usable_emails import UsableEmail
 from hx_email.server.mail.verification import VerificationMatch, VerificationReading
@@ -80,6 +81,17 @@ def serialize_email_account(account: EmailAccount) -> dict[str, object]:
         "usable_emails": [
             serialize_usable_email(usable_email) for usable_email in account.usable_emails
         ],
+    }
+
+
+def serialize_mail_pool_entry(entry: MailPoolEntry) -> dict[str, object]:
+    return {
+        "id": entry.id,
+        "usable_email": serialize_usable_email(entry.usable_email),
+        "status": entry.status,
+        "claim_key": entry.claim_key,
+        "claimed_project_key": entry.claimed_project_key,
+        "completed_project_key": entry.completed_project_key,
     }
 
 

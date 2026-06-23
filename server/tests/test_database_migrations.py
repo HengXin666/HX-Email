@@ -35,8 +35,11 @@ def test_migrate_creates_sqlite_database_in_configured_data_dir(tmp_path):
         platform_binding_columns = {
             row[1] for row in connection.execute("PRAGMA table_info(platform_bindings)").fetchall()
         }
+        mail_pool_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(mail_pool_entries)").fetchall()
+        }
 
-    assert version == 5
+    assert version == 6
     assert registration_enabled == "false"
     assert admin == ("admin", 1)
     assert {"provider", "primary_address", "status"}.issubset(email_accounts_columns)
@@ -48,3 +51,10 @@ def test_migrate_creates_sqlite_database_in_configured_data_dir(tmp_path):
     assert {"user_id", "usable_email_id", "platform_id", "status", "notes"}.issubset(
         platform_binding_columns
     )
+    assert {
+        "user_id",
+        "usable_email_id",
+        "status",
+        "claim_key",
+        "completed_project_key",
+    }.issubset(mail_pool_columns)

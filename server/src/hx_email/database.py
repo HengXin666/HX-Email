@@ -181,6 +181,20 @@ def migrate(settings: Settings) -> Path:
         )
         connection.execute(
             """
+            CREATE TABLE IF NOT EXISTS mail_pool_entries (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id),
+                usable_email_id INTEGER NOT NULL REFERENCES usable_emails(id),
+                status TEXT NOT NULL DEFAULT 'available',
+                claim_key TEXT NOT NULL DEFAULT '',
+                claimed_project_key TEXT NOT NULL DEFAULT '',
+                completed_project_key TEXT NOT NULL DEFAULT '',
+                UNIQUE(user_id, usable_email_id)
+            )
+            """
+        )
+        connection.execute(
+            """
             INSERT OR IGNORE INTO system_settings (key, value)
             VALUES ('registration_enabled', 'false')
             """
@@ -192,6 +206,6 @@ def migrate(settings: Settings) -> Path:
             """,
             (settings.admin_username, hash_password(settings.admin_password)),
         )
-        connection.execute("PRAGMA user_version = 5")
+        connection.execute("PRAGMA user_version = 6")
 
     return database_path
