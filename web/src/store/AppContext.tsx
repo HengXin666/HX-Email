@@ -86,6 +86,12 @@ function clearStoredToken(): void {
   } catch {}
 }
 
+function suppressStoredAutoLogin(): void {
+  try {
+    window.localStorage?.setItem('hx_auto_login', 'false')
+  } catch {}
+}
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const storedUser = getStoredUser()
   const [state, setState] = useState<AppState>({
@@ -159,6 +165,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       await api.logout()
     } catch {}
+    suppressStoredAutoLogin()
     clearStoredToken()
     setState((s) => ({ ...s, token: null, user: null }))
   }, [])

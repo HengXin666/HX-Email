@@ -16,6 +16,12 @@ class EmailAccount:
     display_name: str
     status: str
     primary_usable_email: UsableEmail
+    imap_host: str = ""
+    imap_port: int | None = None
+    username: str = ""
+    imap_password: str = ""
+    client_id: str = ""
+    refresh_token: str = ""
     usable_emails: tuple[UsableEmail, ...] = ()
 
 
@@ -85,6 +91,9 @@ def add_email_account(
     imap_host: str = "",
     imap_port: int | None = None,
     username: str = "",
+    imap_password: str = "",
+    client_id: str = "",
+    refresh_token: str = "",
     alias_addresses: list[str] | None = None,
 ) -> EmailAccount:
     alias_addresses = alias_addresses or []
@@ -94,11 +103,22 @@ def add_email_account(
                 """
                 INSERT INTO email_accounts (
                     user_id, provider, primary_address, display_name, imap_host,
-                    imap_port, username
+                    imap_port, username, imap_password, client_id, refresh_token
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (user_id, provider, primary_address, display_name, imap_host, imap_port, username),
+                (
+                    user_id,
+                    provider,
+                    primary_address,
+                    display_name,
+                    imap_host,
+                    imap_port,
+                    username,
+                    imap_password,
+                    client_id,
+                    refresh_token,
+                ),
             )
         except sqlite3.IntegrityError as error:
             raise DuplicateUsableEmailError(
@@ -138,6 +158,12 @@ def add_email_account(
         display_name=display_name,
         status="active",
         primary_usable_email=primary_usable_email,
+        imap_host=imap_host,
+        imap_port=imap_port,
+        username=username,
+        imap_password=imap_password,
+        client_id=client_id,
+        refresh_token=refresh_token,
         usable_emails=(primary_usable_email, *alias_emails),
     )
 
@@ -148,7 +174,8 @@ def deactivate_email_account(
     with connect(settings) as connection:
         account = connection.execute(
             """
-            SELECT id, provider, primary_address, display_name
+            SELECT id, provider, primary_address, display_name, imap_host,
+                   imap_port, username, imap_password, client_id, refresh_token
             FROM email_accounts
             WHERE id = ? AND user_id = ?
             """,
@@ -184,6 +211,12 @@ def deactivate_email_account(
         display_name=account["display_name"],
         status="inactive",
         primary_usable_email=primary_usable_email,
+        imap_host=account["imap_host"],
+        imap_port=account["imap_port"],
+        username=account["username"],
+        imap_password=account["imap_password"],
+        client_id=account["client_id"],
+        refresh_token=account["refresh_token"],
         usable_emails=usable_emails,
     )
 
@@ -192,7 +225,8 @@ def get_email_account(settings: Settings, user_id: int, account_id: int) -> Emai
     with connect(settings) as connection:
         account = connection.execute(
             """
-            SELECT id, provider, primary_address, display_name, status
+            SELECT id, provider, primary_address, display_name, status, imap_host,
+                   imap_port, username, imap_password, client_id, refresh_token
             FROM email_accounts
             WHERE id = ? AND user_id = ?
             """,
@@ -220,6 +254,12 @@ def get_email_account(settings: Settings, user_id: int, account_id: int) -> Emai
         display_name=account["display_name"],
         status=account["status"],
         primary_usable_email=primary_usable_email,
+        imap_host=account["imap_host"],
+        imap_port=account["imap_port"],
+        username=account["username"],
+        imap_password=account["imap_password"],
+        client_id=account["client_id"],
+        refresh_token=account["refresh_token"],
         usable_emails=usable_emails,
     )
 
@@ -236,12 +276,8 @@ def list_email_accounts(settings: Settings, user_id: int) -> tuple[EmailAccount,
             (user_id,),
         ).fetchall()
 
-    accounts: list[EmailAccount] = []
-    for row in rows:
-        account = get_email_account(settings, user_id, row["id"])
-        if account is not None:
-            accounts.append(account)
-    return tuple(accounts)
+    accounts = (get_email_account(settings, user_id, row["id"]) for row in rows)
+    return tuple(account for account in accounts if account is not None)
 
 
 def add_alias_to_email_account(
@@ -258,5 +294,4 @@ def add_alias_to_email_account(
         ).fetchone()
         if account is None:
             return None
-
         return add_alias_email(connection, user_id, account_id, address, label)

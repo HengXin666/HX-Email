@@ -34,6 +34,9 @@ def register_email_account_routes(app: FastAPI, settings: Settings) -> None:
                 payload.imap_host,
                 payload.imap_port,
                 payload.username,
+                payload.imap_password,
+                payload.client_id,
+                payload.refresh_token,
                 payload.alias_addresses,
             )
         except InvalidAliasAddressError as error:

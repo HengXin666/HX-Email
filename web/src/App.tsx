@@ -9,6 +9,7 @@ import { Overview } from './pages/Overview'
 import { Accounts } from './pages/Accounts'
 import { Platforms } from './pages/Platforms'
 import { TempMail } from './pages/TempMail'
+import { TokenTool } from './pages/TokenTool'
 import { ApiAccess } from './pages/ApiAccess'
 import { Settings } from './pages/Settings'
 
@@ -49,6 +50,7 @@ const App: React.FC = () => {
       <Route path="/accounts" element={<RequireAuth><Accounts /></RequireAuth>} />
       <Route path="/platforms" element={<RequireAuth><Platforms /></RequireAuth>} />
       <Route path="/temp-mail" element={<RequireAuth><TempMail /></RequireAuth>} />
+      <Route path="/token-tool" element={<RequireAuth><TokenTool /></RequireAuth>} />
       <Route path="/api" element={<RequireAuth><ApiAccess /></RequireAuth>} />
       <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
       <Route path="*" element={<Navigate to={token ? '/overview' : '/login'} replace />} />

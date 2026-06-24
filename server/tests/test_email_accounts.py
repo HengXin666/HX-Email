@@ -1,3 +1,5 @@
+from urllib.parse import parse_qs, urlparse
+
 from fastapi.testclient import TestClient
 from hx_email.app import create_app
 from hx_email.config import Settings
@@ -220,6 +222,181 @@ def test_email_accounts_can_be_listed_for_current_workspace(tmp_path):
     ] == [
         "owner@example.com",
         "alias@example.com",
+    ]
+
+
+def test_importing_reference_account_text_supports_imap_and_outlook(tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    migrate(settings)
+    client = TestClient(create_app(settings))
+    session = client.post(
+        "/auth/login",
+        json={"username": "admin", "password": "admin"},
+    ).json()
+    headers = {"Authorization": f"Bearer {session['access_token']}"}
+
+    imported = client.post(
+        "/email-accounts/import",
+        json={
+            "text": "\n".join(
+                [
+                    "person@gmail.com----gmail-app-pass",
+                    "person@qq.com----qq-auth-code----qq",
+                    "person@custom.test----custom-pass----custom----imap.custom.test----1993",
+                    "person@outlook.com----unused-pass----client-id----refresh-token",
+                ]
+            )
+        },
+        headers=headers,
+    )
+    accounts = client.get("/email-accounts", headers=headers)
+    exported = client.get("/email-accounts/export-text", headers=headers)
+
+    assert imported.status_code == 201
+    assert imported.json()["imported"] == 4
+    assert [account["provider"] for account in accounts.json()["email_accounts"]] == [
+        "gmail",
+        "qq",
+        "custom",
+        "outlook",
+    ]
+    assert accounts.json()["email_accounts"][3]["has_refresh_token"] is True
+    assert "person@gmail.com----gmail-app-pass----gmail" in exported.text
+    assert "person@outlook.com----unused-pass----client-id----refresh-token" in exported.text
+
+
+def test_outlook_two_segment_import_is_rejected(tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    migrate(settings)
+    client = TestClient(create_app(settings))
+    session = client.post(
+        "/auth/login",
+        json={"username": "admin", "password": "admin"},
+    ).json()
+    headers = {"Authorization": f"Bearer {session['access_token']}"}
+
+    imported = client.post(
+        "/email-accounts/import",
+        json={"text": "person@outlook.com----password"},
+        headers=headers,
+    )
+
+    assert imported.status_code == 201
+    assert imported.json()["imported"] == 0
+    assert imported.json()["failed"] == 1
+    assert "Outlook accounts must use" in imported.json()["errors"][0]["error"]
+
+
+def test_token_tool_prepare_and_save_updates_outlook_credentials(tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    migrate(settings)
+    client = TestClient(create_app(settings))
+    session = client.post(
+        "/auth/login",
+        json={"username": "admin", "password": "admin"},
+    ).json()
+    headers = {"Authorization": f"Bearer {session['access_token']}"}
+    account = client.post(
+        "/email-accounts",
+        json={
+            "provider": "outlook",
+            "primary_address": "person@outlook.com",
+            "display_name": "Outlook",
+        },
+        headers=headers,
+    ).json()
+
+    prepared = client.post(
+        "/token-tool/prepare",
+        json={
+            "client_id": "client-id",
+            "redirect_uri": "http://localhost",
+            "scope": "offline_access https://graph.microsoft.com/Mail.Read",
+            "tenant": "consumers",
+            "prompt_consent": True,
+        },
+        headers=headers,
+    )
+    saved = client.post(
+        "/token-tool/save",
+        json={
+            "account_id": account["id"],
+            "client_id": "client-id",
+            "refresh_token": "refresh-token",
+        },
+        headers=headers,
+    )
+    detail = client.get(f"/email-accounts/{account['id']}", headers=headers)
+
+    assert prepared.status_code == 200
+    assert "login.microsoftonline.com/consumers" in prepared.json()["data"]["authorize_url"]
+    assert "state=" in prepared.json()["data"]["authorize_url"]
+    assert saved.status_code == 200
+    assert detail.json()["client_id"] == "client-id"
+    assert detail.json()["has_refresh_token"] is True
+
+
+def test_token_tool_config_callback_accounts_and_create_flow(tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    migrate(settings)
+    client = TestClient(create_app(settings))
+    session = client.post(
+        "/auth/login",
+        json={"username": "admin", "password": "admin"},
+    ).json()
+    headers = {"Authorization": f"Bearer {session['access_token']}"}
+
+    config = client.get("/token-tool/config", headers=headers)
+    saved_config = client.post(
+        "/token-tool/config",
+        json={
+            "client_id": "client-id",
+            "redirect_uri": "http://localhost:8000/token-tool/callback",
+            "scope": "offline_access https://graph.microsoft.com/Mail.Read",
+            "tenant": "consumers",
+            "prompt_consent": True,
+        },
+        headers=headers,
+    )
+    prepared = client.post(
+        "/token-tool/prepare",
+        json=saved_config.json()["data"],
+        headers=headers,
+    )
+    callback = client.get(
+        "/token-tool/callback",
+        params={"code": "auth-code", "state": prepared.json()["data"]["state"]},
+    )
+    created = client.post(
+        "/token-tool/save",
+        json={
+            "mode": "create",
+            "email": "created@outlook.com",
+            "client_id": "client-id",
+            "refresh_token": "refresh-token",
+        },
+        headers=headers,
+    )
+    accounts = client.get("/token-tool/accounts", headers=headers)
+
+    assert config.status_code == 200
+    assert config.json()["data"]["tenant"] == "consumers"
+    assert config.json()["data"]["scope"] == (
+        "offline_access https://outlook.office.com/IMAP.AccessAsUser.All"
+    )
+    assert saved_config.status_code == 200
+    assert prepared.status_code == 200
+    authorize_params = parse_qs(urlparse(prepared.json()["data"]["authorize_url"]).query)
+    assert authorize_params["redirect_uri"] == ["http://localhost:8000/token-tool/callback"]
+    assert callback.status_code == 200
+    assert "授权成功" in callback.text
+    assert created.status_code == 200
+    assert accounts.json()["data"] == [
+        {
+            "id": created.json()["data"]["account_id"],
+            "email": "created@outlook.com",
+            "status": "active",
+        }
     ]
 
 

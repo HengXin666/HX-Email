@@ -18,6 +18,7 @@ export default defineConfig({
             "/platforms": apiTarget,
             "/tags": apiTarget,
             "/temp-mail": apiTarget,
+            "/token-tool": apiTarget,
             "/usable-emails": apiTarget,
             "/workbench": apiTarget,
         },

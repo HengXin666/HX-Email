@@ -15,7 +15,8 @@ def export_core_data(settings: Settings, user_id: int) -> dict[str, object]:
             connection,
             """
             SELECT id, provider, primary_address, display_name,
-                   imap_host, imap_port, username, status
+                   imap_host, imap_port, username, imap_password,
+                   client_id, refresh_token, status
             FROM email_accounts
             WHERE user_id = ?
             ORDER BY id
@@ -131,9 +132,10 @@ def import_email_accounts(
             """
             INSERT INTO email_accounts (
                 user_id, provider, primary_address, display_name,
-                imap_host, imap_port, username, status
+                imap_host, imap_port, username, imap_password,
+                client_id, refresh_token, status
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 user_id,
@@ -143,6 +145,9 @@ def import_email_accounts(
                 account.get("imap_host", ""),
                 account.get("imap_port"),
                 account.get("username", ""),
+                account.get("imap_password", ""),
+                account.get("client_id", ""),
+                account.get("refresh_token", ""),
                 account.get("status", "active"),
             ),
         )

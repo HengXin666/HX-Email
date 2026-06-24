@@ -40,6 +40,9 @@ class EmailAccountCreate(BaseModel):
     imap_host: str = ""
     imap_port: int | None = None
     username: str = ""
+    imap_password: str = ""
+    client_id: str = ""
+    refresh_token: str = ""
     alias_addresses: list[str] = []
 
 
@@ -83,3 +86,38 @@ class UsableEmailOrganization(BaseModel):
     label: str | None = None
     group_id: int | None = None
     tag_ids: list[int] = []
+
+
+class AccountTextImport(BaseModel):
+    text: str
+    duplicate_strategy: str = "skip"
+
+
+class TokenToolPrepare(BaseModel):
+    client_id: str
+    redirect_uri: str
+    scope: str = "offline_access https://outlook.office.com/IMAP.AccessAsUser.All"
+    tenant: str = "consumers"
+    prompt_consent: bool = True
+
+
+class TokenToolExchange(BaseModel):
+    code: str = ""
+    state: str = ""
+    callback_url: str = ""
+
+
+class TokenToolSave(BaseModel):
+    mode: str = "update"
+    account_id: int | None = None
+    email: str = ""
+    client_id: str
+    refresh_token: str
+
+
+class TokenToolConfigWrite(BaseModel):
+    client_id: str = ""
+    redirect_uri: str = ""
+    scope: str = "offline_access https://outlook.office.com/IMAP.AccessAsUser.All"
+    tenant: str = "consumers"
+    prompt_consent: bool = True

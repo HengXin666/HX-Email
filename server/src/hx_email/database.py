@@ -92,11 +92,26 @@ def migrate(settings: Settings) -> Path:
                 imap_host TEXT NOT NULL DEFAULT '',
                 imap_port INTEGER,
                 username TEXT NOT NULL DEFAULT '',
+                imap_password TEXT NOT NULL DEFAULT '',
+                client_id TEXT NOT NULL DEFAULT '',
+                refresh_token TEXT NOT NULL DEFAULT '',
                 status TEXT NOT NULL DEFAULT 'active',
                 UNIQUE(user_id, primary_address)
             )
             """
         )
+        if not column_exists(connection, "email_accounts", "imap_password"):
+            connection.execute(
+                "ALTER TABLE email_accounts ADD COLUMN imap_password TEXT NOT NULL DEFAULT ''"
+            )
+        if not column_exists(connection, "email_accounts", "client_id"):
+            connection.execute(
+                "ALTER TABLE email_accounts ADD COLUMN client_id TEXT NOT NULL DEFAULT ''"
+            )
+        if not column_exists(connection, "email_accounts", "refresh_token"):
+            connection.execute(
+                "ALTER TABLE email_accounts ADD COLUMN refresh_token TEXT NOT NULL DEFAULT ''"
+            )
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS groups (

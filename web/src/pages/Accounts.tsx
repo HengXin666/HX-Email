@@ -23,10 +23,12 @@ import {
   IconShield,
   IconZap,
   IconAt,
-  IconUser
+  IconUser,
+  IconDownload,
+  IconUpload
 } from '../components/icons'
 import { api } from '../api/client'
-import type { UsableEmail, VerificationMatch } from '../types'
+import type { AccountImportResult, UsableEmail, VerificationMatch } from '../types'
 
 const COLORS = [
   '#58a6ff',
@@ -1221,10 +1223,105 @@ const EmailSettingsModal: React.FC<{
   )
 }
 
+const AccountImportModal: React.FC<{
+  open: boolean
+  onClose: () => void
+}> = ({ open, onClose }) => {
+  const { refreshAccounts, refreshEmails } = useApp()
+  const { toast } = useToast()
+  const [text, setText] = useState('')
+  const [duplicateStrategy, setDuplicateStrategy] = useState('skip')
+  const [result, setResult] = useState<AccountImportResult | null>(null)
+  const [loading, setLoading] = useState<string | null>(null)
+
+  const handleImport = async () => {
+    setLoading('import')
+    try {
+      const imported = await api.importEmailAccounts(text, duplicateStrategy)
+      setResult(imported)
+      await Promise.all([refreshAccounts(), refreshEmails()])
+      toast(`导入完成：成功 ${imported.imported}，跳过 ${imported.skipped}`, 'success')
+    } catch (err: any) {
+      toast(err.message, 'error')
+    } finally {
+      setLoading(null)
+    }
+  }
+
+  const handleExport = async () => {
+    setLoading('export')
+    try {
+      const exported = await api.exportEmailAccountsText()
+      const blob = new Blob([exported], { type: 'text/plain;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `hx-email-accounts-${new Date().toISOString().slice(0, 10)}.txt`
+      link.click()
+      URL.revokeObjectURL(url)
+      toast('账号已导出', 'success')
+    } catch (err: any) {
+      toast(err.message, 'error')
+    } finally {
+      setLoading(null)
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="导入导出账号"
+      size="xl"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>关闭</Button>
+          <Button variant="secondary" onClick={handleExport} loading={loading === 'export'}>
+            <IconDownload size={14} /> 导出
+          </Button>
+          <Button variant="primary" onClick={handleImport} loading={loading === 'import'}>
+            <IconUpload size={14} /> 导入
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          className="w-full min-h-64 bg-gh-canvas-inset border border-gh-border rounded-md px-3 py-2 text-sm text-gh-text font-mono focus:outline-none focus:border-gh-accent"
+          placeholder="user@gmail.com----app-password----gmail&#10;user@qq.com----authorization-code----qq&#10;user@outlook.com----password----client_id----refresh_token"
+        />
+        <select
+          value={duplicateStrategy}
+          onChange={(e) => setDuplicateStrategy(e.target.value)}
+          className="bg-gh-canvas-inset border border-gh-border rounded-md px-3 py-1.5 text-sm text-gh-text"
+        >
+          <option value="skip">重复跳过</option>
+          <option value="overwrite">重复覆盖</option>
+        </select>
+        {result && (
+          <div className="rounded-md border border-gh-border bg-gh-canvas-inset p-3 text-sm text-gh-text-secondary">
+            成功 {result.imported}，跳过 {result.skipped}，失败 {result.failed}
+            {result.errors.length > 0 && (
+              <div className="mt-2 space-y-1">
+                {result.errors.map((error) => (
+                  <div key={`${error.line}-${error.error}`}>第 {error.line} 行：{error.error}</div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </Modal>
+  )
+}
+
 // ========== 主页面 ==========
 export const Accounts: React.FC = () => {
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null)
   const [selectedEmail, setSelectedEmail] = useState<UsableEmail | null>(null)
+  const [showImport, setShowImport] = useState(false)
   const { emails } = useApp()
 
   // 当选中的邮箱被删除时清空
@@ -1239,6 +1336,11 @@ export const Accounts: React.FC = () => {
       <Topbar
         title="账号管理"
         subtitle="管理所有邮箱账户、可用邮箱和分组"
+        actions={
+          <Button variant="secondary" onClick={() => setShowImport(true)}>
+            <IconUpload size={14} /> 导入导出
+          </Button>
+        }
       />
       <div className="flex-1 flex min-h-0 overflow-hidden">
         <GroupSidebar
@@ -1255,6 +1357,7 @@ export const Accounts: React.FC = () => {
         />
         <EmailDetail email={selectedEmail} />
       </div>
+      <AccountImportModal open={showImport} onClose={() => setShowImport(false)} />
     </div>
   )
 }

@@ -1,6 +1,8 @@
 import type {
   AuthResponse,
+  AccountImportResult,
   EmailAccount,
+  TokenConfig,
   Group,
   MailPoolEntry,
   Overview,
@@ -11,7 +13,9 @@ import type {
   TempMessage,
   UsableEmail,
   User,
-  VerificationMatch
+  VerificationMatch,
+  TokenExchangeResult,
+  TokenPrepareResult
 } from '../types'
 
 function getStoredToken(): string | null {
@@ -37,6 +41,20 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   if (res.status === 204) return null as T
   return res.json()
+}
+
+async function requestText(path: string, init: RequestInit = {}): Promise<string> {
+  const token = getStoredToken()
+  const headers: Record<string, string> = {
+    ...(init.headers as Record<string, string>)
+  }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  const res = await fetch(path, { ...init, headers })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(err.detail || '请求失败')
+  }
+  return res.text()
 }
 
 // ========== Auth ==========
@@ -148,6 +166,46 @@ export const api = {
     }),
   deactivateEmailAccount: (id: number) =>
     request<EmailAccount>(`/email-accounts/${id}/deactivate`, { method: 'POST' }),
+  importEmailAccounts: (text: string, duplicate_strategy = 'skip') =>
+    request<AccountImportResult>('/email-accounts/import', {
+      method: 'POST',
+      body: JSON.stringify({ text, duplicate_strategy })
+    }),
+  exportEmailAccountsText: () => requestText('/email-accounts/export-text'),
+
+  // ========== Token Tool ==========
+  getTokenToolConfig: () =>
+    request<{ success: boolean; data: TokenConfig }>('/token-tool/config').then((r) => r.data),
+  saveTokenToolConfig: (data: TokenConfig) =>
+    request<{ success: boolean; data: TokenConfig }>('/token-tool/config', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }).then((r) => r.data),
+  listTokenToolAccounts: () =>
+    request<{ success: boolean; data: Array<{ id: number; email: string; status: string }> }>(
+      '/token-tool/accounts'
+    ).then((r) => r.data),
+  prepareTokenTool: (data: TokenConfig) =>
+    request<{ success: boolean; data: TokenPrepareResult }>('/token-tool/prepare', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }).then((r) => r.data),
+  exchangeTokenTool: (data: { code?: string; state?: string; callback_url?: string }) =>
+    request<{ success: boolean; data: TokenExchangeResult }>('/token-tool/exchange', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }).then((r) => r.data),
+  saveTokenTool: (data: {
+    mode: 'create' | 'update'
+    account_id?: number | null
+    email?: string
+    client_id: string
+    refresh_token: string
+  }) =>
+    request<{ success: boolean; data: { account_id: number; email: string } }>('/token-tool/save', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
 
   // ========== Mail Pool ==========
   listPoolEntries: () =>

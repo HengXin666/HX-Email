@@ -35,6 +35,7 @@ def test_user_can_export_and_import_core_data_without_cross_user_leaks(tmp_path)
             "imap_host": "imap.example.com",
             "imap_port": 993,
             "username": "owner",
+            "imap_password": "app-password",
             "alias_addresses": ["alias@example.com"],
         },
         headers=alice_headers,
@@ -79,6 +80,7 @@ def test_user_can_export_and_import_core_data_without_cross_user_leaks(tmp_path)
 
     assert exported.status_code == 200
     assert exported.json()["email_accounts"][0]["primary_address"] == "owner@example.com"
+    assert exported.json()["email_accounts"][0]["imap_password"] == "app-password"
     assert exported.json()["usable_emails"][1]["address"] == "alias@example.com"
     assert "bob@example.com" not in str(exported.json())
     assert imported.status_code == 201
