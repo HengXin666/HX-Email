@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class Credentials(BaseModel):
@@ -121,3 +121,45 @@ class TokenToolConfigWrite(BaseModel):
     scope: str = "offline_access https://outlook.office.com/IMAP.AccessAsUser.All"
     tenant: str = "consumers"
     prompt_consent: bool = True
+
+
+class SettingsUpdate(BaseModel):
+    """Any subset of settings fields as key-value pairs."""
+
+    model_config = ConfigDict(extra="allow")
+
+
+class CronValidateRequest(BaseModel):
+    cron_expression: str
+
+
+class TelegramTestRequest(BaseModel):
+    bot_token: str = ""
+    chat_id: str = ""
+    proxy_url: str | None = None
+
+
+class EmailTestRequest(BaseModel):
+    recipient: str
+    smtp_host: str | None = None
+    smtp_port: int | None = None
+    smtp_user: str | None = None
+    smtp_password: str | None = None
+
+
+class WebhookTestRequest(BaseModel):
+    url: str
+    token: str | None = None
+
+
+class VerificationAITestRequest(BaseModel):
+    subject: str | None = None
+    body: str | None = None
+    body_html: str | None = None
+    code_length: int | None = None
+    code_regex: str | None = None
+
+
+class CFWorkerSyncRequest(BaseModel):
+    worker_url: str = ""
+    admin_key: str = ""

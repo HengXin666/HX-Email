@@ -249,6 +249,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [state.token, state.user, refreshAll])
 
+  useEffect(() => {
+    const handler = () => {
+      clearStoredToken()
+      setState((s) => ({ ...s, token: null, user: null }))
+    }
+    window.addEventListener('auth:session-expired', handler)
+    return () => window.removeEventListener('auth:session-expired', handler)
+  }, [])
+
   return (
     <AppContext.Provider
       value={{

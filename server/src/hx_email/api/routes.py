@@ -6,6 +6,8 @@ from hx_email.api.dependencies import require_user
 from hx_email.api.impl.auth_routes import register_auth_routes
 from hx_email.api.impl.mail_routes import register_mail_routes
 from hx_email.api.impl.platform_routes import register_platform_routes
+from hx_email.api.impl.settings.settings_routes import register_settings_routes
+from hx_email.api.impl.settings.settings_test_routes import register_settings_test_routes
 from hx_email.api.impl.temp_mail_routes import register_temp_mail_routes
 from hx_email.api.impl.workspace_routes import register_workspace_routes
 from hx_email.config import Settings
@@ -30,6 +32,8 @@ def register_routes(
     register_platform_routes(app, settings)
     register_mail_routes(app, settings, mailbox_provider)
     register_temp_mail_routes(app, settings, temp_mail_providers)
+    register_settings_routes(app, settings)
+    register_settings_test_routes(app, settings)
     register_data_transfer_routes(app, settings)
 
 

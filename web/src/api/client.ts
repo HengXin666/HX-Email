@@ -18,12 +18,27 @@ import type {
   TokenPrepareResult
 } from '../types'
 
+let _sessionExpiredHandled = false
+
 function getStoredToken(): string | null {
   try {
     return window.localStorage?.getItem('hx_token') ?? null
   } catch {
     return null
   }
+}
+
+function handleSessionExpired(): void {
+  if (_sessionExpiredHandled) return
+  _sessionExpiredHandled = true
+  try {
+    window.localStorage?.removeItem('hx_token')
+    window.localStorage?.removeItem('hx_user')
+    window.sessionStorage?.setItem('hx_session_expired', '1')
+  } catch {}
+  try {
+    window.dispatchEvent(new CustomEvent('auth:session-expired'))
+  } catch {}
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -35,12 +50,21 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (token) headers['Authorization'] = `Bearer ${token}`
 
   const res = await fetch(path, { ...init, headers })
+  if (res.status === 401 && token) {
+    handleSessionExpired()
+    throw new Error('登录已过期，请重新登录')
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
     throw new Error(err.detail || '请求失败')
   }
   if (res.status === 204) return null as T
-  return res.json()
+  try {
+    return await res.json()
+  } catch {
+    const text = await res.text().catch(() => '')
+    throw new Error(`Invalid JSON response (status ${res.status}): ${text.slice(0, 200)}`)
+  }
 }
 
 async function requestText(path: string, init: RequestInit = {}): Promise<string> {
@@ -50,6 +74,10 @@ async function requestText(path: string, init: RequestInit = {}): Promise<string
   }
   if (token) headers['Authorization'] = `Bearer ${token}`
   const res = await fetch(path, { ...init, headers })
+  if (res.status === 401 && token) {
+    handleSessionExpired()
+    throw new Error('登录已过期，请重新登录')
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
     throw new Error(err.detail || '请求失败')
@@ -248,6 +276,55 @@ export const api = {
     request<{ links: Array<{ message_id: string; url: string }> }>(
       `/temp-mail/${id}/verification-links`
     ).then((r) => r.links),
+
+  // ========== Settings ==========
+  getSettings: () => request<Record<string, string>>('/settings'),
+  updateSettings: (data: Record<string, unknown>) =>
+    request<{ success: boolean }>('/settings', { method: 'PUT', body: JSON.stringify(data) }),
+  validateCron: (cron: string) =>
+    request<{ valid: boolean; message: string }>('/settings/validate-cron', {
+      method: 'POST',
+      body: JSON.stringify({ cron_expression: cron })
+    }),
+  testTelegram: (data: Record<string, unknown>) =>
+    request<{ success: boolean; message: string }>('/settings/telegram-test', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
+  testEmail: (data: Record<string, unknown>) =>
+    request<{ success: boolean; message: string }>('/settings/email-test', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
+  testWebhook: (data: Record<string, unknown>) =>
+    request<{ success: boolean; message: string }>('/settings/webhook-test', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
+  testVerificationAI: (data: Record<string, unknown>) =>
+    request<{ success: boolean; code: string; message: string }>('/settings/verification-ai-test', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
+  syncCFDomains: (data: Record<string, unknown>) =>
+    request<{ success: boolean; domains: string[]; message: string }>(
+      '/settings/cf-worker-sync-domains',
+      { method: 'POST', body: JSON.stringify(data) }
+    ),
+  getAPIKeyPlaintext: () =>
+    request<{ external_api_key: string }>('/settings/external-api-key/plaintext'),
+  getVersionCheck: () =>
+    request<{ current_version: string; latest_version?: string; has_update: boolean }>(
+      '/system/version-check'
+    ),
+  getDeploymentInfo: () =>
+    request<{ python_version: string; platform: string }>('/system/deployment-info'),
+  triggerUpdate: () =>
+    request<{ success: boolean; message: string }>('/system/trigger-update', { method: 'POST' }),
+  testWatchtower: () =>
+    request<{ success: boolean; message: string }>('/system/test-watchtower', { method: 'POST' }),
+  reloadPlugins: () =>
+    request<{ success: boolean; message: string }>('/system/reload-plugins', { method: 'POST' }),
 
   // ========== Data ==========
   exportData: () => request<unknown>('/data/export'),

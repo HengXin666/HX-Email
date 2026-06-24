@@ -68,6 +68,15 @@ export const Login: React.FC = () => {
     void handleLogin()
   }, [])
 
+  useEffect(() => {
+    try {
+      if (window.sessionStorage?.getItem('hx_session_expired')) {
+        window.sessionStorage?.removeItem('hx_session_expired')
+        toast('登录已过期，请重新登录', 'info')
+      }
+    } catch {}
+  }, [toast])
+
   return (
     <div
       className="min-h-screen flex items-center justify-center overflow-hidden bg-cover bg-center px-4 py-10"

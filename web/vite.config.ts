@@ -17,6 +17,8 @@ export default defineConfig({
       "/platform-bindings": apiTarget,
       "/platform-candidates": apiTarget,
       "/platforms": apiTarget,
+      "/settings": apiTarget,
+      "/system": apiTarget,
       "/tags": apiTarget,
       "/temp-mail": apiTarget,
       "/token-tool": apiTarget,
