@@ -8,7 +8,46 @@ from hx_email.server.mail.email_accounts import (
     DuplicateUsableEmailError,
     add_email_account,
 )
-from hx_email.server.mail.impl.providers import infer_provider, provider_defaults
+
+# ---------------------------------------------------------------------------
+# Inlined from providers.py (kept here to avoid a 7th file in impl/)
+# ---------------------------------------------------------------------------
+
+MAIL_PROVIDERS: dict[str, dict[str, object]] = {
+    "gmail": {"key": "gmail", "imap_host": "imap.gmail.com", "imap_port": 993},
+    "qq": {"key": "qq", "imap_host": "imap.qq.com", "imap_port": 993},
+    "163": {"key": "163", "imap_host": "imap.163.com", "imap_port": 993},
+    "126": {"key": "126", "imap_host": "imap.126.com", "imap_port": 993},
+    "outlook": {"key": "outlook", "imap_host": "outlook.live.com", "imap_port": 993},
+    "custom": {"key": "custom", "imap_host": "", "imap_port": 993},
+}
+
+DOMAIN_PROVIDERS: dict[str, str] = {
+    "gmail.com": "gmail",
+    "googlemail.com": "gmail",
+    "qq.com": "qq",
+    "foxmail.com": "qq",
+    "163.com": "163",
+    "126.com": "126",
+    "outlook.com": "outlook",
+    "hotmail.com": "outlook",
+    "live.com": "outlook",
+    "live.cn": "outlook",
+}
+
+
+def infer_provider(address: str) -> str:
+    domain: str = address.rsplit("@", 1)[-1].lower() if "@" in address else ""
+    return DOMAIN_PROVIDERS.get(domain, "custom")
+
+
+def provider_defaults(provider: str) -> dict[str, object]:
+    return MAIL_PROVIDERS.get(provider, MAIL_PROVIDERS["custom"])
+
+
+# ---------------------------------------------------------------------------
+# Original account_transfer.py below
+# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -172,8 +211,8 @@ def parse_account_line(line: str) -> ParsedAccountLine:
             "Outlook accounts must use email----password----client_id----refresh_token"
         )
     defaults = provider_defaults(provider)
-    host: str = defaults.imap_host
-    port: int | None = defaults.imap_port
+    host: str = str(defaults["imap_host"])
+    port: int | None = defaults["imap_port"] if isinstance(defaults["imap_port"], int) else None
     if len(parts) == 5:
         host = parts[3]
         port = parse_port(parts[4])

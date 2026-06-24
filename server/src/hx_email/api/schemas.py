@@ -164,6 +164,18 @@ class RefreshSelectedRequest(BaseModel):
     account_ids: list[int]
 
 
+class BatchEmailRequest(BaseModel):
+    account_ids: list[int]
+    folders: list[str] | None = None
+    skip: int = 0
+    top: int = 20
+
+
+class DeleteEmailRequest(BaseModel):
+    email: str
+    ids: list[str]
+
+
 class CFWorkerSyncRequest(BaseModel):
     worker_url: str = ""
     admin_key: str = ""
