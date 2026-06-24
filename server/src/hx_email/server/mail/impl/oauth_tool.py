@@ -169,3 +169,80 @@ def created_at_seconds(value: object) -> float:
     if isinstance(value, int | float):
         return float(value)
     return 0.0
+
+
+def try_refresh_oauth_token(
+    client_id: str,
+    refresh_token: str,
+    tenant: str = "consumers",
+    timeout: int = 15,
+) -> dict[str, object]:
+    """Attempt to refresh a Microsoft OAuth2 token.
+
+    Returns a dict with keys: success (bool), message (str), error_detail (str).
+    """
+    from urllib.error import HTTPError, URLError
+    from urllib.request import Request as UrlRequest
+    from urllib.request import urlopen as url_open
+
+    if not client_id or not refresh_token:
+        return {
+            "success": False,
+            "message": "Missing client_id or refresh_token",
+            "error_detail": "missing_credentials",
+        }
+
+    token_url = f"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token"
+    body = urlencode(
+        {
+            "client_id": client_id,
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+        }
+    ).encode("utf-8")
+
+    req = UrlRequest(
+        token_url,
+        data=body,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    try:
+        with url_open(req, timeout=timeout) as resp:
+            response_data: dict[str, object] = json.loads(resp.read().decode("utf-8"))
+            if "access_token" in response_data:
+                return {
+                    "success": True,
+                    "message": "Token refreshed successfully",
+                    "error_detail": "",
+                }
+            return {
+                "success": False,
+                "message": "Token refresh returned unexpected response",
+                "error_detail": str(response_data),
+            }
+    except HTTPError as exc:
+        error_body: str = exc.read().decode("utf-8", errors="replace")
+        error_detail = ""
+        try:
+            error_json = json.loads(error_body)
+            error_detail = error_json.get("error_description", error_body)
+        except (json.JSONDecodeError, AttributeError):
+            error_detail = error_body
+        return {
+            "success": False,
+            "message": "Token refresh failed",
+            "error_detail": error_detail or str(exc),
+        }
+    except URLError as exc:
+        return {
+            "success": False,
+            "message": "Network error during token refresh",
+            "error_detail": str(exc.reason),
+        }
+    except Exception as exc:
+        return {
+            "success": False,
+            "message": "Unexpected error during token refresh",
+            "error_detail": str(exc),
+        }

@@ -12,6 +12,7 @@ import { TempMail } from './pages/TempMail'
 import { TokenTool } from './pages/TokenTool'
 import { ApiAccess } from './pages/ApiAccess'
 import { Settings } from './pages/Settings'
+import { RefreshLogPage } from './pages/RefreshLog'
 
 const ProtectedLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation()
@@ -53,6 +54,7 @@ const App: React.FC = () => {
       <Route path="/token-tool" element={<RequireAuth><TokenTool /></RequireAuth>} />
       <Route path="/api" element={<RequireAuth><ApiAccess /></RequireAuth>} />
       <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
+      <Route path="/refresh-log" element={<RequireAuth><RefreshLogPage /></RequireAuth>} />
       <Route path="*" element={<Navigate to={token ? '/overview' : '/login'} replace />} />
     </Routes>
   )

@@ -22,6 +22,7 @@ const NAV = [
   { to: '/platforms', label: '平台管理', icon: IconServer },
   { to: '/temp-mail', label: '临时邮箱', icon: IconClock },
   { to: '/token-tool', label: 'Token 工具', icon: IconKey },
+  { to: '/refresh-log', label: '刷新日志', icon: IconClock },
   { to: '/api', label: 'API 接入', icon: IconCode },
   { to: '/settings', label: '设置', icon: IconSettings }
 ]

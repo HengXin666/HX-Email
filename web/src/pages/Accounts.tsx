@@ -25,10 +25,12 @@ import {
   IconAt,
   IconUser,
   IconDownload,
-  IconUpload
+  IconUpload,
+  IconAlertTriangle,
+  IconX
 } from '../components/icons'
-import { api } from '../api/client'
-import type { AccountImportResult, UsableEmail, VerificationMatch } from '../types'
+import { api, streamRefresh } from '../api/client'
+import type { AccountImportResult, UsableEmail, VerificationMatch, SSERefreshEvent } from '../types'
 
 const COLORS = [
   '#58a6ff',
@@ -315,7 +317,10 @@ const EmailList: React.FC<{
   groupId: number | null
   selectedEmailId: number | null
   onSelect: (e: UsableEmail) => void
-}> = ({ groupId, selectedEmailId, onSelect }) => {
+  selectedForRefresh: Set<number>
+  onToggleRefreshSelect: (accountId: number) => void
+  onRefreshAccount: () => void
+}> = ({ groupId, selectedEmailId, onSelect, selectedForRefresh, onToggleRefreshSelect, onRefreshAccount }) => {
   const { emails, groups, refreshEmails } = useApp()
   const [showAdd, setShowAdd] = useState(false)
   const [showSettings, setShowSettings] = useState<number | null>(null)
@@ -381,6 +386,9 @@ const EmailList: React.FC<{
               selected={selectedEmailId === e.id}
               onClick={() => onSelect(e)}
               onSettings={() => setShowSettings(e.id)}
+              selectedForRefresh={e.email_account_id ? selectedForRefresh.has(e.email_account_id) : false}
+              onToggleRefreshSelect={e.email_account_id ? () => onToggleRefreshSelect(e.email_account_id!) : undefined}
+              onRefreshAccount={onRefreshAccount}
             />
           ))}
         </AnimatePresence>
@@ -410,11 +418,30 @@ const EmailCard: React.FC<{
   selected: boolean
   onClick: () => void
   onSettings: () => void
-}> = ({ email, selected, onClick, onSettings }) => {
+  selectedForRefresh?: boolean
+  onToggleRefreshSelect?: () => void
+  onRefreshAccount?: () => void
+}> = ({ email, selected, onClick, onSettings, selectedForRefresh, onToggleRefreshSelect, onRefreshAccount }) => {
   const { toast } = useToast()
   const [copied, setCopied] = useState(false)
   const [loadingCode, setLoadingCode] = useState(false)
   const [showAliases, setShowAliases] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+
+  const handleRefresh = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!email.email_account_id) return
+    setRefreshing(true)
+    try {
+      const res = await api.refreshAccount(email.email_account_id)
+      toast(`刷新完成: ${res.email} - ${res.status}`, res.status === 'success' ? 'success' : 'error')
+      onRefreshAccount?.()
+    } catch (err: any) {
+      toast(err.message, 'error')
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -454,6 +481,16 @@ const EmailCard: React.FC<{
     <motion.div layout initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
       <Card selected={selected} onClick={onClick} className="p-3">
         <div className="flex items-start gap-2">
+          {email.email_account_id && onToggleRefreshSelect ? (
+            <div className="shrink-0 pt-1" onClick={(e) => e.stopPropagation()}>
+              <input
+                type="checkbox"
+                checked={!!selectedForRefresh}
+                onChange={onToggleRefreshSelect}
+                className="w-3.5 h-3.5 rounded border-gh-border bg-gh-canvas-inset text-gh-accent focus:ring-gh-accent/30 cursor-pointer"
+              />
+            </div>
+          ) : null}
           <div
             className="w-9 h-9 rounded-lg flex items-center justify-center text-sm font-semibold shrink-0"
             style={{
@@ -518,6 +555,23 @@ const EmailCard: React.FC<{
                 <IconZap size={13} />
               )}
             </button>
+            {email.email_account_id && onRefreshAccount ? (
+              <button
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className="p-1 rounded-md text-gh-text-muted hover:text-gh-accent hover:bg-gh-accent/10 transition-colors disabled:opacity-50"
+                title="刷新 Token"
+              >
+                {refreshing ? (
+                  <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
+                    <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" fill="currentColor" />
+                  </svg>
+                ) : (
+                  <IconRefresh size={13} />
+                )}
+              </button>
+            ) : null}
             <button
               onClick={onSettings}
               className="p-1 rounded-md text-gh-text-muted hover:text-gh-text hover:bg-gh-border/50 transition-colors"
@@ -1317,12 +1371,73 @@ const AccountImportModal: React.FC<{
   )
 }
 
+// ========== SSE 进度条 ==========
+const SSEProgressBar: React.FC<{
+  progress: SSERefreshEvent | null
+  running: boolean
+  onClose: () => void
+}> = ({ progress, running, onClose }) => {
+  if (!running) return null
+  const current = progress?.current ?? 0
+  const total = progress?.total ?? 1
+  const pct = Math.round((current / total) * 100)
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: 'auto' }}
+      exit={{ opacity: 0, height: 0 }}
+      className="border-b border-gh-border bg-gh-canvas-subtle"
+    >
+      <div className="px-6 py-3">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2 text-sm">
+            <svg className="animate-spin h-4 w-4 text-gh-accent" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
+              <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" fill="currentColor" />
+            </svg>
+            <span className="text-gh-text font-medium">正在刷新 Token...</span>
+            <span className="text-gh-text-secondary tabular-nums">
+              {current} / {total}
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            {progress?.email && (
+              <span className="text-xs text-gh-text-secondary font-mono truncate max-w-48">
+                {progress.email}
+              </span>
+            )}
+            <button
+              onClick={onClose}
+              className="p-1 rounded-md text-gh-text-muted hover:text-gh-text hover:bg-gh-border/50 transition-colors"
+            >
+              <IconX size={14} />
+            </button>
+          </div>
+        </div>
+        <div className="h-1.5 bg-gh-canvas-inset rounded-full overflow-hidden">
+          <motion.div
+            className="h-full bg-gradient-to-r from-gh-accent to-gh-purple rounded-full"
+            initial={{ width: 0 }}
+            animate={{ width: `${pct}%` }}
+            transition={{ type: 'spring', stiffness: 100, damping: 20 }}
+          />
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
 // ========== 主页面 ==========
 export const Accounts: React.FC = () => {
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null)
   const [selectedEmail, setSelectedEmail] = useState<UsableEmail | null>(null)
   const [showImport, setShowImport] = useState(false)
-  const { emails } = useApp()
+  const [selectedForRefresh, setSelectedForRefresh] = useState<Set<number>>(new Set())
+  const [refreshProgress, setRefreshProgress] = useState<SSERefreshEvent | null>(null)
+  const [refreshRunning, setRefreshRunning] = useState(false)
+  const { emails, refreshAccounts, refreshEmails } = useApp()
+  const { toast } = useToast()
 
   // 当选中的邮箱被删除时清空
   useEffect(() => {
@@ -1331,17 +1446,143 @@ export const Accounts: React.FC = () => {
     }
   }, [emails, selectedEmail])
 
+  const toggleSelectForRefresh = (accountId: number): void => {
+    setSelectedForRefresh((prev) => {
+      const next = new Set(prev)
+      if (next.has(accountId)) {
+        next.delete(accountId)
+      } else {
+        next.add(accountId)
+      }
+      return next
+    })
+  }
+
+  const handleRefreshAll = async (): Promise<void> => {
+    setRefreshRunning(true)
+    setRefreshProgress(null)
+    try {
+      await streamRefresh('/email-accounts/refresh-all', undefined, (e: SSERefreshEvent) => {
+        setRefreshProgress(e)
+        if (e.type === 'complete') {
+          setRefreshRunning(false)
+          toast(
+            `刷新完成: 成功 ${e.success ?? 0}, 失败 ${e.failed ?? 0}`,
+            (e.failed ?? 0) > 0 ? 'error' : 'success'
+          )
+          refreshAccounts()
+          refreshEmails()
+        }
+      })
+    } catch (err: any) {
+      toast(err.message, 'error')
+      setRefreshRunning(false)
+    }
+  }
+
+  const handleRefreshFailed = async (): Promise<void> => {
+    setRefreshRunning(true)
+    setRefreshProgress(null)
+    try {
+      await streamRefresh('/email-accounts/refresh-failed', undefined, (e: SSERefreshEvent) => {
+        setRefreshProgress(e)
+        if (e.type === 'complete') {
+          setRefreshRunning(false)
+          toast(
+            `刷新完成: 成功 ${e.success ?? 0}, 失败 ${e.failed ?? 0}`,
+            (e.failed ?? 0) > 0 ? 'error' : 'success'
+          )
+          refreshAccounts()
+          refreshEmails()
+        }
+      })
+    } catch (err: any) {
+      toast(err.message, 'error')
+      setRefreshRunning(false)
+    }
+  }
+
+  const handleRefreshSelected = async (): Promise<void> => {
+    const ids = Array.from(selectedForRefresh)
+    if (ids.length === 0) return
+    setRefreshRunning(true)
+    setRefreshProgress(null)
+    try {
+      await streamRefresh(
+        '/email-accounts/refresh/selected',
+        { account_ids: ids },
+        (e: SSERefreshEvent) => {
+          setRefreshProgress(e)
+          if (e.type === 'complete') {
+            setRefreshRunning(false)
+            toast(
+              `刷新完成: 成功 ${e.success ?? 0}, 失败 ${e.failed ?? 0}`,
+              (e.failed ?? 0) > 0 ? 'error' : 'success'
+            )
+            setSelectedForRefresh(new Set())
+            refreshAccounts()
+            refreshEmails()
+          }
+        }
+      )
+    } catch (err: any) {
+      toast(err.message, 'error')
+      setRefreshRunning(false)
+    }
+  }
+
+  const handleRefreshAccountDone = (): void => {
+    refreshAccounts()
+    refreshEmails()
+  }
+
   return (
     <div className="flex-1 flex flex-col min-w-0">
       <Topbar
         title="账号管理"
         subtitle="管理所有邮箱账户、可用邮箱和分组"
         actions={
-          <Button variant="secondary" onClick={() => setShowImport(true)}>
-            <IconUpload size={14} /> 导入导出
-          </Button>
+          <div className="flex items-center gap-1.5">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleRefreshAll}
+              loading={refreshRunning}
+              disabled={refreshRunning}
+            >
+              <IconRefresh size={14} /> 刷新全部
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleRefreshFailed}
+              disabled={refreshRunning}
+            >
+              <IconAlertTriangle size={14} /> 刷新失败
+            </Button>
+            {selectedForRefresh.size > 0 && (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleRefreshSelected}
+                disabled={refreshRunning}
+              >
+                <IconRefresh size={14} /> 刷新选中 ({selectedForRefresh.size})
+              </Button>
+            )}
+            <Button variant="secondary" onClick={() => setShowImport(true)}>
+              <IconUpload size={14} /> 导入导出
+            </Button>
+          </div>
         }
       />
+
+      <SSEProgressBar
+        progress={refreshProgress}
+        running={refreshRunning}
+        onClose={() => setRefreshRunning(false)}
+      />
+
       <div className="flex-1 flex min-h-0 overflow-hidden">
         <GroupSidebar
           selectedGroupId={selectedGroupId}
@@ -1354,6 +1595,9 @@ export const Accounts: React.FC = () => {
           groupId={selectedGroupId}
           selectedEmailId={selectedEmail?.id || null}
           onSelect={setSelectedEmail}
+          selectedForRefresh={selectedForRefresh}
+          onToggleRefreshSelect={toggleSelectForRefresh}
+          onRefreshAccount={handleRefreshAccountDone}
         />
         <EmailDetail email={selectedEmail} />
       </div>

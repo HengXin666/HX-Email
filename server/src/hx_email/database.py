@@ -210,6 +210,22 @@ def migrate(settings: Settings) -> Path:
         )
         connection.execute(
             """
+            CREATE TABLE IF NOT EXISTS refresh_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id INTEGER NOT NULL,
+                email TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                message TEXT DEFAULT '',
+                error_detail TEXT DEFAULT '',
+                started_at TEXT,
+                completed_at TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (account_id) REFERENCES email_accounts(id)
+            )
+            """
+        )
+        connection.execute(
+            """
             INSERT OR IGNORE INTO system_settings (key, value)
             VALUES ('registration_enabled', 'false')
             """

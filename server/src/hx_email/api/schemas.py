@@ -160,6 +160,10 @@ class VerificationAITestRequest(BaseModel):
     code_regex: str | None = None
 
 
+class RefreshSelectedRequest(BaseModel):
+    account_ids: list[int]
+
+
 class CFWorkerSyncRequest(BaseModel):
     worker_url: str = ""
     admin_key: str = ""

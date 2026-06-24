@@ -15,7 +15,11 @@ import type {
   User,
   VerificationMatch,
   TokenExchangeResult,
-  TokenPrepareResult
+  TokenPrepareResult,
+  RefreshLog,
+  InvalidTokenCandidate,
+  RefreshStats,
+  SSERefreshEvent
 } from '../types'
 
 let _sessionExpiredHandled = false
@@ -39,6 +43,46 @@ function handleSessionExpired(): void {
   try {
     window.dispatchEvent(new CustomEvent('auth:session-expired'))
   } catch {}
+}
+
+export async function streamRefresh(
+  url: string,
+  body?: object,
+  onProgress?: (e: SSERefreshEvent) => void
+): Promise<void> {
+  const token = getStoredToken()
+  const res = await fetch(url, {
+    method: body ? 'POST' : 'GET',
+    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined
+  })
+  if (res.status === 401 && token) {
+    handleSessionExpired()
+    throw new Error('登录已过期，请重新登录')
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(err.detail || '请求失败')
+  }
+  const reader = res.body?.getReader()
+  if (!reader) throw new Error('No response body')
+  const decoder = new TextDecoder()
+  let buffer = ''
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() || ''
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        try {
+          const data: SSERefreshEvent = JSON.parse(line.slice(6))
+          onProgress?.(data)
+        } catch { /* skip malformed SSE lines */ }
+      }
+    }
+  }
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -325,6 +369,36 @@ export const api = {
     request<{ success: boolean; message: string }>('/system/test-watchtower', { method: 'POST' }),
   reloadPlugins: () =>
     request<{ success: boolean; message: string }>('/system/reload-plugins', { method: 'POST' }),
+
+  // ========== Token Refresh ==========
+  refreshAccount: (id: number) =>
+    request<{ success: boolean; message: string; account_id: number; email: string; status: string }>(
+      `/email-accounts/${id}/refresh`,
+      { method: 'POST' }
+    ),
+  retryRefreshAccount: (id: number) =>
+    request<{ success: boolean; message: string }>(
+      `/email-accounts/${id}/retry-refresh`,
+      { method: 'POST' }
+    ),
+
+  // ========== Refresh Logs ==========
+  getRefreshLogs: (limit = 200, offset = 0) =>
+    request<{ logs: RefreshLog[]; total: number }>(
+      `/email-accounts/refresh-logs?limit=${limit}&offset=${offset}`
+    ),
+  getAccountRefreshLogs: (id: number, limit = 100, offset = 0) =>
+    request<{ logs: RefreshLog[] }>(
+      `/email-accounts/${id}/refresh-logs?limit=${limit}&offset=${offset}`
+    ),
+  getFailedRefreshLogs: () =>
+    request<{ logs: RefreshLog[] }>('/email-accounts/refresh-logs/failed'),
+  getInvalidTokenCandidates: (limit = 50, offset = 0) =>
+    request<{ candidates: InvalidTokenCandidate[] }>(
+      `/email-accounts/invalid-token-candidates?limit=${limit}&offset=${offset}`
+    ),
+  getRefreshStats: () =>
+    request<RefreshStats>('/email-accounts/refresh-stats'),
 
   // ========== Data ==========
   exportData: () => request<unknown>('/data/export'),
