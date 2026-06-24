@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import FastAPI, Header, HTTPException, status
+from fastapi import FastAPI, Header, HTTPException, Response, status
 
 from hx_email.api.dependencies import require_user
 from hx_email.api.schemas import GroupCreate, TagCreate, UsableEmailOrganization
@@ -10,6 +10,7 @@ from hx_email.server.workspace.groups import (
     create_group,
     create_tag,
     delete_group,
+    export_group_accounts_text,
     list_groups,
     list_tags,
     update_group,
@@ -68,6 +69,20 @@ def register_workspace_routes(app: FastAPI, settings: Settings) -> None:
         user = require_user(settings, authorization)
         if not delete_group(settings, user.id, group_id):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
+
+    @app.get("/groups/{group_id}/export")
+    def export_group(
+        group_id: int,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> Response:
+        user = require_user(settings, authorization)
+        text = export_group_accounts_text(settings, user.id, group_id)
+        if text is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
+        headers: dict[str, str] = {
+            "Content-Disposition": 'attachment; filename="group-accounts.txt"',
+        }
+        return Response(text, media_type="text/plain; charset=utf-8", headers=headers)
 
     @app.post("/tags", status_code=status.HTTP_201_CREATED)
     def create_user_tag(

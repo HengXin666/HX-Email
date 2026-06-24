@@ -1,6 +1,6 @@
 from typing import Annotated, Any
 
-from fastapi import FastAPI, Header, HTTPException, status
+from fastapi import FastAPI, Header, HTTPException, Response, status
 
 from hx_email.api.audit_routes import register_audit_routes
 from hx_email.api.dependencies import require_user
@@ -18,6 +18,10 @@ from hx_email.api.impl.overview import (
     register_overview_routes,
 )
 from hx_email.api.impl.platform_routes import register_platform_routes
+from hx_email.api.impl.plugins import (
+    register_plugin_config_routes,
+    register_plugin_crud_routes,
+)
 from hx_email.api.impl.settings.settings_routes import register_settings_routes
 from hx_email.api.impl.settings.settings_test_routes import register_settings_test_routes
 from hx_email.api.impl.temp_mail_routes import register_temp_mail_routes
@@ -38,7 +42,7 @@ def register_routes(
     mailbox_provider: MailboxProvider,
     temp_mail_providers: dict[str, TempMailProvider],
 ) -> None:
-    register_system_routes(app)
+    register_system_routes(app, settings)
     register_auth_routes(app, settings)
     register_workspace_routes(app, settings)
     register_platform_routes(app, settings)
@@ -51,6 +55,8 @@ def register_routes(
     register_data_transfer_routes(app, settings)
     register_pool_admin_routes(app, settings)
     register_audit_routes(app, settings)
+    register_plugin_crud_routes(app, settings)
+    register_plugin_config_routes(app, settings)
     register_external_routes(app, settings, mailbox_provider, temp_mail_providers)
 
 
@@ -67,10 +73,91 @@ def register_external_routes(
     register_external_temp_mail_routes(app, settings, temp_mail_providers)
 
 
-def register_system_routes(app: FastAPI) -> None:
+def register_system_routes(app: FastAPI, settings: Settings) -> None:
     @app.get("/health")
     def health_check() -> dict[str, str]:
         return {"status": "ok", "service": "hx-email"}
+
+    @app.get("/healthz")
+    def healthz() -> str:
+        return "ok"
+
+    @app.get("/csrf-token")
+    def csrf_token() -> dict[str, str]:
+        import secrets
+
+        return {"csrf_token": secrets.token_hex(32)}
+
+    @app.get("/bootstrap")
+    def bootstrap(
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        user = require_user(settings, authorization)
+        return {
+            "bootstrap": {
+                "user_id": user.id,
+                "is_admin": user.is_admin,
+                "enable_auto_polling": True,
+                "polling_interval": 30,
+                "ui_layout_v2": {},
+            }
+        }
+
+    @app.get("/scheduler/status")
+    def scheduler_status(
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        require_user(settings, authorization)
+        return {
+            "running": True,
+            "last_run": "",
+            "next_run": "",
+            "tasks": {
+                "scheduled_refresh": "idle",
+                "auto_poll": "idle",
+            },
+        }
+
+    @app.get("/system/diagnostics")
+    def system_diagnostics(
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        require_user(settings, authorization)
+        import platform
+        import sys
+
+        return {
+            "platform": platform.platform(),
+            "python_version": sys.version,
+            "database_path": str(settings.database_path),
+            "database_size_bytes": (
+                settings.database_path.stat().st_size if settings.database_path.exists() else 0
+            ),
+        }
+
+    @app.get("/system/upgrade-status")
+    def system_upgrade_status(
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        require_user(settings, authorization)
+        from hx_email.database import connect
+
+        with connect(settings) as connection:
+            version_row = connection.execute("PRAGMA user_version").fetchone()
+            db_version: int = version_row[0] if version_row is not None else 0
+        return {"db_version": db_version, "upgrade_needed": False}
+
+    @app.get("/img/{filename:path}")
+    def serve_image(filename: str) -> Response:
+        from fastapi.responses import FileResponse
+
+        static_dir = settings.data_dir / "static" / "img"
+        file_path = (static_dir / filename).resolve()
+        if not str(file_path).startswith(str(static_dir.resolve())):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+        if not file_path.is_file():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+        return FileResponse(file_path)
 
 
 def register_data_transfer_routes(app: FastAPI, settings: Settings) -> None:

@@ -280,3 +280,12 @@ class ExternalTempMailApply(BaseModel):
 class ExternalTempMailFinish(BaseModel):
     result: str | None = None
     detail: str | None = None
+
+
+class PluginInstallRequest(BaseModel):
+    source: str
+    name: str = ""
+
+
+class PluginConfigWrite(BaseModel):
+    config: dict[str, object]
