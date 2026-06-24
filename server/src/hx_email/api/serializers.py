@@ -3,6 +3,7 @@ from hx_email.server.mail.mail_pool import MailPoolEntry
 from hx_email.server.mail.temp_mail import TempMailbox
 from hx_email.server.mail.usable_emails import UsableEmail
 from hx_email.server.mail.verification import VerificationMatch, VerificationReading
+from hx_email.server.workspace.overview import WorkbenchOverview
 from hx_email.server.workspace.platforms import Platform, PlatformBinding, PlatformCandidate
 from hx_email.server.workspace.workbench import Group, Tag, WorkbenchEmail
 
@@ -55,6 +56,20 @@ def serialize_workbench_email(usable_email: WorkbenchEmail) -> dict[str, object]
         "group": serialize_group(usable_email.group),
         "tags": [serialize_tag(tag) for tag in usable_email.tags],
         "platform_binding_count": usable_email.platform_binding_count,
+    }
+
+
+def serialize_workbench_overview(overview: WorkbenchOverview) -> dict[str, object]:
+    return {
+        "usable_email_count": overview.usable_email_count,
+        "active_email_count": overview.active_email_count,
+        "account_count": overview.account_count,
+        "temp_email_count": overview.temp_email_count,
+        "platform_count": overview.platform_count,
+        "binding_count": overview.binding_count,
+        "pool_available_count": overview.pool_available_count,
+        "pool_claimed_count": overview.pool_claimed_count,
+        "verification_count": overview.verification_count,
     }
 
 

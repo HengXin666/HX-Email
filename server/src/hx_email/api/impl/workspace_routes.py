@@ -4,8 +4,9 @@ from fastapi import FastAPI, Header, HTTPException, status
 
 from hx_email.api.dependencies import require_user
 from hx_email.api.schemas import GroupCreate, TagCreate, UsableEmailOrganization
-from hx_email.api.serializers import serialize_workbench_email
+from hx_email.api.serializers import serialize_workbench_email, serialize_workbench_overview
 from hx_email.config import Settings
+from hx_email.server.workspace.overview import get_workbench_overview
 from hx_email.server.workspace.workbench import (
     create_group,
     create_tag,
@@ -15,6 +16,13 @@ from hx_email.server.workspace.workbench import (
 
 
 def register_workspace_routes(app: FastAPI, settings: Settings) -> None:
+    @app.get("/workbench/overview")
+    def get_overview(
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        user = require_user(settings, authorization)
+        return serialize_workbench_overview(get_workbench_overview(settings, user.id))
+
     @app.post("/groups", status_code=status.HTTP_201_CREATED)
     def create_user_group(
         payload: GroupCreate,

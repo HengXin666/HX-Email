@@ -224,6 +224,26 @@ def get_email_account(settings: Settings, user_id: int, account_id: int) -> Emai
     )
 
 
+def list_email_accounts(settings: Settings, user_id: int) -> tuple[EmailAccount, ...]:
+    with connect(settings) as connection:
+        rows = connection.execute(
+            """
+            SELECT id
+            FROM email_accounts
+            WHERE user_id = ?
+            ORDER BY id
+            """,
+            (user_id,),
+        ).fetchall()
+
+    accounts: list[EmailAccount] = []
+    for row in rows:
+        account = get_email_account(settings, user_id, row["id"])
+        if account is not None:
+            accounts.append(account)
+    return tuple(accounts)
+
+
 def add_alias_to_email_account(
     settings: Settings,
     user_id: int,

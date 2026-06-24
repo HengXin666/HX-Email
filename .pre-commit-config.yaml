@@ -10,7 +10,7 @@ repos:
     hooks:
       - id: type-check
         name: type-check (mypy)
-        entry: uv run mypy .
+        entry: bash -c 'cd server && uv run --with mypy mypy src ../scripts/check_arch.py'
         language: system
         pass_filenames: false
         always_run: true

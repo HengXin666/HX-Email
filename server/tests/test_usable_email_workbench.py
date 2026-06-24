@@ -153,3 +153,42 @@ def test_workbench_filters_are_isolated_to_current_user(tmp_path):
         "shared@example.com"
     ]
     assert bob_response.json()["usable_emails"] == []
+
+
+def test_workbench_overview_counts_current_workspace_resources(tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    migrate(settings)
+    client = TestClient(create_app(settings))
+    headers = login_admin(client)
+
+    account = create_account(client, headers, "owner@example.com", ["alias@example.com"])
+    platform = client.post("/platforms", json={"name": "Example"}, headers=headers).json()
+    client.post(
+        f"/usable-emails/{account['usable_emails'][0]['id']}/platform-bindings",
+        json={"platform_id": platform["id"], "status": "active", "notes": "primary"},
+        headers=headers,
+    )
+    client.post(
+        "/mail-pool/entries",
+        json={"usable_email_id": account["usable_emails"][1]["id"]},
+        headers=headers,
+    )
+    client.post(
+        f"/usable-emails/{account['usable_emails'][0]['id']}/verification/read",
+        headers=headers,
+    )
+
+    response = client.get("/workbench/overview", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "usable_email_count": 2,
+        "active_email_count": 2,
+        "account_count": 1,
+        "temp_email_count": 0,
+        "platform_count": 1,
+        "binding_count": 1,
+        "pool_available_count": 1,
+        "pool_claimed_count": 0,
+        "verification_count": 1,
+    }

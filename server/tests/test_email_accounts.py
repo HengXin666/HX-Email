@@ -191,6 +191,38 @@ def test_email_account_can_manage_real_alias_usable_emails(tmp_path):
     ]
 
 
+def test_email_accounts_can_be_listed_for_current_workspace(tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    migrate(settings)
+    client = TestClient(create_app(settings))
+    session = client.post(
+        "/auth/login",
+        json={"username": "admin", "password": "admin"},
+    ).json()
+    headers = {"Authorization": f"Bearer {session['access_token']}"}
+
+    client.post(
+        "/email-accounts",
+        json={
+            "provider": "imap",
+            "primary_address": "owner@example.com",
+            "display_name": "Owner",
+            "alias_addresses": ["alias@example.com"],
+        },
+        headers=headers,
+    )
+    response = client.get("/email-accounts", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()["email_accounts"][0]["primary_address"] == "owner@example.com"
+    assert [
+        email["address"] for email in response.json()["email_accounts"][0]["usable_emails"]
+    ] == [
+        "owner@example.com",
+        "alias@example.com",
+    ]
+
+
 def test_deactivating_email_account_deactivates_aliases_without_cross_user_leaks(tmp_path):
     settings = Settings(data_dir=tmp_path)
     migrate(settings)
