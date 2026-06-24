@@ -2,8 +2,10 @@ from fastapi import FastAPI
 
 from hx_email.api.impl.mail import (
     register_account_transfer_routes,
+    register_batch_routes,
     register_email_account_routes,
     register_email_routes,
+    register_export_routes,
     register_mail_pool_routes,
     register_refresh_log_routes,
     register_refresh_routes,
@@ -23,6 +25,8 @@ def register_mail_routes(
     register_mail_pool_routes(app, settings)
     register_account_transfer_routes(app, settings)
     register_email_account_routes(app, settings)
+    register_batch_routes(app, settings)
+    register_export_routes(app, settings)
     register_email_routes(app, settings, mailbox_provider)
     register_token_tool_routes(app, settings)
     register_refresh_routes(app, settings, mailbox_provider)

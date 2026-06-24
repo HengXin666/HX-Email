@@ -1,11 +1,27 @@
-import sqlite3
 from dataclasses import dataclass
-from sqlite3 import Connection, Row
 
 from hx_email.config import Settings
 from hx_email.database import connect
 from hx_email.server.auth import require_inserted_id
+from hx_email.server.mail.impl.accounts.account_helpers import (
+    DuplicateUsableEmailError,
+    InvalidAliasAddressError,  # re-exported
+    add_alias_email,
+    usable_email_from_row,
+)
 from hx_email.server.mail.usable_emails import UsableEmail
+
+__all__ = [
+    "DuplicateUsableEmailError",
+    "EmailAccount",
+    "InvalidAliasAddressError",
+    "add_alias_to_email_account",
+    "add_email_account",
+    "deactivate_email_account",
+    "get_email_account",
+    "list_email_accounts",
+    "usable_email_from_row",
+]
 
 
 @dataclass(frozen=True)
@@ -22,64 +38,10 @@ class EmailAccount:
     imap_password: str = ""
     client_id: str = ""
     refresh_token: str = ""
+    group_id: int | None = None
+    remark: str = ""
+    telegram_enabled: bool = True
     usable_emails: tuple[UsableEmail, ...] = ()
-
-
-class DuplicateUsableEmailError(ValueError):
-    pass
-
-
-class InvalidAliasAddressError(ValueError):
-    pass
-
-
-def is_plus_subaddress(address: str) -> bool:
-    local_part, separator, _domain = address.partition("@")
-    return bool(separator) and "+" in local_part
-
-
-def usable_email_from_row(row: Row) -> UsableEmail:
-    return UsableEmail(
-        id=row["id"],
-        address=row["address"],
-        label=row["label"],
-        kind=row["kind"],
-        status=row["status"],
-    )
-
-
-def add_alias_email(
-    connection: Connection,
-    user_id: int,
-    account_id: int,
-    address: str,
-    label: str,
-) -> UsableEmail:
-    if is_plus_subaddress(address):
-        raise InvalidAliasAddressError("Alias address must be a real mailbox address")
-
-    try:
-        cursor = connection.execute(
-            """
-            INSERT INTO usable_emails (
-                user_id, email_account_id, address, label, kind, status, active
-            )
-            VALUES (?, ?, ?, ?, 'alias', 'active', 1)
-            """,
-            (user_id, account_id, address, label),
-        )
-    except sqlite3.IntegrityError as error:
-        raise DuplicateUsableEmailError(
-            "Usable email address already exists for this user"
-        ) from error
-
-    return UsableEmail(
-        id=require_inserted_id(cursor.lastrowid),
-        address=address,
-        label=label,
-        kind="alias",
-        status="active",
-    )
 
 
 def add_email_account(
@@ -120,7 +82,7 @@ def add_email_account(
                     refresh_token,
                 ),
             )
-        except sqlite3.IntegrityError as error:
+        except Exception as error:
             raise DuplicateUsableEmailError(
                 "Email account primary address already exists for this user"
             ) from error
@@ -135,15 +97,13 @@ def add_email_account(
                 """,
                 (user_id, account_id, primary_address, display_name),
             )
-        except sqlite3.IntegrityError as error:
+        except Exception as error:
             raise DuplicateUsableEmailError(
                 "Usable email address already exists for this user"
             ) from error
         alias_emails = [
-            add_alias_email(connection, user_id, account_id, alias_address, alias_address)
-            for alias_address in alias_addresses
+            add_alias_email(connection, user_id, account_id, addr, addr) for addr in alias_addresses
         ]
-
     primary_usable_email = UsableEmail(
         id=require_inserted_id(email_cursor.lastrowid),
         address=primary_address,
@@ -175,7 +135,8 @@ def deactivate_email_account(
         account = connection.execute(
             """
             SELECT id, provider, primary_address, display_name, imap_host,
-                   imap_port, username, imap_password, client_id, refresh_token
+                   imap_port, username, imap_password, client_id, refresh_token,
+                   group_id, remark, telegram_enabled
             FROM email_accounts
             WHERE id = ? AND user_id = ?
             """,
@@ -183,27 +144,22 @@ def deactivate_email_account(
         ).fetchone()
         if account is None:
             return None
-
         connection.execute(
             """
-            UPDATE email_accounts
-            SET status = 'inactive'
-            WHERE id = ? AND user_id = ?
+            UPDATE email_accounts SET status = 'inactive' WHERE id = ? AND user_id = ?
             """,
             (account_id, user_id),
         )
         email = connection.execute(
             """
-            UPDATE usable_emails
-            SET status = 'inactive', active = 0
+            UPDATE usable_emails SET status = 'inactive', active = 0
             WHERE user_id = ? AND email_account_id = ?
             RETURNING id, address, label, kind, status
             """,
             (user_id, account_id),
         ).fetchall()
-
     usable_emails = tuple(usable_email_from_row(row) for row in email)
-    primary_usable_email = next(email for email in usable_emails if email.kind == "primary")
+    primary_usable_email = next(e for e in usable_emails if e.kind == "primary")
     return EmailAccount(
         id=account["id"],
         provider=account["provider"],
@@ -217,6 +173,9 @@ def deactivate_email_account(
         imap_password=account["imap_password"],
         client_id=account["client_id"],
         refresh_token=account["refresh_token"],
+        group_id=account["group_id"],
+        remark=account["remark"] or "",
+        telegram_enabled=bool(account["telegram_enabled"]),
         usable_emails=usable_emails,
     )
 
@@ -226,7 +185,8 @@ def get_email_account(settings: Settings, user_id: int, account_id: int) -> Emai
         account = connection.execute(
             """
             SELECT id, provider, primary_address, display_name, status, imap_host,
-                   imap_port, username, imap_password, client_id, refresh_token
+                   imap_port, username, imap_password, client_id, refresh_token,
+                   group_id, remark, telegram_enabled
             FROM email_accounts
             WHERE id = ? AND user_id = ?
             """,
@@ -234,7 +194,6 @@ def get_email_account(settings: Settings, user_id: int, account_id: int) -> Emai
         ).fetchone()
         if account is None:
             return None
-
         rows = connection.execute(
             """
             SELECT id, address, label, kind, status
@@ -244,9 +203,8 @@ def get_email_account(settings: Settings, user_id: int, account_id: int) -> Emai
             """,
             (user_id, account_id),
         ).fetchall()
-
     usable_emails = tuple(usable_email_from_row(row) for row in rows)
-    primary_usable_email = next(email for email in usable_emails if email.kind == "primary")
+    primary_usable_email = next(e for e in usable_emails if e.kind == "primary")
     return EmailAccount(
         id=account["id"],
         provider=account["provider"],
@@ -260,6 +218,9 @@ def get_email_account(settings: Settings, user_id: int, account_id: int) -> Emai
         imap_password=account["imap_password"],
         client_id=account["client_id"],
         refresh_token=account["refresh_token"],
+        group_id=account["group_id"],
+        remark=account["remark"] or "",
+        telegram_enabled=bool(account["telegram_enabled"]),
         usable_emails=usable_emails,
     )
 
@@ -267,17 +228,11 @@ def get_email_account(settings: Settings, user_id: int, account_id: int) -> Emai
 def list_email_accounts(settings: Settings, user_id: int) -> tuple[EmailAccount, ...]:
     with connect(settings) as connection:
         rows = connection.execute(
-            """
-            SELECT id
-            FROM email_accounts
-            WHERE user_id = ?
-            ORDER BY id
-            """,
+            "SELECT id FROM email_accounts WHERE user_id = ? ORDER BY id",
             (user_id,),
         ).fetchall()
-
     accounts = (get_email_account(settings, user_id, row["id"]) for row in rows)
-    return tuple(account for account in accounts if account is not None)
+    return tuple(a for a in accounts if a is not None)
 
 
 def add_alias_to_email_account(

@@ -99,6 +99,9 @@ def serialize_email_account(account: EmailAccount) -> dict[str, object]:
         "client_id": account.client_id,
         "has_imap_password": bool(account.imap_password),
         "has_refresh_token": bool(account.refresh_token),
+        "group_id": account.group_id,
+        "remark": account.remark,
+        "telegram_enabled": account.telegram_enabled,
         "primary_usable_email": serialize_usable_email(account.primary_usable_email),
         "usable_emails": [
             serialize_usable_email(usable_email) for usable_email in account.usable_emails

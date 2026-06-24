@@ -224,6 +224,18 @@ def migrate(settings: Settings) -> Path:
             )
             """
         )
+        if not column_exists(connection, "email_accounts", "group_id"):
+            connection.execute(
+                "ALTER TABLE email_accounts ADD COLUMN group_id INTEGER REFERENCES groups(id)"
+            )
+        if not column_exists(connection, "email_accounts", "remark"):
+            connection.execute(
+                "ALTER TABLE email_accounts ADD COLUMN remark TEXT NOT NULL DEFAULT ''"
+            )
+        if not column_exists(connection, "email_accounts", "telegram_enabled"):
+            connection.execute(
+                "ALTER TABLE email_accounts ADD COLUMN telegram_enabled INTEGER NOT NULL DEFAULT 1"
+            )
         connection.execute(
             """
             INSERT OR IGNORE INTO system_settings (key, value)

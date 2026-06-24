@@ -179,3 +179,58 @@ class DeleteEmailRequest(BaseModel):
 class CFWorkerSyncRequest(BaseModel):
     worker_url: str = ""
     admin_key: str = ""
+
+
+class AccountUpdate(BaseModel):
+    email: str | None = None
+    password: str | None = None
+    client_id: str | None = None
+    refresh_token: str | None = None
+    group_id: int | None = None
+    remark: str | None = None
+    status: str | None = None
+    provider: str | None = None
+    imap_host: str | None = None
+    imap_port: int | None = None
+
+
+class RemarkUpdate(BaseModel):
+    remark: str
+
+
+class BatchGroupUpdate(BaseModel):
+    account_ids: list[int]
+    group_id: int
+
+
+class BatchDelete(BaseModel):
+    account_ids: list[int]
+
+
+class BatchStatusUpdate(BaseModel):
+    account_ids: list[int]
+    status: str
+
+
+class BatchNotificationToggle(BaseModel):
+    account_ids: list[int]
+    enabled: bool
+
+
+class BatchTagAction(BaseModel):
+    account_ids: list[int]
+    tag_id: int
+    action: str  # "add" or "remove"
+
+
+class ExportVerify(BaseModel):
+    password: str
+
+
+class ExportSelected(BaseModel):
+    group_ids: list[int]
+    verify_token: str | None = None
+
+
+class TelegramToggle(BaseModel):
+    enabled: bool
