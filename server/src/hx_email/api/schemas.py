@@ -232,5 +232,14 @@ class ExportSelected(BaseModel):
     verify_token: str | None = None
 
 
+class PoolAdminAction(BaseModel):
+    action: (
+        str  # claim/release/complete/freeze/unfreeze/cooldown/retire/add_to_pool/remove_from_pool
+    )
+    caller_id: str | None = None
+    task_id: str | None = None
+    reason: str | None = None
+
+
 class TelegramToggle(BaseModel):
     enabled: bool

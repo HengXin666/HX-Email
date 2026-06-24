@@ -238,6 +238,20 @@ def migrate(settings: Settings) -> Path:
             )
         connection.execute(
             """
+            CREATE TABLE IF NOT EXISTS audit_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                action TEXT NOT NULL,
+                resource_type TEXT NOT NULL,
+                resource_id INTEGER,
+                detail TEXT DEFAULT '',
+                ip_address TEXT DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+            """
+        )
+        connection.execute(
+            """
             INSERT OR IGNORE INTO system_settings (key, value)
             VALUES ('registration_enabled', 'false')
             """
@@ -249,6 +263,6 @@ def migrate(settings: Settings) -> Path:
             """,
             (settings.admin_username, hash_password(settings.admin_password)),
         )
-        connection.execute("PRAGMA user_version = 6")
+        connection.execute("PRAGMA user_version = 7")
 
     return database_path
