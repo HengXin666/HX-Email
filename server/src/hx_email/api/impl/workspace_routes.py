@@ -6,10 +6,16 @@ from hx_email.api.dependencies import require_user
 from hx_email.api.schemas import GroupCreate, TagCreate, UsableEmailOrganization
 from hx_email.api.serializers import serialize_workbench_email, serialize_workbench_overview
 from hx_email.config import Settings
-from hx_email.server.workspace.overview import get_workbench_overview
-from hx_email.server.workspace.workbench import (
+from hx_email.server.workspace.groups import (
     create_group,
     create_tag,
+    delete_group,
+    list_groups,
+    list_tags,
+    update_group,
+)
+from hx_email.server.workspace.overview import get_workbench_overview
+from hx_email.server.workspace.workbench import (
     list_workbench_emails,
     organize_usable_email,
 )
@@ -32,6 +38,37 @@ def register_workspace_routes(app: FastAPI, settings: Settings) -> None:
         group = create_group(settings, user.id, payload.name, payload.color)
         return {"id": group.id, "name": group.name, "color": group.color}
 
+    @app.get("/groups")
+    def get_user_groups(
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> list[dict[str, object]]:
+        user = require_user(settings, authorization)
+        return [
+            {"id": group.id, "name": group.name, "color": group.color}
+            for group in list_groups(settings, user.id)
+        ]
+
+    @app.put("/groups/{group_id}")
+    def update_user_group(
+        group_id: int,
+        payload: GroupCreate,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        user = require_user(settings, authorization)
+        group = update_group(settings, user.id, group_id, payload.name, payload.color)
+        if group is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
+        return {"id": group.id, "name": group.name, "color": group.color}
+
+    @app.delete("/groups/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
+    def delete_user_group(
+        group_id: int,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> None:
+        user = require_user(settings, authorization)
+        if not delete_group(settings, user.id, group_id):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
+
     @app.post("/tags", status_code=status.HTTP_201_CREATED)
     def create_user_tag(
         payload: TagCreate,
@@ -40,6 +77,16 @@ def register_workspace_routes(app: FastAPI, settings: Settings) -> None:
         user = require_user(settings, authorization)
         tag = create_tag(settings, user.id, payload.name, payload.color)
         return {"id": tag.id, "name": tag.name, "color": tag.color}
+
+    @app.get("/tags")
+    def get_user_tags(
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> list[dict[str, object]]:
+        user = require_user(settings, authorization)
+        return [
+            {"id": tag.id, "name": tag.name, "color": tag.color}
+            for tag in list_tags(settings, user.id)
+        ]
 
     @app.get("/workbench/usable-emails")
     def get_workbench_usable_emails(

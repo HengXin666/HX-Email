@@ -7,7 +7,7 @@
           {
             "type": "command",
             "command": "bash .codex/hooks/format_after_edit.sh",
-            "timeout": 120,
+            "timeout": 10,
             "statusMessage": "Formatting after edit"
           }
         ]
@@ -19,7 +19,7 @@
           {
             "type": "command",
             "command": "bash .codex/hooks/verify_before_stop.sh",
-            "timeout": 600,
+            "timeout": 18,
             "statusMessage": "Running repository verification"
           }
         ]

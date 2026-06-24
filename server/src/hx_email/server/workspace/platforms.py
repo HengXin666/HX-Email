@@ -118,6 +118,19 @@ def update_platform(
     return Platform(id=row["id"], name=row["name"])
 
 
+def delete_platform(settings: Settings, user_id: int, platform_id: int) -> bool:
+    with connect(settings) as connection:
+        connection.execute(
+            "DELETE FROM platform_bindings WHERE user_id = ? AND platform_id = ?",
+            (user_id, platform_id),
+        )
+        result = connection.execute(
+            "DELETE FROM platforms WHERE id = ? AND user_id = ?",
+            (platform_id, user_id),
+        )
+    return result.rowcount > 0
+
+
 def create_platform_binding(
     settings: Settings,
     user_id: int,

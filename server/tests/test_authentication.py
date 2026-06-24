@@ -1,7 +1,12 @@
 from fastapi.testclient import TestClient
 from hx_email.app import create_app
-from hx_email.config import Settings
+from hx_email.config import ENV_FILE_PATH, REPOSITORY_ROOT, Settings
 from hx_email.database import migrate
+
+
+def test_settings_env_file_is_bound_to_repository_root() -> None:
+    assert ENV_FILE_PATH == REPOSITORY_ROOT / ".env"
+    assert ENV_FILE_PATH.is_absolute()
 
 
 def test_admin_can_log_in_after_database_initializes_from_environment(tmp_path):

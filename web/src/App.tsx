@@ -1,60 +1,59 @@
-import { useState } from "react";
+import React from 'react'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { AnimatePresence, motion } from 'framer-motion'
+import { Sidebar } from './components/layout'
+import { useApp } from './store/AppContext'
 
-import { loadWorkbenchSession, persistAccessToken, submitCredentials } from "./api";
-import { LoginScreen } from "./components/LoginScreen";
-import { Workbench } from "./components/Workbench";
-import type { Session } from "./types";
+import { Login } from './pages/Login'
+import { Overview } from './pages/Overview'
+import { Accounts } from './pages/Accounts'
+import { Platforms } from './pages/Platforms'
+import { TempMail } from './pages/TempMail'
+import { ApiAccess } from './pages/ApiAccess'
+import { Settings } from './pages/Settings'
 
-type AppProps = {
-  registrationEnabled?: boolean;
-  session?: Session;
-};
+const ProtectedLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const location = useLocation()
+  return (
+    <div className="flex min-h-screen bg-gh-canvas">
+      <Sidebar />
+      <AnimatePresence mode="wait">
+        <motion.main
+          key={location.pathname}
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.18 }}
+          className="flex-1 flex flex-col min-w-0"
+        >
+          {children}
+        </motion.main>
+      </AnimatePresence>
+    </div>
+  )
+}
 
-export function App({ registrationEnabled = false, session }: AppProps) {
-  const [activeSession, setActiveSession] = useState<Session | null>(session ?? null);
-  const [submittingMode, setSubmittingMode] = useState<"login" | "register" | null>(null);
-  const [authError, setAuthError] = useState("");
-  const [authNotice, setAuthNotice] = useState("");
+const RequireAuth: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { token } = useApp()
+  if (!token) return <Navigate to="/login" replace />
+  return <ProtectedLayout>{children}</ProtectedLayout>
+}
 
-  document.documentElement.classList.add("dark");
-
-  async function handleCredentials(
-    mode: "login" | "register",
-    username: string,
-    password: string,
-  ): Promise<void> {
-    setAuthError("");
-    setAuthNotice("");
-    setSubmittingMode(mode);
-    try {
-      const auth = await submitCredentials(mode, username, password);
-      persistAccessToken(auth.access_token);
-      const nextSession = await loadWorkbenchSession(auth.access_token, auth.user.username);
-      setActiveSession(nextSession);
-      setAuthNotice(mode === "login" ? "登录成功" : "注册成功");
-    } catch {
-      setAuthError(
-        mode === "login"
-          ? "用户名或密码不正确，或工作台加载失败。"
-          : "注册失败，或工作台加载失败。",
-      );
-    } finally {
-      setSubmittingMode(null);
-    }
-  }
-
-  if (activeSession) {
-    return <Workbench notice={authNotice} session={activeSession} />;
-  }
+const App: React.FC = () => {
+  const { token } = useApp()
 
   return (
-    <LoginScreen
-      authError={authError}
-      onSubmit={(mode, username, password) => {
-        void handleCredentials(mode, username, password);
-      }}
-      registrationEnabled={registrationEnabled}
-      submittingMode={submittingMode}
-    />
-  );
+    <Routes>
+      <Route path="/login" element={token ? <Navigate to="/overview" replace /> : <Login />} />
+      <Route path="/overview" element={<RequireAuth><Overview /></RequireAuth>} />
+      <Route path="/accounts" element={<RequireAuth><Accounts /></RequireAuth>} />
+      <Route path="/platforms" element={<RequireAuth><Platforms /></RequireAuth>} />
+      <Route path="/temp-mail" element={<RequireAuth><TempMail /></RequireAuth>} />
+      <Route path="/api" element={<RequireAuth><ApiAccess /></RequireAuth>} />
+      <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
+      <Route path="*" element={<Navigate to={token ? '/overview' : '/login'} replace />} />
+    </Routes>
+  )
 }
+
+export default App

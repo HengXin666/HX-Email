@@ -21,6 +21,7 @@ from hx_email.server.workspace.platforms import (
     InvalidPlatformBindingStatusError,
     create_platform,
     create_platform_binding,
+    delete_platform,
     list_platform_bindings,
     list_platforms,
     suggest_platform_candidates,
@@ -68,6 +69,15 @@ def register_platform_routes(app: FastAPI, settings: Settings) -> None:
         if platform is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Platform not found")
         return serialize_platform(platform)
+
+    @app.delete("/platforms/{platform_id}", status_code=status.HTTP_204_NO_CONTENT)
+    def delete_user_platform(
+        platform_id: int,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> None:
+        user = require_user(settings, authorization)
+        if not delete_platform(settings, user.id, platform_id):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Platform not found")
 
     @app.post("/platform-candidates")
     def get_platform_candidates(

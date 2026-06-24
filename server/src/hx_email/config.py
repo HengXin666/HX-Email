@@ -2,9 +2,12 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+REPOSITORY_ROOT: Path = Path(__file__).resolve().parents[3]
+ENV_FILE_PATH: Path = REPOSITORY_ROOT / ".env"
+
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_prefix="HX_EMAIL_")
+    model_config = SettingsConfigDict(env_file=ENV_FILE_PATH, env_prefix="HX_EMAIL_")
 
     data_dir: Path = Path("data")
     admin_username: str = "admin"

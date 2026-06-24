@@ -4,17 +4,19 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0",
-    "build": "tsc -b && vite build",
-    "test": "vitest run"
+    "dev": "vite --config vite.config.ts --host 0.0.0.0",
+    "build": "tsc -b && vite build --config vite.config.ts",
+    "test": "vitest --config vite.config.ts run"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "framer-motion": "^12.41.0",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-router-dom": "^7.18.0",
     "tailwind-merge": "^2.5.5"
   },
   "devDependencies": {

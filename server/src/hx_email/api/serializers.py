@@ -3,9 +3,10 @@ from hx_email.server.mail.mail_pool import MailPoolEntry
 from hx_email.server.mail.temp_mail import TempMailbox
 from hx_email.server.mail.usable_emails import UsableEmail
 from hx_email.server.mail.verification import VerificationMatch, VerificationReading
+from hx_email.server.workspace.groups import Group, Tag
 from hx_email.server.workspace.overview import WorkbenchOverview
 from hx_email.server.workspace.platforms import Platform, PlatformBinding, PlatformCandidate
-from hx_email.server.workspace.workbench import Group, Tag, WorkbenchEmail
+from hx_email.server.workspace.workbench import WorkbenchEmail
 
 
 def serialize_usable_email(usable_email: UsableEmail) -> dict[str, object]:

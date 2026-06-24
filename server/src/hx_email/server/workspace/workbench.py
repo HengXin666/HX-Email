@@ -2,21 +2,7 @@ from dataclasses import dataclass
 
 from hx_email.config import Settings
 from hx_email.database import connect
-from hx_email.server.auth import require_inserted_id
-
-
-@dataclass(frozen=True)
-class Group:
-    id: int
-    name: str
-    color: str
-
-
-@dataclass(frozen=True)
-class Tag:
-    id: int
-    name: str
-    color: str
+from hx_email.server.workspace.groups import Group, Tag
 
 
 @dataclass(frozen=True)
@@ -37,24 +23,6 @@ class WorkbenchPage:
     total: int
     page: int
     page_size: int
-
-
-def create_group(settings: Settings, user_id: int, name: str, color: str) -> Group:
-    with connect(settings) as connection:
-        cursor = connection.execute(
-            "INSERT INTO groups (user_id, name, color) VALUES (?, ?, ?)",
-            (user_id, name, color),
-        )
-    return Group(id=require_inserted_id(cursor.lastrowid), name=name, color=color)
-
-
-def create_tag(settings: Settings, user_id: int, name: str, color: str) -> Tag:
-    with connect(settings) as connection:
-        cursor = connection.execute(
-            "INSERT INTO tags (user_id, name, color) VALUES (?, ?, ?)",
-            (user_id, name, color),
-        )
-    return Tag(id=require_inserted_id(cursor.lastrowid), name=name, color=color)
 
 
 def organize_usable_email(

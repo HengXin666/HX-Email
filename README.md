@@ -44,6 +44,10 @@ HX_EMAIL_ADMIN_USERNAME=your-admin
 HX_EMAIL_ADMIN_PASSWORD=your-password
 ```
 
+These admin credentials are used only when the SQLite database creates the
+initial admin user. Changing `.env` after the database already exists does not
+reset an existing admin password; use the account settings screen to change it.
+
 The SQLite data directory defaults to `data`; configure it in `.env`:
 
 ```dotenv
@@ -58,6 +62,25 @@ npm install
 npm test
 npm run build
 npm run dev
+```
+
+## Local Development
+
+Start the backend and frontend together from the repository root:
+
+```bash
+./scripts/dev.sh
+```
+
+Defaults:
+
+- backend: `http://127.0.0.1:8000`
+- frontend: `http://0.0.0.0:5173`
+
+Override ports or hosts when needed:
+
+```bash
+HX_EMAIL_BACKEND_PORT=8010 HX_EMAIL_FRONTEND_PORT=5174 ./scripts/dev.sh
 ```
 
 The frontend uses React + TypeScript + Tailwind and starts in dark mode. Its
