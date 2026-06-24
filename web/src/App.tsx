@@ -13,6 +13,8 @@ import { TokenTool } from './pages/TokenTool'
 import { ApiAccess } from './pages/ApiAccess'
 import { Settings } from './pages/Settings'
 import { RefreshLogPage } from './pages/RefreshLog'
+import { PoolAdmin } from './pages/PoolAdmin'
+import { AuditLog } from './pages/AuditLog'
 
 const ProtectedLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation()
@@ -55,6 +57,8 @@ const App: React.FC = () => {
       <Route path="/api" element={<RequireAuth><ApiAccess /></RequireAuth>} />
       <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
       <Route path="/refresh-log" element={<RequireAuth><RefreshLogPage /></RequireAuth>} />
+      <Route path="/pool-admin" element={<RequireAuth><PoolAdmin /></RequireAuth>} />
+      <Route path="/audit" element={<RequireAuth><AuditLog /></RequireAuth>} />
       <Route path="*" element={<Navigate to={token ? '/overview' : '/login'} replace />} />
     </Routes>
   )

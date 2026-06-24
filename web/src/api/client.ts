@@ -19,7 +19,14 @@ import type {
   RefreshLog,
   InvalidTokenCandidate,
   RefreshStats,
-  SSERefreshEvent
+  SSERefreshEvent,
+  PoolAdminAccount,
+  Pagination,
+  AuditLogEntry,
+  OverviewSummary,
+  VerificationStats,
+  PoolStats,
+  ActivityStats
 } from '../types'
 
 let _sessionExpiredHandled = false
@@ -399,6 +406,33 @@ export const api = {
     ),
   getRefreshStats: () =>
     request<RefreshStats>('/email-accounts/refresh-stats'),
+
+  // ========== Pool Admin ==========
+  listPoolAdminAccounts: (params: Record<string, string | number>) => {
+    const qs = new URLSearchParams()
+    Object.entries(params).forEach(([k, v]) => v !== undefined && qs.append(k, String(v)))
+    return request<{ accounts: PoolAdminAccount[]; pagination: Pagination }>(
+      `/pool-admin/accounts?${qs}`
+    )
+  },
+  executePoolAction: (accountId: number, action: string, extra?: Record<string, unknown>) =>
+    request<{ success: boolean; message: string }>(
+      `/pool-admin/accounts/${accountId}/action`,
+      { method: 'POST', body: JSON.stringify({ action, ...extra }) }
+    ),
+
+  // ========== Audit Log ==========
+  getAuditLogs: (params: Record<string, string | number>) => {
+    const qs = new URLSearchParams()
+    Object.entries(params).forEach(([k, v]) => v !== undefined && qs.append(k, String(v)))
+    return request<{ logs: AuditLogEntry[]; total: number }>(`/audit-logs?${qs}`)
+  },
+
+  // ========== Overview Stats ==========
+  getOverviewSummary: () => request<OverviewSummary>('/overview/summary'),
+  getVerificationStats: () => request<VerificationStats>('/overview/verification-stats'),
+  getPoolStats: () => request<PoolStats>('/overview/pool-stats'),
+  getActivityStats: () => request<ActivityStats>('/overview/activity'),
 
   // ========== Data ==========
   exportData: () => request<unknown>('/data/export'),

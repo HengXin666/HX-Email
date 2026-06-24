@@ -201,3 +201,70 @@ export interface SSERefreshEvent {
   success?: number
   failed?: number
 }
+
+export interface PoolAdminAccount {
+  id: number
+  email: string
+  provider: string
+  pool_status: string
+  group_name: string
+  claimed_by: string
+  claimed_at: string
+  status: string
+}
+
+export interface Pagination {
+  page: number
+  page_size: number
+  total_count: number
+  total_pages: number
+}
+
+export interface AuditLogEntry {
+  id: number
+  user_id: number
+  action: string
+  resource_type: string
+  resource_id: number
+  detail: string
+  ip_address: string
+  created_at: string
+}
+
+export interface OverviewSummary {
+  total_accounts: number
+  active_accounts: number
+  total_emails: number
+  active_emails: number
+  temp_emails: number
+  platforms: number
+  bindings: number
+  pool_available: number
+  pool_claimed: number
+  pool_completed: number
+  pool_cooling: number
+  verification_total: number
+}
+
+export interface VerificationStats {
+  total_extractions: number
+  success_rate: number
+  ai_fallback_count: number
+  today_extractions: number
+}
+
+export interface PoolStats {
+  available: number
+  claimed: number
+  completed: number
+  cooling: number
+  frozen: number
+  retired: number
+  total: number
+}
+
+export interface ActivityStats {
+  recent_actions: Array<{ action: string; count: number }>
+  today_actions: number
+  total_actions: number
+}

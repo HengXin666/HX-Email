@@ -1,7 +1,9 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { Topbar } from '../components/layout'
 import { useApp } from '../store/AppContext'
+import { Badge } from '../components/ui/Primitives'
+import { useToast } from '../components/ui/Toast'
 import {
   IconMail,
   IconUser,
@@ -11,9 +13,14 @@ import {
   IconActivity,
   IconShield,
   IconZap,
-  IconChevronRight
+  IconChevronRight,
+  IconCheck,
+  IconAlertTriangle,
+  IconRefresh
 } from '../components/icons'
 import { useNavigate } from 'react-router-dom'
+import { api } from '../api/client'
+import type { VerificationStats, PoolStats, ActivityStats } from '../types'
 
 interface StatCardProps {
   label: string
@@ -57,10 +64,38 @@ const StatCard: React.FC<StatCardProps> = ({ label, value, icon: Icon, color, tr
 export const Overview: React.FC = () => {
   const { overview, emails, groups, platforms, refreshOverview } = useApp()
   const navigate = useNavigate()
+  const { toast } = useToast()
+  const [verificationStats, setVerificationStats] =
+    useState<VerificationStats | null>(null)
+  const [poolStats, setPoolStats] = useState<PoolStats | null>(null)
+  const [activityStats, setActivityStats] = useState<ActivityStats | null>(null)
+  const [statsLoading, setStatsLoading] = useState(false)
 
   useEffect(() => {
     refreshOverview()
   }, [refreshOverview])
+
+  const loadExtraStats = useCallback(async () => {
+    setStatsLoading(true)
+    try {
+      const [vRes, pRes, aRes] = await Promise.all([
+        api.getVerificationStats(),
+        api.getPoolStats(),
+        api.getActivityStats()
+      ])
+      setVerificationStats(vRes)
+      setPoolStats(pRes)
+      setActivityStats(aRes)
+    } catch (err: unknown) {
+      toast((err as { message?: string }).message || '加载失败', 'error')
+    } finally {
+      setStatsLoading(false)
+    }
+  }, [toast])
+
+  useEffect(() => {
+    loadExtraStats()
+  }, [loadExtraStats])
 
   const recentEmails = emails.slice(0, 5)
   const topPlatforms = platforms.slice(0, 5)
@@ -234,9 +269,14 @@ export const Overview: React.FC = () => {
                   <div className="flex items-center gap-2 mb-2">
                     <div
                       className="w-2.5 h-2.5 rounded-full"
-                      style={{ background: g.color, boxShadow: `0 0 8px ${g.color}` }}
+                      style={{
+                        background: g.color,
+                        boxShadow: `0 0 8px ${g.color}`
+                      }}
                     />
-                    <span className="text-sm text-gh-text truncate">{g.name}</span>
+                    <span className="text-sm text-gh-text truncate">
+                      {g.name}
+                    </span>
                   </div>
                   <div className="text-2xl font-bold text-gh-text tabular-nums">
                     {g.count || 0}
@@ -245,6 +285,221 @@ export const Overview: React.FC = () => {
                 </motion.div>
               ))}
             </div>
+          </div>
+
+          {/* Verification Stats Section */}
+          <div className="rounded-xl border border-gh-border bg-gh-canvas-subtle p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gh-text flex items-center gap-2">
+                <IconZap size={14} className="text-gh-accent" />
+                验证码统计
+              </h3>
+              <button
+                onClick={loadExtraStats}
+                className="p-1 rounded-md text-gh-text-muted hover:text-gh-text hover:bg-gh-border/50 transition-colors"
+                title="刷新"
+              >
+                <IconRefresh size={14} />
+              </button>
+            </div>
+            {statsLoading ? (
+              <div className="text-center py-6 text-gh-text-secondary text-sm">
+                加载中...
+              </div>
+            ) : verificationStats ? (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="text-center p-3 rounded-lg bg-gh-canvas-inset border border-gh-border">
+                  <div className="text-xs text-gh-text-muted mb-1">
+                    总提取次数
+                  </div>
+                  <div className="text-xl font-bold text-gh-text tabular-nums">
+                    {verificationStats.total_extractions}
+                  </div>
+                </div>
+                <div className="text-center p-3 rounded-lg bg-gh-canvas-inset border border-gh-border">
+                  <div className="text-xs text-gh-text-muted mb-1">成功率</div>
+                  <div
+                    className="text-xl font-bold tabular-nums"
+                    style={{
+                      color:
+                        verificationStats.success_rate >= 80
+                          ? '#3fb950'
+                          : '#d29922'
+                    }}
+                  >
+                    {verificationStats.success_rate}%
+                  </div>
+                </div>
+                <div className="text-center p-3 rounded-lg bg-gh-canvas-inset border border-gh-border">
+                  <div className="text-xs text-gh-text-muted mb-1">
+                    AI 回退次数
+                  </div>
+                  <div className="text-xl font-bold text-gh-text tabular-nums">
+                    {verificationStats.ai_fallback_count}
+                  </div>
+                </div>
+                <div className="text-center p-3 rounded-lg bg-gh-canvas-inset border border-gh-border">
+                  <div className="text-xs text-gh-text-muted mb-1">
+                    今日提取
+                  </div>
+                  <div className="text-xl font-bold text-gh-text tabular-nums">
+                    {verificationStats.today_extractions}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-6 text-gh-text-secondary text-sm">
+                暂无数据
+              </div>
+            )}
+          </div>
+
+          {/* Pool Stats Section */}
+          <div className="rounded-xl border border-gh-border bg-gh-canvas-subtle p-4">
+            <h3 className="text-sm font-semibold text-gh-text flex items-center gap-2 mb-3">
+              <IconDatabase size={14} className="text-gh-purple" />
+              号池分布
+            </h3>
+            {statsLoading ? (
+              <div className="text-center py-6 text-gh-text-secondary text-sm">
+                加载中...
+              </div>
+            ) : poolStats ? (
+              <div className="space-y-2">
+                {[
+                  { label: '可用', value: poolStats.available, color: '#3fb950' },
+                  { label: '已领取', value: poolStats.claimed, color: '#58a6ff' },
+                  {
+                    label: '已完成',
+                    value: poolStats.completed,
+                    color: '#a371f7'
+                  },
+                  { label: '冷却中', value: poolStats.cooling, color: '#d29922' },
+                  { label: '已冻结', value: poolStats.frozen, color: '#f0883e' },
+                  { label: '已退役', value: poolStats.retired, color: '#6e7681' }
+                ].map((item) => {
+                  const maxVal: number = Math.max(
+                    ...Object.values(poolStats).filter(
+                      (v): v is number => typeof v === 'number'
+                    ),
+                    1
+                  )
+                  const pct: number = (item.value / maxVal) * 100
+                  return (
+                    <motion.div
+                      key={item.label}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-1.5">
+                          <div
+                            className="w-2 h-2 rounded-full"
+                            style={{ background: item.color }}
+                          />
+                          <span className="text-sm text-gh-text">
+                            {item.label}
+                          </span>
+                        </div>
+                        <span className="text-xs text-gh-text-muted tabular-nums">
+                          {item.value}
+                        </span>
+                      </div>
+                      <div className="h-1.5 bg-gh-canvas-inset rounded-full overflow-hidden">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${pct}%` }}
+                          transition={{ duration: 0.5 }}
+                          className="h-full rounded-full"
+                          style={{ background: item.color }}
+                        />
+                      </div>
+                    </motion.div>
+                  )
+                })}
+                <div className="pt-2 mt-2 border-t border-gh-border flex justify-between">
+                  <span className="text-xs text-gh-text-muted">总计</span>
+                  <span className="text-sm font-semibold text-gh-text tabular-nums">
+                    {poolStats.total}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-6 text-gh-text-secondary text-sm">
+                暂无数据
+              </div>
+            )}
+          </div>
+
+          {/* Activity Feed Section */}
+          <div className="rounded-xl border border-gh-border bg-gh-canvas-subtle p-4">
+            <h3 className="text-sm font-semibold text-gh-text flex items-center gap-2 mb-3">
+              <IconActivity size={14} className="text-gh-orange" />
+              近期活动
+            </h3>
+            {statsLoading ? (
+              <div className="text-center py-6 text-gh-text-secondary text-sm">
+                加载中...
+              </div>
+            ) : activityStats ? (
+              <div>
+                <div className="flex items-center gap-4 mb-3 text-xs text-gh-text-secondary">
+                  <span>
+                    今日操作:{' '}
+                    <span className="text-gh-text font-semibold">
+                      {activityStats.today_actions}
+                    </span>
+                  </span>
+                  <span>
+                    总计:{' '}
+                    <span className="text-gh-text font-semibold">
+                      {activityStats.total_actions}
+                    </span>
+                  </span>
+                </div>
+                {activityStats.recent_actions.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {activityStats.recent_actions.map((item) => {
+                      const actionColors: Record<string, string> = {
+                        create: '#3fb950',
+                        update: '#58a6ff',
+                        delete: '#f85149',
+                        claim: '#58a6ff',
+                        release: '#d29922',
+                        complete: '#3fb950',
+                        freeze: '#f0883e',
+                        unfreeze: '#3fb950',
+                        retire: '#6e7681',
+                        login: '#a371f7'
+                      }
+                      const color: string =
+                        actionColors[item.action] || '#6e7681'
+                      return (
+                        <div
+                          key={item.action}
+                          className="flex items-center justify-between px-3 py-1.5 rounded-md hover:bg-gh-border/20 transition-colors"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Badge color={color}>{item.action}</Badge>
+                          </div>
+                          <span className="text-xs text-gh-text-secondary tabular-nums">
+                            {item.count} 次
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-6 text-gh-text-secondary text-sm">
+                    暂无活动
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center py-6 text-gh-text-secondary text-sm">
+                暂无数据
+              </div>
+            )}
           </div>
         </motion.div>
       </div>

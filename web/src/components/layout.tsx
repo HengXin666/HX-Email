@@ -11,7 +11,9 @@ import {
   IconSettings,
   IconLogout,
   IconGithub,
-  IconChevronRight
+  IconChevronRight,
+  IconDatabase,
+  IconShield
 } from './icons'
 import { useApp } from '../store/AppContext'
 import { useToast } from './ui/Toast'
@@ -23,6 +25,8 @@ const NAV = [
   { to: '/temp-mail', label: '临时邮箱', icon: IconClock },
   { to: '/token-tool', label: 'Token 工具', icon: IconKey },
   { to: '/refresh-log', label: '刷新日志', icon: IconClock },
+  { to: '/pool-admin', label: '号池管理', icon: IconDatabase },
+  { to: '/audit', label: '审计日志', icon: IconShield },
   { to: '/api', label: 'API 接入', icon: IconCode },
   { to: '/settings', label: '设置', icon: IconSettings }
 ]
