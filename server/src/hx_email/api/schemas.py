@@ -243,3 +243,40 @@ class PoolAdminAction(BaseModel):
 
 class TelegramToggle(BaseModel):
     enabled: bool
+
+
+class ExternalPoolClaim(BaseModel):
+    caller_id: str
+    task_id: str
+    provider: str | None = None
+    project_key: str | None = None
+    email_domain: str | None = None
+
+
+class ExternalPoolRelease(BaseModel):
+    account_id: int
+    claim_token: str
+    caller_id: str
+    task_id: str
+    reason: str | None = None
+
+
+class ExternalPoolComplete(BaseModel):
+    account_id: int
+    claim_token: str
+    caller_id: str
+    task_id: str
+    result: str
+    detail: str | None = None
+
+
+class ExternalTempMailApply(BaseModel):
+    caller_id: str
+    task_id: str
+    prefix: str | None = None
+    domain: str | None = None
+
+
+class ExternalTempMailFinish(BaseModel):
+    result: str | None = None
+    detail: str | None = None

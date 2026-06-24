@@ -5,6 +5,12 @@ from fastapi import FastAPI, Header, HTTPException, status
 from hx_email.api.audit_routes import register_audit_routes
 from hx_email.api.dependencies import require_user
 from hx_email.api.impl.auth_routes import register_auth_routes
+from hx_email.api.impl.external import (
+    register_external_message_routes,
+    register_external_pool_routes,
+    register_external_system_routes,
+    register_external_temp_mail_routes,
+)
 from hx_email.api.impl.mail.pool import register_pool_admin_routes
 from hx_email.api.impl.mail_routes import register_mail_routes
 from hx_email.api.impl.overview import (
@@ -45,6 +51,20 @@ def register_routes(
     register_data_transfer_routes(app, settings)
     register_pool_admin_routes(app, settings)
     register_audit_routes(app, settings)
+    register_external_routes(app, settings, mailbox_provider, temp_mail_providers)
+
+
+def register_external_routes(
+    app: FastAPI,
+    settings: Settings,
+    mailbox_provider: MailboxProvider,
+    temp_mail_providers: dict[str, TempMailProvider],
+) -> None:
+    """Register external API routes secured by X-API-Key."""
+    register_external_system_routes(app, settings)
+    register_external_message_routes(app, settings, mailbox_provider)
+    register_external_pool_routes(app, settings)
+    register_external_temp_mail_routes(app, settings, temp_mail_providers)
 
 
 def register_system_routes(app: FastAPI) -> None:
