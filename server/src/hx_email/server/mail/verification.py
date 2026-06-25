@@ -4,24 +4,12 @@ from typing import Protocol
 
 from hx_email.config import Settings
 from hx_email.database import connect
+from hx_email.server.mail import EmailAccountMailbox, MailboxMessage
+from hx_email.server.mail.imap.message_store import get_messages
 from hx_email.server.mail.usable_emails import UsableEmail
 
 CODE_PATTERN = re.compile(r"\b\d{6}\b")
 LINK_PATTERN = re.compile(r"https?://[^\s]+")
-
-
-@dataclass(frozen=True)
-class EmailAccountMailbox:
-    id: int
-    provider: str
-    primary_address: str
-
-
-@dataclass(frozen=True)
-class MailboxMessage:
-    recipient_address: str | None
-    subject: str
-    body: str
 
 
 @dataclass(frozen=True)
@@ -37,6 +25,12 @@ class VerificationMatch:
 class VerificationReading:
     usable_email: UsableEmail
     matches: tuple[VerificationMatch, ...]
+
+
+@dataclass(frozen=True)
+class VerificationState:
+    last_extracted_at: str | None
+    seen_codes: frozenset[str]
 
 
 class MailboxProvider(Protocol):
@@ -55,40 +49,95 @@ def read_verification(
     user_id: int,
     usable_email_id: int,
     mailbox_provider: MailboxProvider,
+    force_refresh: bool = False,
 ) -> VerificationReading | None:
     target = load_target(settings, user_id, usable_email_id)
     if target is None:
         return None
-
     usable_email, email_account = target
     matches: list[VerificationMatch] = []
-    for raw_message in mailbox_provider.read_messages(email_account):
-        message = coerce_message(raw_message)
-        if (
-            message.recipient_address is not None
-            and message.recipient_address.lower() != usable_email.address.lower()
-        ):
+    cached_msgs: list[dict[str, object]] = []
+    # Always try cache first (unless force_refresh)
+    if not force_refresh:
+        cached_msgs = get_messages(settings, usable_email_id)
+    for msg in cached_msgs:
+        recipient: str | None = (
+            str(msg["recipient_address"]) if msg.get("recipient_address") else None
+        )
+        if recipient and recipient.lower() != usable_email.address.lower():
             continue
-
-        content = f"{message.subject}\n{message.body}"
+        subject: str = str(msg.get("subject") or "")
+        body: str = str(msg.get("body") or "")
+        content = f"{subject}\n{body}"
         code = first_match(CODE_PATTERN, content)
         link = first_match(LINK_PATTERN, content)
         if code is None and link is None:
             continue
-
         matches.append(
             VerificationMatch(
                 code=code,
                 link=link,
-                recipient_address=message.recipient_address,
-                certainty="certain" if message.recipient_address is not None else "uncertain",
-                subject=message.subject,
+                recipient_address=recipient,
+                certainty="certain" if recipient else "uncertain",
+                subject=subject,
             )
         )
-
+    # Only hit live IMAP when explicitly forced, or when cache is truly empty.
+    # Having cached messages without codes is normal — don't retry IMAP.
+    should_fetch_live = force_refresh or not cached_msgs
+    if should_fetch_live and not matches:
+        try:
+            for raw_message in mailbox_provider.read_messages(email_account):
+                message = coerce_message(raw_message)
+                if (
+                    message.recipient_address is not None
+                    and message.recipient_address.lower() != usable_email.address.lower()
+                ):
+                    continue
+                content = f"{message.subject}\n{message.body}"
+                code = first_match(CODE_PATTERN, content)
+                link = first_match(LINK_PATTERN, content)
+                if code is None and link is None:
+                    continue
+                matches.append(
+                    VerificationMatch(
+                        code=code,
+                        link=link,
+                        recipient_address=message.recipient_address,
+                        certainty=(
+                            "certain" if message.recipient_address is not None else "uncertain"
+                        ),
+                        subject=message.subject,
+                    )
+                )
+        except Exception:
+            # IMAP may be unreachable; return whatever cache gave us.
+            pass
     reading = VerificationReading(usable_email=usable_email, matches=tuple(matches))
     save_history(settings, user_id, usable_email.id, reading.matches)
     return reading
+
+
+def get_verification_state(
+    settings: Settings,
+    user_id: int,
+    usable_email_id: int,
+) -> VerificationState:
+    with connect(settings) as connection:
+        rows = connection.execute(
+            """
+            SELECT code, created_at
+            FROM verification_readings
+            WHERE user_id = ? AND usable_email_id = ?
+            ORDER BY id
+            """,
+            (user_id, usable_email_id),
+        ).fetchall()
+    if not rows:
+        return VerificationState(last_extracted_at=None, seen_codes=frozenset())
+    codes = frozenset(r["code"] for r in rows if r["code"])
+    last_at = rows[-1]["created_at"]
+    return VerificationState(last_extracted_at=last_at, seen_codes=codes)
 
 
 def get_verification_history(
@@ -99,7 +148,6 @@ def get_verification_history(
     target = load_usable_email(settings, user_id, usable_email_id)
     if target is None:
         return None
-
     with connect(settings) as connection:
         rows = connection.execute(
             """
@@ -110,7 +158,6 @@ def get_verification_history(
             """,
             (user_id, usable_email_id),
         ).fetchall()
-
     return VerificationReading(
         usable_email=target,
         matches=tuple(
@@ -149,10 +196,8 @@ def load_target(
             """,
             (usable_email_id, user_id),
         ).fetchone()
-
     if row is None:
         return None
-
     usable_email = UsableEmail(
         id=row["usable_email_id"],
         address=row["address"],
@@ -178,10 +223,8 @@ def load_usable_email(settings: Settings, user_id: int, usable_email_id: int) ->
             """,
             (usable_email_id, user_id),
         ).fetchone()
-
     if row is None:
         return None
-
     return UsableEmail(
         id=row["id"],
         address=row["address"],
@@ -199,7 +242,6 @@ def save_history(
 ) -> None:
     if not matches:
         return
-
     with connect(settings) as connection:
         connection.executemany(
             """
@@ -226,7 +268,6 @@ def save_history(
 def coerce_message(message: MailboxMessage | dict[str, object]) -> MailboxMessage:
     if isinstance(message, MailboxMessage):
         return message
-
     recipient_address = message.get("recipient_address")
     return MailboxMessage(
         recipient_address=recipient_address if isinstance(recipient_address, str) else None,

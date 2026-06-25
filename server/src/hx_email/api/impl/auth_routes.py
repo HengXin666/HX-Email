@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import FastAPI, Header, HTTPException, status
+from fastapi import APIRouter, Header, HTTPException, status
 
 from hx_email.api.dependencies import bearer_token, require_admin, require_user
 from hx_email.api.schemas import Credentials, RegistrationSettingUpdate
@@ -17,8 +17,8 @@ from hx_email.server.auth import (
 )
 
 
-def register_auth_routes(app: FastAPI, settings: Settings) -> None:
-    @app.post("/auth/login")
+def register_auth_routes(router: APIRouter, settings: Settings) -> None:
+    @router.post("/auth/login")
     def log_in(credentials: Credentials) -> dict[str, object]:
         session = login(settings, credentials.username, credentials.password)
         if session is None:
@@ -29,7 +29,7 @@ def register_auth_routes(app: FastAPI, settings: Settings) -> None:
             "user": {"id": user.id, "username": user.username, "is_admin": user.is_admin},
         }
 
-    @app.put("/auth/me/credentials")
+    @router.put("/auth/me/credentials")
     def update_my_credentials(
         credentials: Credentials,
         authorization: Annotated[str | None, Header()] = None,
@@ -49,14 +49,14 @@ def register_auth_routes(app: FastAPI, settings: Settings) -> None:
             }
         }
 
-    @app.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
+    @router.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
     def log_out(authorization: Annotated[str | None, Header()] = None) -> None:
         token = bearer_token(authorization)
         if authenticate_token(settings, token) is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
         revoke_session(settings, token)
 
-    @app.post("/auth/register", status_code=status.HTTP_201_CREATED)
+    @router.post("/auth/register", status_code=status.HTTP_201_CREATED)
     def register(credentials: Credentials) -> dict[str, object]:
         if not registration_enabled(settings):
             raise HTTPException(
@@ -68,7 +68,7 @@ def register_auth_routes(app: FastAPI, settings: Settings) -> None:
             "user": {"id": user.id, "username": user.username, "is_admin": user.is_admin},
         }
 
-    @app.put("/admin/settings/registration")
+    @router.put("/admin/settings/registration")
     def update_registration_setting(
         payload: RegistrationSettingUpdate,
         authorization: Annotated[str | None, Header()] = None,

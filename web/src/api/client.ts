@@ -43,8 +43,8 @@ function handleSessionExpired(): void {
   if (_sessionExpiredHandled) return
   _sessionExpiredHandled = true
   try {
-    window.localStorage?.removeItem('hx_token')
-    window.localStorage?.removeItem('hx_user')
+    // Keep token so a refresh/reconnect can retry it;
+    // clear on explicit logout or after successful re-login.
     window.sessionStorage?.setItem('hx_session_expired', '1')
   } catch {}
   try {
@@ -52,13 +52,15 @@ function handleSessionExpired(): void {
   } catch {}
 }
 
+const API_BASE = '/api/v1'
+
 export async function streamRefresh(
   url: string,
   body?: object,
   onProgress?: (e: SSERefreshEvent) => void
 ): Promise<void> {
   const token = getStoredToken()
-  const res = await fetch(url, {
+  const res = await fetch(API_BASE + url, {
     method: body ? 'POST' : 'GET',
     headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined
@@ -69,7 +71,8 @@ export async function streamRefresh(
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
-    throw new Error(err.detail || '请求失败')
+    const msg = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail)
+    throw new Error(msg || '请求失败')
   }
   const reader = res.body?.getReader()
   if (!reader) throw new Error('No response body')
@@ -77,8 +80,21 @@ export async function streamRefresh(
   let buffer = ''
   while (true) {
     const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
+    if (value) {
+      buffer += decoder.decode(value, { stream: true })
+    }
+    if (done) {
+      // Flush decoder internal state and process remaining buffer
+      buffer += decoder.decode()
+      const remaining = buffer.trim()
+      if (remaining.startsWith('data: ')) {
+        try {
+          const data: SSERefreshEvent = JSON.parse(remaining.slice(6))
+          onProgress?.(data)
+        } catch { /* skip malformed final line */ }
+      }
+      break
+    }
     const lines = buffer.split('\n')
     buffer = lines.pop() || ''
     for (const line of lines) {
@@ -100,14 +116,15 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   if (token) headers['Authorization'] = `Bearer ${token}`
 
-  const res = await fetch(path, { ...init, headers })
+  const res = await fetch(API_BASE + path, { ...init, headers })
   if (res.status === 401 && token) {
     handleSessionExpired()
     throw new Error('登录已过期，请重新登录')
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
-    throw new Error(err.detail || '请求失败')
+    const msg = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail)
+    throw new Error(msg || '请求失败')
   }
   if (res.status === 204) return null as T
   try {
@@ -124,14 +141,15 @@ async function requestText(path: string, init: RequestInit = {}): Promise<string
     ...(init.headers as Record<string, string>)
   }
   if (token) headers['Authorization'] = `Bearer ${token}`
-  const res = await fetch(path, { ...init, headers })
+  const res = await fetch(API_BASE + path, { ...init, headers })
   if (res.status === 401 && token) {
     handleSessionExpired()
     throw new Error('登录已过期，请重新登录')
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
-    throw new Error(err.detail || '请求失败')
+    const msg = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail)
+    throw new Error(msg || '请求失败')
   }
   return res.text()
 }
@@ -188,6 +206,10 @@ export const api = {
     }),
   deactivateUsableEmail: (id: number) =>
     request<UsableEmail>(`/usable-emails/${id}/deactivate`, { method: 'POST' }),
+  deleteUsableEmail: (id: number) =>
+    request<{ success: boolean; message: string }>(`/usable-emails/${id}`, { method: 'DELETE' }),
+  activateUsableEmail: (id: number) =>
+    request<{ usable_email: UsableEmail }>(`/usable-emails/${id}/activate`, { method: 'POST' }),
   readVerification: (id: number) =>
     request<{ usable_email: UsableEmail; matches: VerificationMatch[] }>(
       `/usable-emails/${id}/verification/read`,
@@ -196,6 +218,10 @@ export const api = {
   verificationHistory: (id: number) =>
     request<{ usable_email: UsableEmail; matches: VerificationMatch[] }>(
       `/usable-emails/${id}/verification/history`
+    ),
+  verificationState: (id: number) =>
+    request<{ last_extracted_at: string | null; seen_codes: string[]; message_count: number }>(
+      `/usable-emails/${id}/verification/state`
     ),
 
   // Workbench paginated emails
@@ -243,13 +269,46 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ address, label })
     }),
+  getEmailAccount: (id: number) =>
+    request<{ account: EmailAccount & { password?: string; refresh_token?: string; has_password?: boolean; has_refresh_token?: boolean } }>(
+      `/email-accounts/${id}`
+    ).then((r) => r.account),
   deactivateEmailAccount: (id: number) =>
     request<EmailAccount>(`/email-accounts/${id}/deactivate`, { method: 'POST' }),
-  importEmailAccounts: (text: string, duplicate_strategy = 'skip') =>
+  deleteEmailAccount: (id: number) =>
+    request<{ success: boolean }>(`/email-accounts/${id}`, { method: 'DELETE' }),
+  updateEmailAccount: (id: number, data: {
+    email?: string | null; password?: string | null
+    client_id?: string | null; refresh_token?: string | null
+    group_id?: number | null; remark?: string | null
+    status?: string | null; provider?: string | null
+    imap_host?: string | null; imap_port?: number | null
+  }) =>
+    request<EmailAccount>(`/email-accounts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  importEmailAccounts: (text: string, options?: {
+    duplicate_strategy?: string
+    provider?: string
+    group_id?: number | null
+    add_to_pool?: boolean
+    custom_imap_host?: string
+    custom_imap_port?: number
+  }) =>
     request<AccountImportResult>('/email-accounts/import', {
       method: 'POST',
-      body: JSON.stringify({ text, duplicate_strategy })
+      body: JSON.stringify({
+        text,
+        duplicate_strategy: options?.duplicate_strategy ?? 'skip',
+        provider: options?.provider ?? 'outlook',
+        group_id: options?.group_id ?? null,
+        add_to_pool: options?.add_to_pool ?? false,
+        custom_imap_host: options?.custom_imap_host ?? '',
+        custom_imap_port: options?.custom_imap_port ?? 993,
+      })
     }),
+  listProviders: () =>
+    request<{ success: boolean; providers: Array<{ key: string; label: string; imap_host: string; imap_port: number }> }>(
+      '/email-accounts/providers'
+    ).then((r) => r.providers),
   exportEmailAccountsText: () => requestText('/email-accounts/export-text'),
 
   // ========== Token Tool ==========
@@ -317,6 +376,17 @@ export const api = {
     }),
   archiveTempMail: (id: number) =>
     request<UsableEmail>(`/temp-mail/${id}/archive`, { method: 'POST' }),
+  // ========== Stored Messages ==========
+  getMessages: (emailId: number, limit = 100, offset = 0) =>
+    request<{ messages: Array<{ id: number; from_address: string; recipient_address: string; subject: string; body: string; received_at: string; created_at: string }>; total: number }>(
+      `/usable-emails/${emailId}/messages?limit=${limit}&offset=${offset}`
+    ).then((r) => r.messages),
+  fetchEmails: (emailId: number) =>
+    request<{ account_id: number; email: string; messages_stored: number; codes_found: number; error: string }>(
+      `/usable-emails/${emailId}/fetch-emails`,
+      { method: 'POST' }
+    ),
+
   tempMessages: (id: number) =>
     request<{ messages: TempMessage[] }>(`/temp-mail/${id}/messages`).then((r) => r.messages),
   tempCodes: (id: number) =>

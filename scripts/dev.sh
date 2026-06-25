@@ -23,11 +23,21 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
+# 清理已占用的端口 (上次未正常退出的残留进程)
+echo "==> Cleaning up stale processes"
+for port in "${BACKEND_PORT}" "${FRONTEND_PORT}"; do
+  if fuser "${port}/tcp" 2>/dev/null; then
+    echo "    Killing process on port ${port}"
+    fuser -k "${port}/tcp" 2>/dev/null || true
+    sleep 0.5
+  fi
+done
+
 echo "==> Migrating database"
 (cd "${ROOT_DIR}/server" && uv run hx-email migrate)
 
 echo "==> Starting backend at ${API_TARGET}"
-(cd "${ROOT_DIR}/server" && uv run uvicorn hx_email.app:app --host "${BACKEND_HOST}" --port "${BACKEND_PORT}") &
+(cd "${ROOT_DIR}/server" && uv run uvicorn hx_email.app:app --host "${BACKEND_HOST}" --port "${BACKEND_PORT}" --reload) &
 backend_pid="$!"
 
 echo "==> Starting frontend at http://${FRONTEND_HOST}:${FRONTEND_PORT}"

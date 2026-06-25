@@ -96,6 +96,7 @@ def migrate(settings: Settings) -> Path:
                 client_id TEXT NOT NULL DEFAULT '',
                 refresh_token TEXT NOT NULL DEFAULT '',
                 status TEXT NOT NULL DEFAULT 'active',
+                last_refresh_at TEXT,
                 UNIQUE(user_id, primary_address)
             )
             """
@@ -112,6 +113,8 @@ def migrate(settings: Settings) -> Path:
             connection.execute(
                 "ALTER TABLE email_accounts ADD COLUMN refresh_token TEXT NOT NULL DEFAULT ''"
             )
+        if not column_exists(connection, "email_accounts", "last_refresh_at"):
+            connection.execute("ALTER TABLE email_accounts ADD COLUMN last_refresh_at TEXT")
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS groups (
@@ -248,6 +251,30 @@ def migrate(settings: Settings) -> Path:
                 ip_address TEXT DEFAULT '',
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS fetched_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id),
+                usable_email_id INTEGER NOT NULL REFERENCES usable_emails(id),
+                email_account_id INTEGER REFERENCES email_accounts(id),
+                from_address TEXT NOT NULL DEFAULT '',
+                recipient_address TEXT NOT NULL DEFAULT '',
+                subject TEXT NOT NULL DEFAULT '',
+                body TEXT NOT NULL DEFAULT '',
+                body_hash TEXT NOT NULL DEFAULT '',
+                received_at TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+            """
+        )
+        # Index for fast duplicate checks
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_fetched_msg_dedup
+            ON fetched_messages(usable_email_id, from_address, subject, body_hash)
             """
         )
         connection.execute(

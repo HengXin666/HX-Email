@@ -215,6 +215,8 @@ def try_refresh_oauth_token(
                     "success": True,
                     "message": "Token refreshed successfully",
                     "error_detail": "",
+                    "access_token": str(response_data.get("access_token", "")),
+                    "refresh_token": str(response_data.get("refresh_token", "")),
                 }
             return {
                 "success": False,

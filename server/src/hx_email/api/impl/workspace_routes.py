@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import FastAPI, Header, HTTPException, Response, status
+from fastapi import APIRouter, Header, HTTPException, Response, status
 
 from hx_email.api.dependencies import require_user
 from hx_email.api.schemas import GroupCreate, TagCreate, UsableEmailOrganization
@@ -22,15 +22,15 @@ from hx_email.server.workspace.workbench import (
 )
 
 
-def register_workspace_routes(app: FastAPI, settings: Settings) -> None:
-    @app.get("/workbench/overview")
+def register_workspace_routes(router: APIRouter, settings: Settings) -> None:
+    @router.get("/workbench/overview")
     def get_overview(
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
         user = require_user(settings, authorization)
         return serialize_workbench_overview(get_workbench_overview(settings, user.id))
 
-    @app.post("/groups", status_code=status.HTTP_201_CREATED)
+    @router.post("/groups", status_code=status.HTTP_201_CREATED)
     def create_user_group(
         payload: GroupCreate,
         authorization: Annotated[str | None, Header()] = None,
@@ -39,7 +39,7 @@ def register_workspace_routes(app: FastAPI, settings: Settings) -> None:
         group = create_group(settings, user.id, payload.name, payload.color)
         return {"id": group.id, "name": group.name, "color": group.color}
 
-    @app.get("/groups")
+    @router.get("/groups")
     def get_user_groups(
         authorization: Annotated[str | None, Header()] = None,
     ) -> list[dict[str, object]]:
@@ -49,7 +49,7 @@ def register_workspace_routes(app: FastAPI, settings: Settings) -> None:
             for group in list_groups(settings, user.id)
         ]
 
-    @app.put("/groups/{group_id}")
+    @router.put("/groups/{group_id}")
     def update_user_group(
         group_id: int,
         payload: GroupCreate,
@@ -61,7 +61,7 @@ def register_workspace_routes(app: FastAPI, settings: Settings) -> None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
         return {"id": group.id, "name": group.name, "color": group.color}
 
-    @app.delete("/groups/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
+    @router.delete("/groups/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
     def delete_user_group(
         group_id: int,
         authorization: Annotated[str | None, Header()] = None,
@@ -70,7 +70,7 @@ def register_workspace_routes(app: FastAPI, settings: Settings) -> None:
         if not delete_group(settings, user.id, group_id):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
 
-    @app.get("/groups/{group_id}/export")
+    @router.get("/groups/{group_id}/export")
     def export_group(
         group_id: int,
         authorization: Annotated[str | None, Header()] = None,
@@ -84,7 +84,7 @@ def register_workspace_routes(app: FastAPI, settings: Settings) -> None:
         }
         return Response(text, media_type="text/plain; charset=utf-8", headers=headers)
 
-    @app.post("/tags", status_code=status.HTTP_201_CREATED)
+    @router.post("/tags", status_code=status.HTTP_201_CREATED)
     def create_user_tag(
         payload: TagCreate,
         authorization: Annotated[str | None, Header()] = None,
@@ -93,7 +93,7 @@ def register_workspace_routes(app: FastAPI, settings: Settings) -> None:
         tag = create_tag(settings, user.id, payload.name, payload.color)
         return {"id": tag.id, "name": tag.name, "color": tag.color}
 
-    @app.get("/tags")
+    @router.get("/tags")
     def get_user_tags(
         authorization: Annotated[str | None, Header()] = None,
     ) -> list[dict[str, object]]:
@@ -103,7 +103,7 @@ def register_workspace_routes(app: FastAPI, settings: Settings) -> None:
             for tag in list_tags(settings, user.id)
         ]
 
-    @app.get("/workbench/usable-emails")
+    @router.get("/workbench/usable-emails")
     def get_workbench_usable_emails(
         authorization: Annotated[str | None, Header()] = None,
         kind: str | None = None,
@@ -135,7 +135,7 @@ def register_workspace_routes(app: FastAPI, settings: Settings) -> None:
             "page_size": result.page_size,
         }
 
-    @app.put("/usable-emails/{usable_email_id}/organize")
+    @router.put("/usable-emails/{usable_email_id}/organize")
     def organize_email(
         usable_email_id: int,
         payload: UsableEmailOrganization,

@@ -1,6 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Topbar } from '../components/layout'
+
+// Email body HTML rendering styles
+const EMAIL_BODY_STYLE = {
+  wordBreak: 'break-word' as const,
+  overflowWrap: 'break-word' as const,
+  maxWidth: '100%',
+} as React.CSSProperties
 import { useApp } from '../store/AppContext'
 import { useToast } from '../components/ui/Toast'
 import { Button, Modal, Input, Badge, Card } from '../components/ui/Primitives'
@@ -13,7 +20,6 @@ import {
   IconCheck,
   IconMail,
   IconKey,
-  IconMoreVertical,
   IconStar,
   IconRefresh,
   IconTag,
@@ -21,16 +27,39 @@ import {
   IconLink,
   IconClock,
   IconShield,
-  IconZap,
+  IconCode,
   IconAt,
   IconUser,
-  IconDownload,
-  IconUpload,
   IconAlertTriangle,
   IconX
 } from '../components/icons'
 import { api, streamRefresh } from '../api/client'
-import type { AccountImportResult, UsableEmail, VerificationMatch, SSERefreshEvent } from '../types'
+import type { UsableEmail, VerificationMatch, SSERefreshEvent, AccountImportResult } from '../types'
+
+// ========== 通用确认弹窗 ==========
+const ConfirmModal: React.FC<{
+  open: boolean
+  title: string
+  message: string
+  confirmLabel?: string
+  danger?: boolean
+  loading?: boolean
+  onConfirm: () => void
+  onCancel: () => void
+}> = ({ open, title, message, confirmLabel = '确认', danger = true, loading, onConfirm, onCancel }) => (
+  <Modal open={open} onClose={onCancel} title={title} size="sm"
+    footer={
+      <>
+        <Button variant="ghost" onClick={onCancel} disabled={loading}>取消</Button>
+        <Button variant={danger ? 'danger' : 'primary'} onClick={onConfirm} loading={loading}>
+          {confirmLabel}
+        </Button>
+      </>
+    }
+  >
+    <p className="text-sm text-gh-text-secondary">{message}</p>
+  </Modal>
+)
 
 const COLORS = [
   '#58a6ff',
@@ -54,6 +83,7 @@ const GroupSidebar: React.FC<{
   const [showNew, setShowNew] = useState(false)
   const [newName, setNewName] = useState('')
   const [newColor, setNewColor] = useState(COLORS[0])
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
 
   const counts = useMemo(() => {
     const map: Record<number | 'all', number> = { all: emails.length }
@@ -76,18 +106,25 @@ const GroupSidebar: React.FC<{
   }
 
   const handleDelete = async (id: number) => {
-    if (!confirm('确定删除该分组？')) return
+    setDeleteConfirmId(id)
+  }
+
+  const confirmDelete = async () => {
+    const id = deleteConfirmId
+    if (!id) return
     try {
       await deleteGroup(id)
       if (selectedGroupId === id) onSelect(null)
       toast('分组已删除', 'success')
     } catch (err: any) {
       toast(err.message, 'error')
+    } finally {
+      setDeleteConfirmId(null)
     }
   }
 
   return (
-    <div className="w-56 shrink-0 h-full border-r border-gh-border bg-gh-canvas-subtle/50 flex flex-col">
+    <div className="w-44 shrink-0 min-h-0 border-r border-gh-border bg-gh-canvas-subtle/50 flex flex-col overflow-hidden">
       <div className="h-12 px-3 flex items-center justify-between border-b border-gh-border">
         <span className="text-xs font-semibold text-gh-text-muted uppercase tracking-wider">
           分组
@@ -156,12 +193,22 @@ const GroupSidebar: React.FC<{
         </div>
       </Modal>
 
-      {/* 编辑分组 */}
+      {/* 编辑分组 — key 确保切换分组时状态完全重置 */}
       <EditGroupModal
+        key={editingGroup ?? 'new'}
         groupId={editingGroup}
         onClose={() => setEditingGroup(null)}
         onUpdate={updateGroup}
         onDelete={deleteGroup}
+      />
+
+      <ConfirmModal
+        open={deleteConfirmId !== null}
+        title="删除分组"
+        message={`确定删除该分组吗？此操作不可撤销。`}
+        confirmLabel="删除"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteConfirmId(null)}
       />
     </div>
   )
@@ -175,12 +222,11 @@ const GroupItem: React.FC<{
   onEdit: () => void
   onDelete: () => void
 }> = ({ group, count, selected, onClick, onEdit, onDelete }) => {
-  const [showMenu, setShowMenu] = useState(false)
   return (
     <div className="relative group">
       <button
         onClick={onClick}
-        className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-colors ${
+        className={`w-full flex items-center gap-2.5 px-2.5 py-2 pr-14 rounded-md text-sm transition-colors ${
           selected
             ? 'bg-gh-accent/10 text-gh-accent'
             : 'text-gh-text-muted hover:text-gh-text hover:bg-gh-border/40'
@@ -193,49 +239,23 @@ const GroupItem: React.FC<{
         <span className="flex-1 text-left truncate">{group.name}</span>
         <span className="text-xs tabular-nums opacity-70">{count}</span>
       </button>
-      <button
-        onClick={(e) => {
-          e.stopPropagation()
-          setShowMenu((s) => !s)
-        }}
-        className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded-md text-gh-text-secondary hover:text-gh-text hover:bg-gh-border/50 opacity-0 group-hover:opacity-100 transition-opacity"
-      >
-        <IconMoreVertical size={14} />
-      </button>
-      <AnimatePresence>
-        {showMenu && (
-          <>
-            <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="absolute right-0 top-full mt-1 z-20 w-32 bg-gh-canvas-subtle border border-gh-border rounded-md shadow-xl overflow-hidden"
-            >
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onEdit()
-                  setShowMenu(false)
-                }}
-                className="w-full px-3 py-1.5 text-sm text-left text-gh-text hover:bg-gh-border/40 flex items-center gap-2"
-              >
-                <IconEdit size={12} /> 编辑
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onDelete()
-                  setShowMenu(false)
-                }}
-                className="w-full px-3 py-1.5 text-sm text-left text-gh-danger hover:bg-gh-danger/10 flex items-center gap-2"
-              >
-                <IconTrash size={12} /> 删除
-              </button>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+      {/* 编辑 / 删除 — hover 时直接显示，无需二次点击下拉菜单 */}
+      <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+        <button
+          onClick={(e) => { e.stopPropagation(); onEdit() }}
+          className="p-1 rounded-md text-gh-text-muted hover:text-gh-accent hover:bg-gh-accent/10 transition-colors"
+          title="编辑分组"
+        >
+          <IconEdit size={13} />
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete() }}
+          className="p-1 rounded-md text-gh-text-muted hover:text-red-400 hover:bg-red-400/10 transition-colors"
+          title="删除分组"
+        >
+          <IconTrash size={13} />
+        </button>
+      </div>
     </div>
   )
 }
@@ -251,13 +271,19 @@ const EditGroupModal: React.FC<{
   const g = groups.find((x) => x.id === groupId)
   const [name, setName] = useState(g?.name || '')
   const [color, setColor] = useState(g?.color || COLORS[0])
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
+  // 仅在 groupId 变化（切换编辑目标）时同步表单；依赖原始值而非对象引用，
+  // 避免因 context 中 groups 数组引用更新而不断重置用户正在编辑的内容。
   useEffect(() => {
-    if (g) {
-      setName(g.name)
-      setColor(g.color)
+    const current = groups.find((x) => x.id === groupId)
+    if (current) {
+      setName(current.name)
+      setColor(current.color)
     }
-  }, [g])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupId])
 
   const handleSave = async () => {
     if (!g || !name.trim()) return
@@ -270,45 +296,67 @@ const EditGroupModal: React.FC<{
     }
   }
 
+  const handleDelete = async () => {
+    if (!g) return
+    setDeleting(true)
+    try {
+      await onDelete(g.id)
+      toast('分组已删除', 'success')
+      onClose()
+    } catch (err: any) {
+      toast(err.message, 'error')
+    } finally {
+      setDeleting(false)
+      setShowDeleteConfirm(false)
+    }
+  }
+
   return (
-    <Modal
-      open={!!groupId}
-      onClose={onClose}
-      title="编辑分组"
-      footer={
-        <>
-          <Button variant="danger" onClick={async () => {
-            if (g && confirm('确定删除？')) {
-              await onDelete(g.id)
-              onClose()
-            }
-          }}>
-            删除
-          </Button>
-          <Button variant="ghost" onClick={onClose}>取消</Button>
-          <Button variant="primary" onClick={handleSave}>保存</Button>
-        </>
-      }
-    >
-      <div className="space-y-3">
-        <Input label="分组名称" value={name} onChange={(e) => setName(e.target.value)} />
-        <div>
-          <label className="text-xs font-medium text-gh-text-muted block mb-1.5">颜色</label>
-          <div className="flex gap-2 flex-wrap">
-            {COLORS.map((c) => (
-              <button
-                key={c}
-                onClick={() => setColor(c)}
-                className={`w-7 h-7 rounded-full transition-all ${
-                  color === c ? 'ring-2 ring-gh-text ring-offset-2 ring-offset-gh-canvas-subtle scale-110' : ''
-                }`}
-                style={{ background: c }}
-              />
-            ))}
+    <>
+      <Modal
+        open={!!groupId}
+        onClose={onClose}
+        title="编辑分组"
+        footer={
+          <>
+            <Button variant="danger" onClick={() => setShowDeleteConfirm(true)}>
+              删除
+            </Button>
+            <Button variant="ghost" onClick={onClose}>取消</Button>
+            <Button variant="primary" onClick={handleSave}>保存</Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <Input label="分组名称" value={name} onChange={(e) => setName(e.target.value)} />
+          <div>
+            <label className="text-xs font-medium text-gh-text-muted block mb-1.5">颜色</label>
+            <div className="flex gap-2 flex-wrap">
+              {COLORS.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setColor(c)}
+                  className={`w-7 h-7 rounded-full transition-all ${
+                    color === c ? 'ring-2 ring-gh-text ring-offset-2 ring-offset-gh-canvas-subtle scale-110' : ''
+                  }`}
+                  style={{ background: c }}
+                />
+              ))}
+            </div>
           </div>
         </div>
-      </div>
-    </Modal>
+      </Modal>
+
+      <ConfirmModal
+        open={showDeleteConfirm}
+        title="删除分组"
+        message={`确定删除分组「${g?.name || ''}」吗？此操作不可撤销。`}
+        confirmLabel="删除"
+        loading={deleting}
+        onConfirm={handleDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
+    </>
   )
 }
 
@@ -321,7 +369,7 @@ const EmailList: React.FC<{
   onToggleRefreshSelect: (accountId: number) => void
   onRefreshAccount: () => void
 }> = ({ groupId, selectedEmailId, onSelect, selectedForRefresh, onToggleRefreshSelect, onRefreshAccount }) => {
-  const { emails, groups, refreshEmails } = useApp()
+  const { emails, groups, accounts, refreshEmails } = useApp()
   const [showAdd, setShowAdd] = useState(false)
   const [showSettings, setShowSettings] = useState<number | null>(null)
   const [query, setQuery] = useState('')
@@ -335,32 +383,65 @@ const EmailList: React.FC<{
 
   const group = groups.find((g) => g.id === groupId)
 
+  // Compute latest refresh time across accounts in this filtered view
+  const latestRefreshAt = useMemo(() => {
+    const accountIds = new Set(filtered.map((e) => e.email_account_id).filter(Boolean) as number[])
+    let latest: string | null = null
+    for (const a of accounts || []) {
+      if (accountIds.has(a.id) && a.last_refresh_at) {
+        if (!latest || a.last_refresh_at > latest) latest = a.last_refresh_at
+      }
+    }
+    return latest
+  }, [accounts, filtered])
+
+  const refreshTimeLabel = useMemo(() => {
+    if (!latestRefreshAt) return ''
+    try {
+      const d = new Date(latestRefreshAt)
+      if (isNaN(d.getTime())) return ''
+      const diff = Math.floor((Date.now() - d.getTime()) / 1000)
+      if (diff < 60) return '刚刚刷新'
+      if (diff < 3600) return `${Math.floor(diff / 60)}分钟前刷新`
+      if (diff < 86400) return `${Math.floor(diff / 3600)}小时前刷新`
+      return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }) + ' 刷新'
+    } catch { return '' }
+  }, [latestRefreshAt])
+
   return (
-    <div className="w-80 shrink-0 h-full border-r border-gh-border bg-gh-canvas flex flex-col">
-      <div className="h-12 px-3 flex items-center gap-2 border-b border-gh-border">
-        <div className="flex-1 flex items-center gap-2 min-w-0">
-          {group && (
-            <div className="w-2 h-2 rounded-full shrink-0" style={{ background: group.color }} />
-          )}
-          <span className="text-sm font-semibold text-gh-text truncate">
-            {group ? group.name : '全部邮箱'}
-          </span>
-          <span className="text-xs text-gh-text-secondary tabular-nums">{filtered.length}</span>
+    <div className="w-80 shrink-0 min-h-0 border-r border-gh-border bg-gh-canvas flex flex-col overflow-hidden">
+      <div className="px-3 py-2 border-b border-gh-border">
+        <div className="flex items-center gap-2">
+          <div className="flex-1 flex items-center gap-2 min-w-0">
+            {group && (
+              <div className="w-2 h-2 rounded-full shrink-0" style={{ background: group.color }} />
+            )}
+            <span className="text-sm font-semibold text-gh-text truncate">
+              {group ? group.name : '全部邮箱'}
+            </span>
+            <span className="text-xs text-gh-text-secondary tabular-nums">{filtered.length}</span>
+          </div>
+          <button
+            onClick={refreshEmails}
+            className="p-1.5 rounded-md text-gh-text-muted hover:text-gh-text hover:bg-gh-border/40 transition-colors"
+            title="刷新"
+          >
+            <IconRefresh size={14} />
+          </button>
+          <button
+            onClick={() => setShowAdd(true)}
+            className="p-1.5 rounded-md text-gh-text-muted hover:text-gh-accent hover:bg-gh-accent/10 transition-colors"
+            title="添加邮箱"
+          >
+            <IconPlus size={14} />
+          </button>
         </div>
-        <button
-          onClick={refreshEmails}
-          className="p-1.5 rounded-md text-gh-text-muted hover:text-gh-text hover:bg-gh-border/40 transition-colors"
-          title="刷新"
-        >
-          <IconRefresh size={14} />
-        </button>
-        <button
-          onClick={() => setShowAdd(true)}
-          className="p-1.5 rounded-md text-gh-text-muted hover:text-gh-accent hover:bg-gh-accent/10 transition-colors"
-          title="添加邮箱"
-        >
-          <IconPlus size={14} />
-        </button>
+        {refreshTimeLabel && (
+          <div className="mt-1 text-[10px] text-gh-text-secondary flex items-center gap-1">
+            <IconClock size={10} />
+            {refreshTimeLabel}
+          </div>
+        )}
       </div>
 
       <div className="px-3 py-2 border-b border-gh-border">
@@ -423,17 +504,26 @@ const EmailCard: React.FC<{
   onRefreshAccount?: () => void
 }> = ({ email, selected, onClick, onSettings, selectedForRefresh, onToggleRefreshSelect, onRefreshAccount }) => {
   const { toast } = useToast()
+  const { refreshAccounts, refreshEmails } = useApp()
   const [copied, setCopied] = useState(false)
   const [loadingCode, setLoadingCode] = useState(false)
-  const [showAliases, setShowAliases] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  const lastCodeFetchRef = React.useRef<{ time: number; codes: Set<string> }>({ time: 0, codes: new Set() })
+
+  // 三种操作的确认弹窗状态
+  type ActionMode = 'activate' | 'deactivate' | 'delete' | null
+  const [actionMode, setActionMode] = useState<ActionMode>(null)
+  const [actionLoading, setActionLoading] = useState(false)
+
+  const isInactive = email.status === 'inactive'
+  const hasAccount = !!email.email_account_id
 
   const handleRefresh = async (e: React.MouseEvent) => {
     e.stopPropagation()
-    if (!email.email_account_id) return
+    if (!hasAccount) return
     setRefreshing(true)
     try {
-      const res = await api.refreshAccount(email.email_account_id)
+      const res = await api.refreshAccount(email.email_account_id!)
       toast(`刷新完成: ${res.email} - ${res.status}`, res.status === 'success' ? 'success' : 'error')
       onRefreshAccount?.()
     } catch (err: any) {
@@ -456,17 +546,111 @@ const EmailCard: React.FC<{
     setLoadingCode(true)
     try {
       const res = await api.readVerification(email.id)
-      const match = res.matches[0]
-      if (match?.code) {
-        navigator.clipboard.writeText(match.code)
-        toast(`验证码 ${match.code} 已复制`, 'success')
+      const now = Date.now()
+      const prev = lastCodeFetchRef.current
+      const isReFetch = prev.time > 0
+      const secondsSinceLast = isReFetch ? (now - prev.time) / 1000 : 0
+
+      if (isReFetch && secondsSinceLast > 30) {
+        // User is probably waiting for a NEW verification email — find fresh codes
+        const freshMatches = res.matches.filter((m: any) => m.code && !prev.codes.has(m.code))
+        if (freshMatches.length > 0) {
+          const code = freshMatches[0].code
+          navigator.clipboard.writeText(code)
+          toast(`新验证码 ${code} 已复制 (距上次 ${Math.floor(secondsSinceLast)}秒)`, 'success')
+          // Update seen codes
+          freshMatches.forEach((m: any) => prev.codes.add(m.code))
+          lastCodeFetchRef.current = { time: now, codes: prev.codes }
+        } else {
+          // No new codes — fall back to first available
+          const match = res.matches[0]
+          if (match?.code) {
+            navigator.clipboard.writeText(match.code)
+            toast(`验证码 ${match.code} 已复制 (暂无新验证码)`, 'info')
+          } else {
+            toast('未找到验证码 (可能邮件尚未到达)', 'info')
+          }
+          lastCodeFetchRef.current = { time: now, codes: prev.codes }
+        }
       } else {
-        toast('未找到验证码', 'info')
+        // First fetch or quick re-fetch (<30s): return first available code
+        const match = res.matches[0]
+        if (match?.code) {
+          navigator.clipboard.writeText(match.code)
+          toast(`验证码 ${match.code} 已复制`, 'success')
+          // Track this code
+          prev.codes.add(match.code)
+          lastCodeFetchRef.current = { time: now, codes: prev.codes }
+        } else {
+          toast('未找到验证码', 'info')
+          lastCodeFetchRef.current = { time: now, codes: prev.codes }
+        }
       }
     } catch (err: any) {
       toast(err.message, 'error')
     } finally {
       setLoadingCode(false)
+    }
+  }
+
+  // ===== 启用 =====
+  const handleActivate = async () => {
+    setActionLoading(true)
+    try {
+      if (hasAccount) {
+        await api.updateEmailAccount(email.email_account_id!, { status: 'active' })
+      } else {
+        await api.activateUsableEmail(email.id)
+      }
+      toast(`「${email.address}」已启用`, 'success')
+      refreshAccounts()
+      refreshEmails()
+    } catch (err: any) {
+      toast(err.message, 'error')
+    } finally {
+      setActionLoading(false)
+      setActionMode(null)
+    }
+  }
+
+  // ===== 停用（软删除，保留数据） =====
+  const handleDeactivate = async () => {
+    setActionLoading(true)
+    try {
+      if (hasAccount) {
+        await api.deactivateEmailAccount(email.email_account_id!)
+      } else {
+        await api.deactivateUsableEmail(email.id)
+      }
+      toast(`「${email.address}」已停用（数据保留）`, 'success')
+      refreshAccounts()
+      refreshEmails()
+    } catch (err: any) {
+      toast(err.message, 'error')
+    } finally {
+      setActionLoading(false)
+      setActionMode(null)
+    }
+  }
+
+  // ===== 删除（硬删除，清空所有关联数据） =====
+  const handleDelete = async () => {
+    setActionLoading(true)
+    try {
+      if (hasAccount) {
+        await api.deleteEmailAccount(email.email_account_id!)
+        toast(`「${email.address}」已彻底删除（含关联别名、绑定、日志等）`, 'success')
+      } else {
+        await api.deleteUsableEmail(email.id)
+        toast(`「${email.address}」已彻底删除`, 'success')
+      }
+      refreshAccounts()
+      refreshEmails()
+    } catch (err: any) {
+      toast(err.message, 'error')
+    } finally {
+      setActionLoading(false)
+      setActionMode(null)
     }
   }
 
@@ -479,9 +663,9 @@ const EmailCard: React.FC<{
 
   return (
     <motion.div layout initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-      <Card selected={selected} onClick={onClick} className="p-3">
+      <Card selected={selected} onClick={onClick} className={`p-3 ${isInactive ? 'opacity-60' : ''}`}>
         <div className="flex items-start gap-2">
-          {email.email_account_id && onToggleRefreshSelect ? (
+          {hasAccount && onToggleRefreshSelect ? (
             <div className="shrink-0 pt-1" onClick={(e) => e.stopPropagation()}>
               <input
                 type="checkbox"
@@ -512,6 +696,12 @@ const EmailCard: React.FC<{
               }>
                 {kindLabel[email.kind]}
               </Badge>
+              {/* 状态标签 */}
+              {isInactive ? (
+                <Badge color="#6e7681">已停用</Badge>
+              ) : (
+                <Badge color="#3fb950">活跃</Badge>
+              )}
             </div>
             <button
               onClick={handleCopy}
@@ -552,10 +742,10 @@ const EmailCard: React.FC<{
                   <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" fill="currentColor" />
                 </svg>
               ) : (
-                <IconZap size={13} />
+                <IconCode size={13} />
               )}
             </button>
-            {email.email_account_id && onRefreshAccount ? (
+            {hasAccount && onRefreshAccount ? (
               <button
                 onClick={handleRefresh}
                 disabled={refreshing}
@@ -579,9 +769,76 @@ const EmailCard: React.FC<{
             >
               <IconSettings size={13} />
             </button>
+            {/* 根据状态显示不同操作按钮 */}
+            {isInactive ? (
+              <button
+                onClick={(e) => { e.stopPropagation(); setActionMode('activate') }}
+                className="p-1 rounded-md text-gh-text-muted hover:text-green-400 hover:bg-green-400/10 transition-colors"
+                title="启用 — 恢复为活跃状态"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setActionMode('deactivate') }}
+                  className="p-1 rounded-md text-gh-text-muted hover:text-gh-warning hover:bg-gh-warning/10 transition-colors"
+                  title="停用 — 保留数据，可重新启用"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" /><line x1="8" y1="12" x2="16" y2="12" />
+                  </svg>
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setActionMode('delete') }}
+                  className="p-1 rounded-md text-gh-text-muted hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                  title="删除 — 彻底清除所有关联数据，不可恢复"
+                >
+                  <IconTrash size={13} />
+                </button>
+              </>
+            )}
           </div>
         </div>
       </Card>
+
+      {/* 启用确认 */}
+      <ConfirmModal
+        open={actionMode === 'activate'}
+        title="启用邮箱"
+        message={`确定启用邮箱「${email.address}」吗？将恢复为活跃状态。`}
+        confirmLabel="启用"
+        danger={false}
+        loading={actionLoading}
+        onConfirm={handleActivate}
+        onCancel={() => setActionMode(null)}
+      />
+
+      {/* 停用确认 */}
+      <ConfirmModal
+        open={actionMode === 'deactivate'}
+        title="停用邮箱"
+        message={`确定停用邮箱「${email.address}」吗？\n\n数据将保留在数据库中，可随时重新启用。关联别名、绑定等不会丢失。`}
+        confirmLabel="停用"
+        danger={true}
+        loading={actionLoading}
+        onConfirm={handleDeactivate}
+        onCancel={() => setActionMode(null)}
+      />
+
+      {/* 删除确认 — 强调不可逆 */}
+      <ConfirmModal
+        open={actionMode === 'delete'}
+        title="彻底删除邮箱"
+        message={`确定要彻底删除「${email.address}」吗？\n\n⚠️ 此操作不可撤销！将强制删除以下所有关联数据：\n• 邮箱账户及所有别名\n• 平台绑定记录\n• 邮箱池条目\n• 验证码读取记录\n• 刷新日志\n• 标签关联`}
+        confirmLabel="彻底删除"
+        danger={true}
+        loading={actionLoading}
+        onConfirm={handleDelete}
+        onCancel={() => setActionMode(null)}
+      />
     </motion.div>
   )
 }
@@ -589,58 +846,133 @@ const EmailCard: React.FC<{
 // ========== 右侧：邮件详情 ==========
 const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
   const { accounts } = useApp()
+  const { toast } = useToast()
   const [messages, setMessages] = React.useState<any[]>([])
   const [codes, setCodes] = React.useState<any[]>([])
   const [links, setLinks] = React.useState<any[]>([])
   const [bindings, setBindings] = React.useState<any[]>([])
   const [loading, setLoading] = React.useState(false)
+  const [syncing, setSyncing] = React.useState(false)  // subtle indicator for background fetch
+  const [lastRefreshed, setLastRefreshed] = React.useState<Date | null>(null)
+  const [elapsed, setElapsed] = React.useState('')
   const [tab, setTab] = React.useState<'messages' | 'verify' | 'bindings'>('messages')
+  const [fetching, setFetching] = React.useState(false)
+  const [fetchResult, setFetchResult] = React.useState<string | null>(null)
 
-  const account = accounts.find((a) => a.id === email?.email_account_id)
+  const account = (accounts || []).find((a) => a.id === email?.email_account_id)
   const aliases = account?.usable_emails.filter((u) => u.kind === 'alias') || []
+  const hasIMAP = !!email?.email_account_id
+
+  const loadData = React.useCallback(async (showSpinner = true) => {
+    if (!email) return
+    if (showSpinner) setLoading(true)
+    else setSyncing(true)
+    try {
+      if (email.kind === 'temp') {
+        const [m, c, l] = await Promise.all([
+          api.tempMessages(email.id),
+          api.tempCodes(email.id),
+          api.tempLinks(email.id)
+        ])
+        setMessages(m)
+        setCodes(c)
+        setLinks(l)
+      } else if (hasIMAP) {
+        // Cache-first: load stored messages first, verification from history
+        const [storedMsgs, verifyRes] = await Promise.all([
+          api.getMessages(email.id).catch(() => []),
+          api.readVerification(email.id).catch(() => ({ matches: [] }))
+        ])
+        setMessages(storedMsgs.map((m: any) => ({
+          id: m.id,
+          from_address: m.from_address || '—',
+          subject: m.subject || '(无主题)',
+          text: m.body || '',
+          received_at: m.received_at || m.created_at || ''
+        })))
+        setCodes(verifyRes.matches.filter((x: any) => x.code).map((x: any, i: number) => ({
+          message_id: `v_${i}`,
+          code: x.code
+        })))
+        setLinks(verifyRes.matches.filter((x: any) => x.link).map((x: any, i: number) => ({
+          message_id: `v_${i}`,
+          url: x.link
+        })))
+      } else {
+        setMessages([])
+        setCodes([])
+        setLinks([])
+      }
+      const b = await api.listBindings(email.id)
+      setBindings(b)
+      setLastRefreshed(new Date())
+    } catch (err: any) {
+      console.error(err)
+      toast(err?.message || '加载失败', 'error')
+    } finally {
+      setLoading(false)
+      setSyncing(false)
+    }
+  }, [email, toast, hasIMAP])
+
+  // 手动触发 IMAP 拉取
+  const handleFetchEmails = async () => {
+    if (!email || !hasIMAP) return
+    setFetching(true)
+    setFetchResult(null)
+    setSyncing(true)
+    try {
+      const res = await api.fetchEmails(email.id)
+      const error = res.error || ''
+      if (error) {
+        toast(`拉取失败: ${error}`, 'error')
+        setFetchResult(`❌ ${error}`)
+      } else if (res.messages_stored === 0) {
+        setFetchResult('已是最新')
+      } else {
+        toast(`拉取完成: ${res.messages_stored} 封新邮件, ${res.codes_found} 个验证码`, 'success')
+        setFetchResult(`${res.messages_stored} 封新邮件, ${res.codes_found} 个验证码`)
+        // Reload data without spinner to merge new messages into display
+        setTimeout(() => loadData(false), 300)
+      }
+    } catch (err: any) {
+      toast(`网络错误: ${err.message}`, 'error')
+      setFetchResult(`❌ ${err.message}`)
+    } finally {
+      setFetching(false)
+      setSyncing(false)
+    }
+  }
+
+  const fetchTriggeredRef = React.useRef<number | null>(null)
 
   useEffect(() => {
     if (!email) return
-    const load = async () => {
-      setLoading(true)
-      try {
-        if (email.kind === 'temp') {
-          const [m, c, l] = await Promise.all([
-            api.tempMessages(email.id),
-            api.tempCodes(email.id),
-            api.tempLinks(email.id)
-          ])
-          setMessages(m)
-          setCodes(c)
-          setLinks(l)
-        } else {
-          const res = await api.readVerification(email.id)
-          setMessages(res.matches.map((x, i) => ({
-            id: `v_${i}`,
-            from_address: x.recipient_address,
-            subject: x.subject,
-            text: `验证码: ${x.code || '—'}\n链接: ${x.link || '—'}`,
-            received_at: x.received_at
-          })))
-          setCodes(res.matches.filter((x) => x.code).map((x, i) => ({
-            message_id: `v_${i}`,
-            code: x.code
-          })))
-          setLinks(res.matches.filter((x) => x.link).map((x, i) => ({
-            message_id: `v_${i}`,
-            url: x.link
-          })))
-        }
-        const b = await api.listBindings(email.id)
-        setBindings(b)
-      } catch (err) {
-        console.error(err)
-      } finally {
-        setLoading(false)
-      }
+    setFetchResult(null)
+    // Cache-first: load immediately with spinner (first load), then background sync
+    loadData(true)
+    // Auto-trigger IMAP fetch to get latest emails (each email only once per selection)
+    if (hasIMAP && fetchTriggeredRef.current !== email.id) {
+      fetchTriggeredRef.current = email.id
+      setTimeout(() => handleFetchEmails(), 300)
     }
-    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [email])
+
+  // 更新 "X 秒前" 显示
+  useEffect(() => {
+    if (!lastRefreshed) { setElapsed(''); return }
+    const update = () => {
+      const diff = Math.floor((Date.now() - lastRefreshed.getTime()) / 1000)
+      if (diff < 5) setElapsed('刚刚')
+      else if (diff < 60) setElapsed(`${diff}秒前`)
+      else if (diff < 3600) setElapsed(`${Math.floor(diff / 60)}分钟前`)
+      else setElapsed(`${Math.floor(diff / 3600)}小时前`)
+    }
+    update()
+    const timer = setInterval(update, 10000)
+    return () => clearInterval(timer)
+  }, [lastRefreshed])
 
   if (!email) {
     return (
@@ -654,7 +986,7 @@ const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
   }
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 h-full">
+    <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
       {/* 头部信息 */}
       <motion.div
         key={email.id}
@@ -701,7 +1033,7 @@ const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
         </div>
 
         {account && (
-          <div className="mt-3 pt-3 border-t border-gh-border/60 flex items-center gap-2 text-xs text-gh-text-secondary">
+          <div className="mt-3 pt-3 border-t border-gh-border/60 flex items-center gap-2 text-xs text-gh-text-secondary flex-wrap">
             <IconUser size={12} />
             <span>关联账户：<span className="text-gh-text">{account.display_name}</span></span>
             <span>·</span>
@@ -711,6 +1043,16 @@ const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
                 <span>·</span>
                 <span>{aliases.length} 个别名</span>
               </>
+            )}
+            <div className="flex-1" />
+            {elapsed && (
+              <span className="text-[11px] text-gh-text-secondary whitespace-nowrap">
+                <IconClock size={10} className="inline mr-1" />
+                {elapsed}
+              </span>
+            )}
+            {fetchResult && (
+              <span className="text-xs text-gh-text-muted">{fetchResult}</span>
             )}
           </div>
         )}
@@ -732,7 +1074,7 @@ const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
       </motion.div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-1 px-6 border-b border-gh-border bg-gh-canvas-subtle/40">
+      <div className="sticky top-0 z-10 flex items-center gap-1 px-6 border-b border-gh-border bg-gh-canvas-subtle/40 backdrop-blur-sm">
         {[
           { k: 'messages', label: '邮件', icon: IconMail, count: messages.length },
           { k: 'verify', label: '验证码/链接', icon: IconKey, count: codes.length + links.length },
@@ -756,13 +1098,59 @@ const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
             )}
           </button>
         ))}
+        {/* 刷新按钮 */}
+        <div className="flex-1" />
+        <div className="flex items-center gap-2 pr-2">
+          <button
+            onClick={() => { if (hasIMAP) handleFetchEmails(); else loadData() }}
+            disabled={loading || fetching}
+            className="px-2 py-1 rounded text-xs text-gh-accent bg-gh-accent/10 border border-gh-accent/20 hover:bg-gh-accent/20 transition-colors disabled:opacity-50 flex items-center gap-1"
+            title={hasIMAP ? '从 IMAP 拉取最新邮件并存入数据库' : '刷新视图'}
+          >
+            {loading || fetching ? (
+              <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
+                <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" fill="currentColor" />
+              </svg>
+            ) : (
+              <IconRefresh size={12} />
+            )}
+            {hasIMAP ? '拉取' : '刷新'}
+          </button>
+        </div>
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6">
+      {/* Custom scrollbar styles */}
+      <style>{`
+        .email-detail-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+        .email-detail-scroll::-webkit-scrollbar-track { background: transparent; }
+        .email-detail-scroll::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+        .email-detail-scroll::-webkit-scrollbar-thumb:hover { background: #484f58; }
+        .email-detail-scroll::-webkit-scrollbar-corner { background: transparent; }
+        /* Firefox */
+        .email-detail-scroll { scrollbar-width: thin; scrollbar-color: #30363d transparent; }
+      `}</style>
+      <div className="flex-1 overflow-y-auto p-6 email-detail-scroll">
+        {/* Subtle syncing indicator */}
+        {syncing && (
+          <div className="mb-3 flex items-center gap-2 text-xs text-gh-accent/70">
+            <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
+              <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" fill="currentColor" />
+            </svg>
+            正在同步最新邮件…
+          </div>
+        )}
         <AnimatePresence mode="wait">
-          {loading ? (
-            <div className="text-center py-12 text-gh-text-secondary text-sm">加载中...</div>
+          {loading && messages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-gh-text-secondary">
+              <svg className="animate-spin h-8 w-8 mb-3 text-gh-accent" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
+                <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" fill="currentColor" />
+              </svg>
+              <span className="text-sm">正在加载邮件数据…</span>
+            </div>
           ) : tab === 'messages' ? (
             <MessagesTab messages={messages} />
           ) : tab === 'verify' ? (
@@ -777,44 +1165,200 @@ const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
 }
 
 const MessagesTab: React.FC<{ messages: any[] }> = ({ messages }) => {
+  const [expandedId, setExpandedId] = React.useState<string | number | null>(null)
+  const [darkMode, setDarkMode] = React.useState(true)
   if (messages.length === 0) {
     return <div className="text-center py-12 text-gh-text-secondary text-sm">暂无邮件</div>
   }
   return (
-    <div className="space-y-2">
-      {messages.map((m, i) => (
-        <motion.div
-          key={m.id}
-          initial={{ opacity: 0, y: 5 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: i * 0.03 }}
-          className="rounded-lg border border-gh-border bg-gh-canvas-subtle p-3 hover:border-gh-text-muted transition-colors"
+    <>
+      {/* Dark-mode override for email HTML bodies */}
+      {darkMode && (
+        <style>{`
+        .email-body-dark, .email-body-dark * { color-scheme: dark !important; }
+        .email-body-dark { color: #c9d1d9 !important; background-color: #0d1117 !important; }
+        .email-body-dark a, .email-body-dark a:link, .email-body-dark a:visited { color: #58a6ff !important; }
+        .email-body-dark table, .email-body-dark td, .email-body-dark th, .email-body-dark tr,
+        .email-body-dark tbody, .email-body-dark thead, .email-body-dark div, .email-body-dark p,
+        .email-body-dark span, .email-body-dark h1, .email-body-dark h2, .email-body-dark h3,
+        .email-body-dark h4, .email-body-dark h5, .email-body-dark h6, .email-body-dark li,
+        .email-body-dark dl, .email-body-dark dt, .email-body-dark dd, .email-body-dark section,
+        .email-body-dark article, .email-body-dark header, .email-body-dark footer {
+          background-color: transparent !important; color: #c9d1d9 !important; border-color: #30363d !important;
+        }
+        .email-body-dark img { filter: brightness(0.85) contrast(0.9) !important; }
+        .email-body-dark hr { border-color: #30363d !important; }
+        .email-body-dark blockquote { border-left-color: #30363d !important; color: #8b949e !important; }
+        .email-body-dark code, .email-body-dark pre { background-color: #161b22 !important; color: #c9d1d9 !important; border-color: #30363d !important; }
+        .email-body-dark input, .email-body-dark textarea, .email-body-dark button, .email-body-dark select { background-color: #161b22 !important; color: #c9d1d9 !important; border-color: #30363d !important; }
+      `}</style>
+      )}
+    <div className="space-y-1.5">
+      {/* Dark mode toggle */}
+      <div className="flex items-center justify-end mb-1">
+        <button
+          onClick={() => setDarkMode(!darkMode)}
+          className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
+            darkMode
+              ? 'bg-gh-accent/10 text-gh-accent border border-gh-accent/20'
+              : 'bg-gh-canvas-inset text-gh-text-muted border border-gh-border hover:text-gh-text'
+          }`}
+          title={darkMode ? '关闭邮件暗色模式' : '开启邮件暗色模式'}
         >
-          <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-md bg-gh-accent/10 text-gh-accent flex items-center justify-center shrink-0">
-              <IconMail size={14} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between gap-2 mb-0.5">
-                <div className="text-sm font-medium text-gh-text truncate">{m.subject}</div>
-                {m.received_at && (
-                  <span className="text-[11px] text-gh-text-secondary whitespace-nowrap">
-                    {m.received_at}
-                  </span>
-                )}
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            {darkMode ? (
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+            ) : (
+              <>
+                <circle cx="12" cy="12" r="5" />
+                <line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" />
+                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                <line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" />
+                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+              </>
+            )}
+          </svg>
+          暗色模式
+        </button>
+      </div>
+      {messages.map((m, i) => {
+        const isExpanded = expandedId === m.id
+        const avatarColor = stringToColor(m.from_address || m.subject || '?')
+        const timeLabel = formatRelativeTime(m.received_at || m.created_at)
+        return (
+          <motion.div
+            key={m.id}
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.02 }}
+            onClick={() => setExpandedId(isExpanded ? null : m.id)}
+            className={`rounded-lg border transition-all cursor-pointer ${
+              isExpanded
+                ? 'border-gh-accent/40 bg-gh-canvas shadow-sm'
+                : 'border-gh-border/60 bg-gh-canvas-subtle hover:border-gh-text-muted hover:bg-gh-canvas'
+            }`}
+          >
+            {/* Compact card header — always visible */}
+            <div className="flex items-center gap-3 px-3 py-2.5">
+              <div
+                className="w-9 h-9 rounded-lg flex items-center justify-center text-xs font-bold shrink-0"
+                style={{ background: avatarColor + '20', color: avatarColor }}
+              >
+                {(m.from_address || '?').slice(0, 1).toUpperCase()}
               </div>
-              <div className="text-xs text-gh-text-muted truncate">{m.from_address}</div>
-              {m.text && (
-                <div className="mt-2 text-xs text-gh-text-secondary line-clamp-2 font-mono bg-gh-canvas-inset p-2 rounded">
-                  {m.text}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <div className={`font-medium truncate ${isExpanded ? 'text-gh-accent' : 'text-gh-text'}`}>
+                    {m.subject || '(无主题)'}
+                  </div>
+                  {timeLabel && (
+                    <span className="text-[10px] text-gh-text-secondary whitespace-nowrap shrink-0">
+                      {timeLabel}
+                    </span>
+                  )}
                 </div>
-              )}
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-xs text-gh-text-muted truncate">{m.from_address || '—'}</span>
+                  {m.text && !isExpanded && (
+                    <span className="text-xs text-gh-text-secondary truncate hidden sm:inline">
+                      — {m.text.slice(0, 60)}{m.text.length > 60 ? '...' : ''}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <svg
+                className={`w-4 h-4 text-gh-text-muted shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
             </div>
-          </div>
-        </motion.div>
-      ))}
+            {/* Expanded body */}
+            <AnimatePresence>
+              {isExpanded && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
+                >
+                  <div
+                    className="px-3 pb-3 pt-0 border-t border-gh-border/40 mx-3"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="mt-3 text-sm text-gh-text leading-relaxed break-words font-sans bg-gh-canvas-inset rounded-lg p-3 max-h-96 overflow-y-auto">
+                      {m.html ? (
+                        <div
+                          className={darkMode ? 'email-body-dark' : ''}
+                          style={EMAIL_BODY_STYLE}
+                          dangerouslySetInnerHTML={{ __html: sanitizeHtml(m.html) }}
+                        />
+                      ) : looksLikeHtml(m.text) ? (
+                        <div
+                          className={darkMode ? 'email-body-dark' : ''}
+                          style={EMAIL_BODY_STYLE}
+                          dangerouslySetInnerHTML={{ __html: sanitizeHtml(m.text) }}
+                        />
+                      ) : (
+                        <div className="whitespace-pre-wrap">{m.text || '(无正文)'}</div>
+                      )}
+                    </div>
+                    {m.received_at && (
+                      <div className="mt-2 text-[11px] text-gh-text-secondary flex items-center gap-1">
+                        <IconClock size={10} />
+                        收到时间: {m.received_at}
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        )
+      })}
     </div>
+    </>
   )
+}
+
+/** Deterministic color from string for avatar backgrounds */
+function stringToColor(s: string): string {
+  const colors = ['#58a6ff', '#a371f7', '#f0883e', '#3fb950', '#f85149', '#d29922', '#79c0ff', '#bc8cff']
+  let hash = 0
+  for (let i = 0; i < s.length; i++) hash = ((hash << 5) - hash + s.charCodeAt(i)) | 0
+  return colors[Math.abs(hash) % colors.length]
+}
+
+/** Format ISO timestamps as relative time strings */
+function formatRelativeTime(iso: string): string {
+  if (!iso) return ''
+  try {
+    const d = new Date(iso)
+    if (isNaN(d.getTime())) return iso
+    const now = Date.now()
+    const diff = Math.floor((now - d.getTime()) / 1000)
+    if (diff < 60) return '刚刚'
+    if (diff < 3600) return `${Math.floor(diff / 60)}分钟前`
+    if (diff < 86400) return `${Math.floor(diff / 3600)}小时前`
+    if (diff < 604800) return `${Math.floor(diff / 86400)}天前`
+    return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
+  } catch { return iso }
+}
+
+/** Detect if text content looks like HTML */
+function looksLikeHtml(text: string | undefined): boolean {
+  if (!text) return false
+  return /<\s*(html|body|div|table|p|a|img|br|span|style|head)\b/i.test(text)
+}
+
+/** Basic HTML sanitizer: strip script/style tags, keep structural tags */
+function sanitizeHtml(raw: string): string {
+  return raw
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+    .replace(/\bon\w+\s*=\s*"[^"]*"/gi, '')
+    .replace(/\bon\w+\s*=\s*'[^']*'/gi, '')
 }
 
 const VerifyTab: React.FC<{ codes: any[]; links: any[] }> = ({ codes, links }) => {
@@ -971,50 +1515,52 @@ const BindingsTab: React.FC<{ bindings: any[]; emailId: number }> = ({ bindings,
   )
 }
 
-// ========== 添加邮箱 Modal ==========
+// ========== 凭证导入 Modal ==========
 const AddEmailModal: React.FC<{
   open: boolean
   onClose: () => void
   defaultGroupId: number | null
 }> = ({ open, onClose, defaultGroupId }) => {
-  const { createEmail, createAccount, refreshEmails } = useApp()
+  const { refreshAccounts, refreshEmails, groups } = useApp()
   const { toast } = useToast()
-  const [mode, setMode] = useState<'simple' | 'account'>('simple')
-  const [address, setAddress] = useState('')
-  const [label, setLabel] = useState('')
-  const [provider, setProvider] = useState('gmail')
-  const [displayName, setDisplayName] = useState('')
-  const [aliases, setAliases] = useState<string[]>([])
-  const [newAlias, setNewAlias] = useState('')
+  const [groupId, setGroupId] = useState<number | ''>('')
+  const [provider, setProvider] = useState('outlook')
+  const [credentialText, setCredentialText] = useState('')
+  const [addToPool, setAddToPool] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState<AccountImportResult | null>(null)
+
+  useEffect(() => {
+    if (open) {
+      setGroupId(defaultGroupId ?? '')
+      setResult(null)
+    }
+  }, [open, defaultGroupId])
 
   const reset = () => {
-    setAddress('')
-    setLabel('')
-    setDisplayName('')
-    setAliases([])
-    setNewAlias('')
+    setGroupId('')
+    setProvider('outlook')
+    setCredentialText('')
+    setAddToPool(false)
+    setResult(null)
   }
 
   const handleSave = async () => {
+    if (!credentialText.trim()) return
     setLoading(true)
+    setResult(null)
     try {
-      if (mode === 'simple') {
-        if (!address) return
-        await createEmail(address, label, defaultGroupId)
-        toast('邮箱已添加', 'success')
-      } else {
-        if (!address || !displayName) return
-        await createAccount({
-          provider,
-          primary_address: address,
-          display_name: displayName,
-          alias_addresses: aliases
-        })
-        toast('账户已创建', 'success')
-      }
-      reset()
-      onClose()
+      const res = await api.importEmailAccounts(credentialText, {
+        provider,
+        group_id: groupId || null,
+        add_to_pool: addToPool,
+      })
+      await Promise.all([refreshAccounts(), refreshEmails()])
+      setResult(res)
+      if (res.imported > 0) toast(`成功导入 ${res.imported} 个账户`, 'success')
+      if (res.skipped > 0) toast(`跳过 ${res.skipped} 个重复账户`, 'info')
+      if (res.failed > 0) toast(`${res.failed} 个账户导入失败`, 'error')
+      // 不清空表单，让用户可以查看结果后继续导入或关闭
     } catch (err: any) {
       toast(err.message, 'error')
     } finally {
@@ -1022,107 +1568,145 @@ const AddEmailModal: React.FC<{
     }
   }
 
+  const handleClose = () => {
+    reset()
+    onClose()
+  }
+
+  const isOutlook = provider === 'outlook'
+  const hasResult = result !== null
+  const totalProcessed = (result?.imported ?? 0) + (result?.skipped ?? 0) + (result?.failed ?? 0)
+
   return (
     <Modal
       open={open}
-      onClose={() => {
-        reset()
-        onClose()
-      }}
-      title="添加邮箱"
+      onClose={handleClose}
+      title="凭证导入"
       size="lg"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>取消</Button>
-          <Button variant="primary" onClick={handleSave} loading={loading}>
-            添加
+          <Button variant="ghost" onClick={handleClose}>{hasResult ? '关闭' : '取消'}</Button>
+          <Button variant="primary" onClick={handleSave} loading={loading} disabled={loading}>
+            {hasResult ? '继续导入' : '导入'}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
-        <div className="flex p-1 bg-gh-canvas-inset border border-gh-border rounded-lg">
-          <button
-            onClick={() => setMode('simple')}
-            className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-all ${
-              mode === 'simple' ? 'bg-gh-canvas-subtle text-gh-text shadow-sm' : 'text-gh-text-muted'
-            }`}
+        {/* 导入结果摘要 */}
+        {hasResult && (
+          <div className="rounded-lg border border-gh-border bg-gh-canvas-inset overflow-hidden">
+            <div className="px-4 py-3 border-b border-gh-border bg-gh-canvas-subtle">
+              <span className="text-sm font-semibold text-gh-text">导入结果</span>
+              <span className="text-xs text-gh-text-secondary ml-2">共处理 {totalProcessed} 个账户</span>
+            </div>
+            <div className="px-4 py-3">
+              <div className="grid grid-cols-3 gap-3 mb-3">
+                <div className="text-center p-2 rounded-md bg-gh-success/10 border border-gh-success/20">
+                  <div className="text-lg font-bold text-gh-success tabular-nums">{result.imported}</div>
+                  <div className="text-[11px] text-gh-text-secondary">成功导入</div>
+                </div>
+                <div className="text-center p-2 rounded-md bg-gh-warning/10 border border-gh-warning/20">
+                  <div className="text-lg font-bold text-gh-warning tabular-nums">{result.skipped}</div>
+                  <div className="text-[11px] text-gh-text-secondary">跳过（重复）</div>
+                </div>
+                <div className="text-center p-2 rounded-md bg-gh-danger/10 border border-gh-danger/20">
+                  <div className="text-lg font-bold text-gh-danger tabular-nums">{result.failed}</div>
+                  <div className="text-[11px] text-gh-text-secondary">失败</div>
+                </div>
+              </div>
+              {/* 错误详情 */}
+              {(result.errors?.length ?? 0) > 0 && (
+                <details className="mt-2">
+                  <summary className="text-xs text-gh-text-muted cursor-pointer hover:text-gh-text">
+                    查看 {result.errors.length} 条错误详情（含 {result.errors_total ?? result.errors.length} 条）
+                  </summary>
+                  <div className="mt-2 max-h-40 overflow-y-auto space-y-1">
+                    {result.errors.map((err, i) => (
+                      <div key={i} className="text-xs font-mono px-2 py-1 rounded bg-gh-danger/5 border border-gh-danger/10">
+                        <span className="text-gh-text-secondary">#{err.line}</span>
+                        {err.email && <span className="text-gh-text-muted ml-2">{err.email}</span>}
+                        <span className="text-gh-danger ml-2">{err.error}</span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
+              {result.errors_total > (result.errors?.length ?? 0) && (
+                <p className="text-xs text-gh-text-secondary mt-1">
+                  仅显示前 {result.errors.length} 条，共 {result.errors_total} 条错误
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 分组 */}
+        <div>
+          <label className="text-xs font-medium text-gh-text-muted block mb-1.5">分组</label>
+          <select
+            value={groupId}
+            onChange={(e) => setGroupId(e.target.value ? Number(e.target.value) : '')}
+            className="w-full bg-gh-canvas-inset border border-gh-border rounded-md px-3 py-1.5 text-sm text-gh-text focus:outline-none focus:border-gh-accent"
           >
-            简单模式
-          </button>
-          <button
-            onClick={() => setMode('account')}
-            className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-all ${
-              mode === 'account' ? 'bg-gh-canvas-subtle text-gh-text shadow-sm' : 'text-gh-text-muted'
-            }`}
-          >
-            邮箱账户 (主 + 别名)
-          </button>
+            <option value="">无分组</option>
+            {groups.map((g) => (
+              <option key={g.id} value={g.id}>{g.name}</option>
+            ))}
+          </select>
         </div>
 
-        <Input label="邮箱地址" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="user@example.com" />
+        {/* 服务商 */}
+        <div>
+          <label className="text-xs font-medium text-gh-text-muted block mb-1.5">服务商</label>
+          <select
+            value={provider}
+            onChange={(e) => setProvider(e.target.value)}
+            className="w-full bg-gh-canvas-inset border border-gh-border rounded-md px-3 py-1.5 text-sm text-gh-text focus:outline-none focus:border-gh-accent"
+          >
+            <option value="outlook">Outlook</option>
+            <option value="gmail">Gmail</option>
+            <option value="yahoo">Yahoo</option>
+            <option value="icloud">iCloud</option>
+            <option value="qq">QQ邮箱</option>
+            <option value="163">163邮箱</option>
+            <option value="126">126邮箱</option>
+            <option value="other">其他</option>
+          </select>
+        </div>
 
-        {mode === 'simple' ? (
-          <Input label="备注名称（可选）" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="例如：工作主邮箱" />
-        ) : (
-          <>
-            <div className="grid grid-cols-2 gap-3">
-              <Input label="显示名称" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Alice" />
-              <div>
-                <label className="text-xs font-medium text-gh-text-muted block mb-1.5">服务商</label>
-                <select
-                  value={provider}
-                  onChange={(e) => setProvider(e.target.value)}
-                  className="w-full bg-gh-canvas-inset border border-gh-border rounded-md px-3 py-1.5 text-sm text-gh-text focus:outline-none focus:border-gh-accent"
-                >
-                  <option value="gmail">Gmail</option>
-                  <option value="outlook">Outlook</option>
-                  <option value="yahoo">Yahoo</option>
-                  <option value="icloud">iCloud</option>
-                  <option value="other">其他</option>
-                </select>
-              </div>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gh-text-muted block mb-1.5">
-                别名邮箱 ({aliases.length})
-              </label>
-              <div className="space-y-1.5 mb-2">
-                {aliases.map((a, i) => (
-                  <div key={i} className="flex items-center gap-2 bg-gh-canvas-inset border border-gh-border rounded-md px-2 py-1">
-                    <IconAt size={12} className="text-gh-text-secondary" />
-                    <span className="flex-1 text-sm text-gh-text font-mono">{a}</span>
-                    <button
-                      onClick={() => setAliases(aliases.filter((_, j) => j !== i))}
-                      className="text-gh-text-muted hover:text-gh-danger p-0.5"
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <Input
-                  value={newAlias}
-                  onChange={(e) => setNewAlias(e.target.value)}
-                  placeholder="alias@domain.com"
-                  className="flex-1"
-                />
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    if (newAlias && !aliases.includes(newAlias)) {
-                      setAliases([...aliases, newAlias])
-                      setNewAlias('')
-                    }
-                  }}
-                >
-                  <IconPlus size={12} />
-                </Button>
-              </div>
-            </div>
-          </>
-        )}
+        {/* 凭证输入 */}
+        <div>
+          <label className="text-xs font-medium text-gh-text-muted block mb-1.5">
+            凭证信息（每行一个账户）
+          </label>
+          <textarea
+            value={credentialText}
+            onChange={(e) => setCredentialText(e.target.value)}
+            className="w-full min-h-40 bg-gh-canvas-inset border border-gh-border rounded-md px-3 py-2 text-sm text-gh-text font-mono focus:outline-none focus:border-gh-accent"
+            placeholder={
+              isOutlook
+                ? '邮箱----密码----client_id----refresh_token'
+                : '邮箱----IMAP授权码/应用密码'
+            }
+          />
+          <p className="text-xs text-gh-text-secondary mt-1.5">
+            {isOutlook
+              ? 'Outlook 格式：邮箱----密码----client_id----refresh_token'
+              : '格式：邮箱----IMAP授权码/应用密码'}
+          </p>
+        </div>
+
+        {/* 导入到邮箱池 */}
+        <label className="flex items-center gap-2 text-sm text-gh-text-secondary cursor-pointer">
+          <input
+            type="checkbox"
+            checked={addToPool}
+            onChange={(e) => setAddToPool(e.target.checked)}
+            className="w-4 h-4 rounded border-gh-border bg-gh-canvas-inset text-gh-accent focus:ring-gh-accent/30"
+          />
+          导入到邮箱池
+        </label>
       </div>
     </Modal>
   )
@@ -1133,22 +1717,66 @@ const EmailSettingsModal: React.FC<{
   emailId: number | null
   onClose: () => void
 }> = ({ emailId, onClose }) => {
-  const { emails, groups, tags, organizeEmail, addAlias, accounts } = useApp()
+  const { emails, groups, tags, organizeEmail, addAlias, accounts, refreshAccounts, refreshEmails } = useApp()
   const { toast } = useToast()
   const email = emails.find((e) => e.id === emailId)
+  const account = (accounts || []).find((a) => a.id === email?.email_account_id)
   const [label, setLabel] = useState('')
   const [groupId, setGroupId] = useState<number | ''>('')
   const [tagIds, setTagIds] = useState<number[]>([])
   const [newAlias, setNewAlias] = useState('')
   const [loading, setLoading] = useState(false)
+  // Credential fields
+  const [credPwd, setCredPwd] = useState('')
+  const [showPwd, setShowPwd] = useState(false)
+  const [credCid, setCredCid] = useState('')
+  const [credRtk, setCredRtk] = useState('')
+  const [credStatus, setCredStatus] = useState('active')
+  const [credLoaded, setCredLoaded] = useState(false)
+  // Account remark (多行备注)
+  const [remark, setRemark] = useState('')
+  // 邮箱池
+  const [inPool, setInPool] = useState(false)
+  const [poolLoaded, setPoolLoaded] = useState(false)
+  // 已有别名列表
+  const aliases = (account?.usable_emails || []).filter((u) => u.kind === 'alias')
 
   useEffect(() => {
     if (email) {
       setLabel(email.label || '')
       setGroupId(email.group?.id || '')
       setTagIds(email.tags?.map((t) => t.id) || [])
+      setCredLoaded(false)
+      setPoolLoaded(false)
+      setShowPwd(false)
+      setRemark('')
     }
   }, [email])
+
+  // 加载凭证信息
+  useEffect(() => {
+    if (email?.email_account_id && !credLoaded) {
+      api.getEmailAccount(email.email_account_id).then((acc: any) => {
+        setCredPwd(acc.imap_password || '')
+        setCredCid(acc.client_id || '')
+        setCredRtk(acc.refresh_token || '')
+        setCredStatus(acc.status || 'active')
+        setRemark(acc.remark || '')
+        setCredLoaded(true)
+      }).catch(() => setCredLoaded(true))
+    }
+  }, [email?.email_account_id, credLoaded])
+
+  // 加载邮箱池状态
+  useEffect(() => {
+    if (email && !poolLoaded) {
+      api.listPoolEntries().then((entries: any) => {
+        const inPoolEntries = entries.entries || entries
+        setInPool(inPoolEntries.some((e: any) => e.usable_email?.id === email.id))
+        setPoolLoaded(true)
+      }).catch(() => setPoolLoaded(true))
+    }
+  }, [email, poolLoaded])
 
   const handleSave = async () => {
     if (!email) return
@@ -1159,7 +1787,23 @@ const EmailSettingsModal: React.FC<{
         group_id: groupId || null,
         tag_ids: tagIds
       })
-      toast('设置已保存', 'success')
+      if (email.email_account_id) {
+        await api.updateEmailAccount(email.email_account_id, {
+          password: credPwd || null,
+          client_id: credCid || null,
+          refresh_token: credRtk || null,
+          group_id: groupId || null,
+          status: credStatus,
+          remark: remark || null,
+        })
+      }
+      // 处理邮箱池变更
+      if (inPool && email.email_account_id) {
+        try { await api.addPoolEntry(email.id) } catch {}
+      }
+      toast('已保存', 'success')
+      refreshAccounts()
+      refreshEmails()
       onClose()
     } catch (err: any) {
       toast(err.message, 'error')
@@ -1170,7 +1814,7 @@ const EmailSettingsModal: React.FC<{
 
   const handleAddAlias = async () => {
     if (!email || !newAlias) return
-    const acc = accounts.find((a) => a.id === email.email_account_id)
+    const acc = (accounts || []).find((a) => a.id === email.email_account_id)
     if (!acc) {
       toast('该邮箱没有关联的账户', 'error')
       return
@@ -1179,10 +1823,14 @@ const EmailSettingsModal: React.FC<{
       await addAlias(acc.id, newAlias)
       toast('别名已添加', 'success')
       setNewAlias('')
+      refreshAccounts()
+      refreshEmails()
     } catch (err: any) {
       toast(err.message, 'error')
     }
   }
+
+  const isOutlook = account?.provider === 'outlook'
 
   return (
     <Modal
@@ -1199,13 +1847,30 @@ const EmailSettingsModal: React.FC<{
     >
       {email && (
         <div className="space-y-4">
+          {/* 邮箱地址（只读展示，对齐导入凭证布局） */}
           <div className="px-3 py-2 rounded-md bg-gh-canvas-inset border border-gh-border">
             <div className="text-xs text-gh-text-secondary">邮箱地址</div>
             <div className="text-sm font-mono text-gh-text">{email.address}</div>
           </div>
 
+          {/* 备注名称 */}
           <Input label="备注名称" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="例如：主邮箱" />
 
+          {/* 账号备注（多行） */}
+          <div>
+            <label className="text-xs font-medium text-gh-text-muted block mb-1.5">
+              账号备注
+            </label>
+            <textarea
+              value={remark}
+              onChange={(e) => setRemark(e.target.value)}
+              placeholder="添加账号备注信息…"
+              rows={3}
+              className="w-full bg-gh-canvas-inset border border-gh-border rounded-md px-3 py-2 text-sm text-gh-text placeholder-gh-text-secondary focus:outline-none focus:border-gh-accent resize-y"
+            />
+          </div>
+
+          {/* 分组 */}
           <div>
             <label className="text-xs font-medium text-gh-text-muted block mb-1.5">分组</label>
             <select
@@ -1220,6 +1885,132 @@ const EmailSettingsModal: React.FC<{
             </select>
           </div>
 
+          {/* 邮箱池 */}
+          <label className="flex items-center gap-2 text-sm text-gh-text-secondary cursor-pointer">
+            <input
+              type="checkbox"
+              checked={inPool}
+              onChange={(e) => setInPool(e.target.checked)}
+              className="w-4 h-4 rounded border-gh-border bg-gh-canvas-inset text-gh-accent focus:ring-gh-accent/30"
+            />
+            加入邮箱池
+          </label>
+
+          {email.email_account_id && (
+            <>
+              {/* 状态 */}
+              <div>
+                <label className="text-xs font-medium text-gh-text-muted block mb-1.5">状态</label>
+                <select
+                  value={credStatus}
+                  onChange={(e) => setCredStatus(e.target.value)}
+                  className="w-full bg-gh-canvas-inset border border-gh-border rounded-md px-3 py-1.5 text-sm text-gh-text focus:outline-none focus:border-gh-accent"
+                >
+                  <option value="active">正常</option>
+                  <option value="inactive">停用</option>
+                </select>
+              </div>
+
+              {/* 凭证信息 */}
+              <div className="pt-3 border-t border-gh-border">
+                <label className="text-xs font-semibold text-gh-text-muted block mb-3">
+                  凭证信息
+                </label>
+                <div className="space-y-2">
+                  {/* 密码 - 带显隐切换 */}
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-medium text-gh-text-muted">
+                      {isOutlook ? '密码' : 'IMAP 授权码 / 应用密码'}
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showPwd ? 'text' : 'password'}
+                        value={credPwd}
+                        onChange={(e) => setCredPwd(e.target.value)}
+                        placeholder={isOutlook ? 'Outlook 密码' : 'IMAP 授权码或应用密码'}
+                        className="w-full bg-gh-canvas-inset border border-gh-border rounded-md pl-3 pr-10 py-1.5 text-sm text-gh-text font-mono placeholder-gh-text-secondary focus:outline-none focus:border-gh-accent focus:ring-1 focus:ring-gh-accent/50 transition-colors"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPwd(!showPwd)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-gh-text-muted hover:text-gh-text transition-colors"
+                        title={showPwd ? '隐藏密码' : '显示密码'}
+                      >
+                        {showPwd ? (
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                            <line x1="1" y1="1" x2="23" y2="23" />
+                          </svg>
+                        ) : (
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                            <circle cx="12" cy="12" r="3" />
+                          </svg>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                  {isOutlook && (
+                    <>
+                      <Input
+                        label="Client ID"
+                        value={credCid}
+                        onChange={(e) => setCredCid(e.target.value)}
+                        placeholder="OAuth Client ID"
+                      />
+                      <div>
+                        <label className="text-xs font-medium text-gh-text-muted block mb-1.5">
+                          Refresh Token（不填写则不更新）
+                        </label>
+                        <textarea
+                          value={credRtk}
+                          onChange={(e) => setCredRtk(e.target.value)}
+                          placeholder="OAuth Refresh Token"
+                          rows={3}
+                          className="w-full bg-gh-canvas-inset border border-gh-border rounded-md px-3 py-2 text-sm text-gh-text font-mono focus:outline-none focus:border-gh-accent"
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* 别名管理 */}
+              <div className="pt-3 border-t border-gh-border">
+                <label className="text-xs font-medium text-gh-text-muted block mb-1.5">
+                  别名邮箱
+                </label>
+                {/* 已有别名列表 */}
+                {aliases.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {aliases.map((a) => (
+                      <div
+                        key={a.id}
+                        className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-gh-canvas-inset border border-gh-border text-xs text-gh-text-muted"
+                      >
+                        <IconAt size={10} />
+                        <span className="font-mono">{a.address}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {/* 添加别名 */}
+                <div className="flex gap-2">
+                  <Input
+                    value={newAlias}
+                    onChange={(e) => setNewAlias(e.target.value)}
+                    placeholder="alias@domain.com"
+                    className="flex-1"
+                  />
+                  <Button variant="secondary" onClick={handleAddAlias} disabled={!newAlias}>
+                    <IconPlus size={12} /> 添加
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* 标签 */}
           <div>
             <label className="text-xs font-medium text-gh-text-muted block mb-1.5">标签</label>
             <div className="flex flex-wrap gap-1.5">
@@ -1252,179 +2043,252 @@ const EmailSettingsModal: React.FC<{
               })}
             </div>
           </div>
-
-          {email.email_account_id && (
-            <div className="pt-3 border-t border-gh-border">
-              <label className="text-xs font-medium text-gh-text-muted block mb-1.5">
-                添加别名
-              </label>
-              <div className="flex gap-2">
-                <Input
-                  value={newAlias}
-                  onChange={(e) => setNewAlias(e.target.value)}
-                  placeholder="alias@domain.com"
-                  className="flex-1"
-                />
-                <Button variant="secondary" onClick={handleAddAlias} disabled={!newAlias}>
-                  添加
-                </Button>
-              </div>
-            </div>
-          )}
         </div>
       )}
     </Modal>
   )
 }
 
-const AccountImportModal: React.FC<{
-  open: boolean
-  onClose: () => void
-}> = ({ open, onClose }) => {
-  const { refreshAccounts, refreshEmails } = useApp()
-  const { toast } = useToast()
-  const [text, setText] = useState('')
-  const [duplicateStrategy, setDuplicateStrategy] = useState('skip')
-  const [result, setResult] = useState<AccountImportResult | null>(null)
-  const [loading, setLoading] = useState<string | null>(null)
-
-  const handleImport = async () => {
-    setLoading('import')
-    try {
-      const imported = await api.importEmailAccounts(text, duplicateStrategy)
-      setResult(imported)
-      await Promise.all([refreshAccounts(), refreshEmails()])
-      toast(`导入完成：成功 ${imported.imported}，跳过 ${imported.skipped}`, 'success')
-    } catch (err: any) {
-      toast(err.message, 'error')
-    } finally {
-      setLoading(null)
-    }
-  }
-
-  const handleExport = async () => {
-    setLoading('export')
-    try {
-      const exported = await api.exportEmailAccountsText()
-      const blob = new Blob([exported], { type: 'text/plain;charset=utf-8' })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `hx-email-accounts-${new Date().toISOString().slice(0, 10)}.txt`
-      link.click()
-      URL.revokeObjectURL(url)
-      toast('账号已导出', 'success')
-    } catch (err: any) {
-      toast(err.message, 'error')
-    } finally {
-      setLoading(null)
-    }
-  }
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="导入导出账号"
-      size="xl"
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>关闭</Button>
-          <Button variant="secondary" onClick={handleExport} loading={loading === 'export'}>
-            <IconDownload size={14} /> 导出
-          </Button>
-          <Button variant="primary" onClick={handleImport} loading={loading === 'import'}>
-            <IconUpload size={14} /> 导入
-          </Button>
-        </>
-      }
-    >
-      <div className="space-y-3">
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          className="w-full min-h-64 bg-gh-canvas-inset border border-gh-border rounded-md px-3 py-2 text-sm text-gh-text font-mono focus:outline-none focus:border-gh-accent"
-          placeholder="user@gmail.com----app-password----gmail&#10;user@qq.com----authorization-code----qq&#10;user@outlook.com----password----client_id----refresh_token"
-        />
-        <select
-          value={duplicateStrategy}
-          onChange={(e) => setDuplicateStrategy(e.target.value)}
-          className="bg-gh-canvas-inset border border-gh-border rounded-md px-3 py-1.5 text-sm text-gh-text"
-        >
-          <option value="skip">重复跳过</option>
-          <option value="overwrite">重复覆盖</option>
-        </select>
-        {result && (
-          <div className="rounded-md border border-gh-border bg-gh-canvas-inset p-3 text-sm text-gh-text-secondary">
-            成功 {result.imported}，跳过 {result.skipped}，失败 {result.failed}
-            {result.errors.length > 0 && (
-              <div className="mt-2 space-y-1">
-                {result.errors.map((error) => (
-                  <div key={`${error.line}-${error.error}`}>第 {error.line} 行：{error.error}</div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </Modal>
-  )
-}
-
-// ========== SSE 进度条 ==========
+// ========== SSE 进度条（增强版：实时成功/失败计数 + 最近账号列表 + 完成摘要） ==========
 const SSEProgressBar: React.FC<{
   progress: SSERefreshEvent | null
   running: boolean
   onClose: () => void
 }> = ({ progress, running, onClose }) => {
-  if (!running) return null
+  const [recentItems, setRecentItems] = useState<Array<{ email: string; success: boolean }>>([])
+  const [showComplete, setShowComplete] = useState(false)
+  const completeTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Track per-account results in real-time
+  useEffect(() => {
+    if (progress?.type === 'progress' && progress.email) {
+      setRecentItems((prev) => {
+        const next = [{ email: progress.email!, success: !!progress.success }, ...prev]
+        return next.slice(0, 5) // keep last 5
+      })
+    }
+    if (progress?.type === 'complete') {
+      setShowComplete(true)
+      // Auto-dismiss after 4 seconds
+      completeTimerRef.current = setTimeout(() => {
+        setShowComplete(false)
+        onClose()
+      }, 4000)
+    }
+    return () => {
+      if (completeTimerRef.current) clearTimeout(completeTimerRef.current)
+    }
+  }, [progress, onClose])
+
+  // Reset on new run
+  useEffect(() => {
+    if (running) {
+      setRecentItems([])
+      setShowComplete(false)
+    }
+  }, [running])
+
+  if (!running && !showComplete) return null
+
   const current = progress?.current ?? 0
   const total = progress?.total ?? 1
-  const pct = Math.round((current / total) * 100)
+  const pct = total > 0 ? Math.round((current / total) * 100) : 0
+  // complete 事件的 success/failed 是总数，progress 事件从 recentItems 累计
+  const isComplete = progress?.type === 'complete' || showComplete
+  const successCount: number = isComplete
+    ? (typeof progress?.success === 'number' ? progress.success : recentItems.filter((x) => x.success).length)
+    : recentItems.filter((x) => x.success).length
+  const failCount: number = isComplete
+    ? (typeof progress?.failed === 'number' ? progress.failed : recentItems.filter((x) => !x.success).length)
+    : recentItems.filter((x) => !x.success).length
 
   return (
     <motion.div
       initial={{ opacity: 0, height: 0 }}
       animate={{ opacity: 1, height: 'auto' }}
       exit={{ opacity: 0, height: 0 }}
-      className="border-b border-gh-border bg-gh-canvas-subtle"
+      className="border-b border-gh-border bg-gh-canvas-subtle overflow-hidden"
     >
       <div className="px-6 py-3">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2 text-sm">
-            <svg className="animate-spin h-4 w-4 text-gh-accent" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
-              <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" fill="currentColor" />
-            </svg>
-            <span className="text-gh-text font-medium">正在刷新 Token...</span>
-            <span className="text-gh-text-secondary tabular-nums">
-              {current} / {total}
+        {/* 头部：标题 + 计数 */}
+        <div className="flex items-center justify-between mb-2.5">
+          <div className="flex items-center gap-2.5">
+            {isComplete ? (
+              <svg className="h-4 w-4 text-gh-success" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
+              </svg>
+            ) : (
+              <svg className="animate-spin h-4 w-4 text-gh-accent" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
+                <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" fill="currentColor" />
+              </svg>
+            )}
+            <span className="text-sm font-semibold text-gh-text">
+              {isComplete ? '刷新完成' : '正在刷新 Token...'}
             </span>
+            {/* 实时成功/失败计数 */}
+            <div className="flex items-center gap-2 text-xs font-mono">
+              <span className="flex items-center gap-1 text-gh-success">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-gh-success" />
+                {successCount}
+              </span>
+              <span className="flex items-center gap-1 text-gh-danger">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-gh-danger" />
+                {failCount}
+              </span>
+              <span className="text-gh-text-secondary">
+                {current}/{total}
+              </span>
+            </div>
           </div>
+
           <div className="flex items-center gap-3">
-            {progress?.email && (
-              <span className="text-xs text-gh-text-secondary font-mono truncate max-w-48">
+            {/* 当前处理的邮箱 */}
+            {!isComplete && progress?.email && (
+              <span className="text-xs text-gh-text-secondary font-mono truncate max-w-56" title={progress.email}>
                 {progress.email}
               </span>
             )}
+            {isComplete && (
+              <span className="text-xs text-gh-text-secondary">
+                {failCount === 0 ? '全部成功 ✓' : `${failCount} 个失败`}
+              </span>
+            )}
             <button
-              onClick={onClose}
+              onClick={() => { setShowComplete(false); onClose() }}
               className="p-1 rounded-md text-gh-text-muted hover:text-gh-text hover:bg-gh-border/50 transition-colors"
             >
               <IconX size={14} />
             </button>
           </div>
         </div>
-        <div className="h-1.5 bg-gh-canvas-inset rounded-full overflow-hidden">
+
+        {/* 进度条 */}
+        <div className="h-1.5 bg-gh-canvas-inset rounded-full overflow-hidden mb-2">
           <motion.div
-            className="h-full bg-gradient-to-r from-gh-accent to-gh-purple rounded-full"
+            className={`h-full rounded-full transition-colors duration-500 ${
+              isComplete
+                ? failCount > 0 ? 'bg-gradient-to-r from-gh-success via-gh-warning to-gh-danger' : 'bg-gh-success'
+                : 'bg-gradient-to-r from-gh-accent to-gh-purple'
+            }`}
             initial={{ width: 0 }}
             animate={{ width: `${pct}%` }}
-            transition={{ type: 'spring', stiffness: 100, damping: 20 }}
+            transition={{ type: 'spring', stiffness: 80, damping: 18 }}
           />
         </div>
+
+        {/* 最近处理的账号列表 */}
+        {recentItems.length > 0 && (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {recentItems.map((item, i) => (
+              <span
+                key={`${item.email}-${i}`}
+                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-mono ${
+                  item.success
+                    ? 'bg-gh-success/10 text-gh-success border border-gh-success/20'
+                    : 'bg-gh-danger/10 text-gh-danger border border-gh-danger/20'
+                }`}
+                title={item.email}
+              >
+                <span className={`inline-block w-1 h-1 rounded-full ${item.success ? 'bg-gh-success' : 'bg-gh-danger'}`} />
+                {item.email.length > 28 ? item.email.slice(0, 28) + '…' : item.email}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
     </motion.div>
+  )
+}
+
+// ========== 刷新确认弹窗 ==========
+interface RefreshPreviewItem {
+  id: number
+  email: string
+  provider?: string
+  status?: string
+  last_error?: string
+}
+
+const RefreshConfirmModal: React.FC<{
+  open: boolean
+  mode: 'all' | 'failed'
+  accounts: RefreshPreviewItem[]
+  loading: boolean
+  onConfirm: () => void
+  onCancel: () => void
+}> = ({ open, mode, accounts, loading, onConfirm, onCancel }) => {
+  const title = mode === 'all' ? '刷新全部账户' : '刷新失败账户'
+  const description = mode === 'all'
+    ? '以下活跃账户将被刷新 Token，此操作可能需要较长时间。'
+    : '以下上次刷新失败的账户将被重新刷新。'
+
+  return (
+    <Modal
+      open={open}
+      onClose={onCancel}
+      title={title}
+      size="lg"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel} disabled={loading}>取消</Button>
+          <Button variant="primary" onClick={onConfirm} loading={loading} disabled={loading || accounts.length === 0}>
+            确认刷新 ({accounts.length})
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <p className="text-sm text-gh-text-secondary">{description}</p>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-8">
+            <svg className="animate-spin h-6 w-6 text-gh-accent" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
+              <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" fill="currentColor" />
+            </svg>
+            <span className="ml-2 text-sm text-gh-text-secondary">正在获取账户列表…</span>
+          </div>
+        ) : accounts.length === 0 ? (
+          <div className="text-center py-8 text-gh-text-secondary text-sm">
+            <IconMail size={32} className="mx-auto mb-2 opacity-30" />
+            {mode === 'all' ? '没有需要刷新的账户' : '没有刷新失败的账户'}
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center gap-3 text-xs text-gh-text-secondary px-1">
+              <span>共 <span className="text-gh-text font-semibold">{accounts.length}</span> 个账户待刷新</span>
+            </div>
+            <div className="max-h-64 overflow-y-auto border border-gh-border rounded-lg">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-gh-canvas-subtle">
+                  <tr className="border-b border-gh-border text-left text-xs text-gh-text-muted">
+                    <th className="px-3 py-2 font-medium">邮箱</th>
+                    <th className="px-3 py-2 font-medium w-16">服务商</th>
+                    {mode === 'failed' && (
+                      <th className="px-3 py-2 font-medium">上次错误</th>
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {accounts.map((a) => (
+                    <tr key={a.id} className="border-b border-gh-border/50 hover:bg-gh-border/20">
+                      <td className="px-3 py-2 font-mono text-xs text-gh-text truncate max-w-56">{a.email}</td>
+                      <td className="px-3 py-2 text-xs text-gh-text-secondary">{a.provider || '—'}</td>
+                      {mode === 'failed' && (
+                        <td className="px-3 py-2 text-xs text-gh-danger truncate max-w-48" title={a.last_error}>
+                          {a.last_error || '—'}
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </div>
+    </Modal>
   )
 }
 
@@ -1432,12 +2296,31 @@ const SSEProgressBar: React.FC<{
 export const Accounts: React.FC = () => {
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null)
   const [selectedEmail, setSelectedEmail] = useState<UsableEmail | null>(null)
-  const [showImport, setShowImport] = useState(false)
   const [selectedForRefresh, setSelectedForRefresh] = useState<Set<number>>(new Set())
   const [refreshProgress, setRefreshProgress] = useState<SSERefreshEvent | null>(null)
   const [refreshRunning, setRefreshRunning] = useState(false)
-  const { emails, refreshAccounts, refreshEmails } = useApp()
+  const [refreshConfirm, setRefreshConfirm] = useState<'all' | 'failed' | null>(null)
+  const [refreshPreviewAccounts, setRefreshPreviewAccounts] = useState<RefreshPreviewItem[]>([])
+  const [refreshPreviewLoading, setRefreshPreviewLoading] = useState(false)
+  const { emails, accounts, refreshAccounts, refreshEmails } = useApp()
   const { toast } = useToast()
+  const refreshTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // 安全超时：防止 SSE 流异常时进度条永久卡住（兜底机制，正常由 complete 事件关闭）
+  useEffect(() => {
+    if (refreshRunning) {
+      refreshTimeoutRef.current = setTimeout(() => {
+        setRefreshRunning(false)
+        toast('刷新超时（服务器可能已断开），请重试', 'error')
+      }, 10 * 60 * 1000) // 10 分钟超时
+    }
+    return () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current)
+        refreshTimeoutRef.current = null
+      }
+    }
+  }, [refreshRunning, toast])
 
   // 当选中的邮箱被删除时清空
   useEffect(() => {
@@ -1458,33 +2341,64 @@ export const Accounts: React.FC = () => {
     })
   }
 
-  const handleRefreshAll = async (): Promise<void> => {
-    setRefreshRunning(true)
-    setRefreshProgress(null)
+  // 打开刷新确认弹窗并加载待刷新账户列表
+  const openRefreshConfirm = async (mode: 'all' | 'failed'): Promise<void> => {
+    setRefreshConfirm(mode)
+    setRefreshPreviewLoading(true)
+    setRefreshPreviewAccounts([])
     try {
-      await streamRefresh('/email-accounts/refresh-all', undefined, (e: SSERefreshEvent) => {
-        setRefreshProgress(e)
-        if (e.type === 'complete') {
-          setRefreshRunning(false)
-          toast(
-            `刷新完成: 成功 ${e.success ?? 0}, 失败 ${e.failed ?? 0}`,
-            (e.failed ?? 0) > 0 ? 'error' : 'success'
-          )
-          refreshAccounts()
-          refreshEmails()
-        }
-      })
+      if (mode === 'all') {
+        const accts = await api.listEmailAccounts()
+        setRefreshPreviewAccounts(
+          accts
+            .filter((a: any) => a.status === 'active')
+            .map((a: any) => ({
+              id: a.id,
+              email: a.primary_address || a.display_name || '—',
+              provider: a.provider,
+              status: a.status,
+            }))
+        )
+      } else {
+        // 获取刷新失败的账户
+        const failedLogs = await api.getFailedRefreshLogs()
+        // 从 accounts 中匹配失败账户信息
+        const currentAccounts = accounts.length > 0 ? accounts : await api.listEmailAccounts()
+        const failedMap = new Map<string, string>() // email -> error_detail
+        failedLogs.logs?.forEach((log: any) => {
+          if (log.email && !failedMap.has(log.email)) {
+            failedMap.set(log.email, log.error_detail || log.message || '')
+          }
+        })
+        setRefreshPreviewAccounts(
+          Array.from(failedMap.entries()).map(([email, error]) => {
+            const matched = currentAccounts.find((a: any) => a.primary_address === email)
+            return {
+              id: matched?.id ?? 0,
+              email,
+              provider: matched?.provider,
+              last_error: error,
+            }
+          })
+        )
+      }
     } catch (err: any) {
       toast(err.message, 'error')
-      setRefreshRunning(false)
+      setRefreshConfirm(null)
+    } finally {
+      setRefreshPreviewLoading(false)
     }
   }
 
-  const handleRefreshFailed = async (): Promise<void> => {
+  const doRefresh = async (): Promise<void> => {
+    const mode = refreshConfirm
+    setRefreshConfirm(null)
+    if (!mode) return
     setRefreshRunning(true)
     setRefreshProgress(null)
+    const url = mode === 'all' ? '/email-accounts/refresh-all' : '/email-accounts/refresh-failed'
     try {
-      await streamRefresh('/email-accounts/refresh-failed', undefined, (e: SSERefreshEvent) => {
+      await streamRefresh(url, undefined, (e: SSERefreshEvent) => {
         setRefreshProgress(e)
         if (e.type === 'complete') {
           setRefreshRunning(false)
@@ -1537,7 +2451,7 @@ export const Accounts: React.FC = () => {
   }
 
   return (
-    <div className="flex-1 flex flex-col min-w-0">
+    <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
       <Topbar
         title="账号管理"
         subtitle="管理所有邮箱账户、可用邮箱和分组"
@@ -1546,17 +2460,18 @@ export const Accounts: React.FC = () => {
             <Button
               variant="secondary"
               size="sm"
-              onClick={handleRefreshAll}
-              loading={refreshRunning}
+              onClick={() => openRefreshConfirm('all')}
               disabled={refreshRunning}
+              title="查看并确认刷新全部活跃账户的 Token"
             >
               <IconRefresh size={14} /> 刷新全部
             </Button>
             <Button
               variant="secondary"
               size="sm"
-              onClick={handleRefreshFailed}
+              onClick={() => openRefreshConfirm('failed')}
               disabled={refreshRunning}
+              title="查看并确认刷新上次失败的账户"
             >
               <IconAlertTriangle size={14} /> 刷新失败
             </Button>
@@ -1570,9 +2485,6 @@ export const Accounts: React.FC = () => {
                 <IconRefresh size={14} /> 刷新选中 ({selectedForRefresh.size})
               </Button>
             )}
-            <Button variant="secondary" onClick={() => setShowImport(true)}>
-              <IconUpload size={14} /> 导入导出
-            </Button>
           </div>
         }
       />
@@ -1581,6 +2493,15 @@ export const Accounts: React.FC = () => {
         progress={refreshProgress}
         running={refreshRunning}
         onClose={() => setRefreshRunning(false)}
+      />
+
+      <RefreshConfirmModal
+        open={refreshConfirm !== null}
+        mode={refreshConfirm ?? 'all'}
+        accounts={refreshPreviewAccounts}
+        loading={refreshPreviewLoading}
+        onConfirm={doRefresh}
+        onCancel={() => setRefreshConfirm(null)}
       />
 
       <div className="flex-1 flex min-h-0 overflow-hidden">
@@ -1601,7 +2522,6 @@ export const Accounts: React.FC = () => {
         />
         <EmailDetail email={selectedEmail} />
       </div>
-      <AccountImportModal open={showImport} onClose={() => setShowImport(false)} />
     </div>
   )
 }

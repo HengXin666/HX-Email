@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import FastAPI, Header
+from fastapi import APIRouter, Header
 
 from hx_email.api.dependencies import require_user
 from hx_email.config import Settings
@@ -15,57 +15,57 @@ from hx_email.server.workspace.impl.overview_service import (
 )
 
 
-def register_overview_routes(app: FastAPI, settings: Settings) -> None:
-    @app.get("/overview/summary")
+def register_overview_routes(router: APIRouter, settings: Settings) -> None:
+    @router.get("/overview/summary")
     def overview_summary(
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
         require_user(settings, authorization)
         return get_overview_summary(settings)
 
-    @app.get("/overview/verification")
+    @router.get("/overview/verification")
     def overview_verification(
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
         require_user(settings, authorization)
         return get_verification_stats(settings)
 
-    @app.get("/overview/verification-stats")
+    @router.get("/overview/verification-stats")
     def overview_verification_stats(
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
         require_user(settings, authorization)
         return get_verification_stats(settings)
 
-    @app.get("/overview/external-api")
+    @router.get("/overview/external-api")
     def overview_external_api(
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
         require_user(settings, authorization)
         return get_external_api_stats(settings)
 
-    @app.get("/overview/external-api-stats")
+    @router.get("/overview/external-api-stats")
     def overview_external_api_stats(
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
         require_user(settings, authorization)
         return get_external_api_stats(settings)
 
-    @app.get("/overview/pool")
+    @router.get("/overview/pool")
     def overview_pool(
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
         require_user(settings, authorization)
         return get_pool_stats(settings)
 
-    @app.get("/overview/pool-stats")
+    @router.get("/overview/pool-stats")
     def overview_pool_stats(
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
         require_user(settings, authorization)
         return get_pool_stats(settings)
 
-    @app.get("/overview/activity")
+    @router.get("/overview/activity")
     def overview_activity(
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:

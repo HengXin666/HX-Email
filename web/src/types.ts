@@ -75,8 +75,12 @@ export interface EmailAccount {
   client_id?: string
   has_imap_password?: boolean
   has_refresh_token?: boolean
+  remark?: string | null
+  in_pool?: boolean
   primary_usable_email?: UsableEmail
   usable_emails: UsableEmail[]
+  last_refresh_at?: string | null
+  last_refresh_status?: string | null
 }
 
 export interface AccountImportResult {

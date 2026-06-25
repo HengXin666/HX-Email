@@ -91,6 +91,11 @@ class UsableEmailOrganization(BaseModel):
 class AccountTextImport(BaseModel):
     text: str
     duplicate_strategy: str = "skip"
+    provider: str = "outlook"
+    group_id: int | None = None
+    add_to_pool: bool = False
+    custom_imap_host: str = ""
+    custom_imap_port: int = 993
 
 
 class TokenToolPrepare(BaseModel):

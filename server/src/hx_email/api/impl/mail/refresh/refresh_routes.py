@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import FastAPI, Header, HTTPException, status
+from fastapi import APIRouter, Header, HTTPException, status
 from fastapi.responses import StreamingResponse
 
 from hx_email.api.dependencies import require_user
@@ -23,11 +23,11 @@ from hx_email.server.mail.verification import MailboxProvider
 
 
 def register_refresh_routes(
-    app: FastAPI,
+    router: APIRouter,
     settings: Settings,
     mailbox_provider: MailboxProvider,
 ) -> None:
-    @app.post("/email-accounts/{account_id}/refresh")
+    @router.post("/email-accounts/{account_id}/refresh")
     def refresh_account(
         account_id: int,
         authorization: Annotated[str | None, Header()] = None,
@@ -41,7 +41,7 @@ def register_refresh_routes(
             )
         return result
 
-    @app.get("/email-accounts/refresh-all")
+    @router.get("/email-accounts/refresh-all")
     def refresh_all(
         authorization: Annotated[str | None, Header()] = None,
     ) -> StreamingResponse:
@@ -51,7 +51,7 @@ def register_refresh_routes(
             media_type="text/event-stream",
         )
 
-    @app.post("/email-accounts/{account_id}/retry-refresh")
+    @router.post("/email-accounts/{account_id}/retry-refresh")
     def retry_refresh_account(
         account_id: int,
         authorization: Annotated[str | None, Header()] = None,
@@ -60,7 +60,8 @@ def register_refresh_routes(
         result = refresh_single_account(settings, account_id, mailbox_provider)
         return result
 
-    @app.post("/email-accounts/refresh-failed")
+    @router.get("/email-accounts/refresh-failed")
+    @router.post("/email-accounts/refresh-failed")
     def refresh_failed(
         authorization: Annotated[str | None, Header()] = None,
     ) -> StreamingResponse:
@@ -70,7 +71,7 @@ def register_refresh_routes(
             media_type="text/event-stream",
         )
 
-    @app.get("/email-accounts/trigger-scheduled-refresh")
+    @router.get("/email-accounts/trigger-scheduled-refresh")
     def trigger_scheduled_refresh(
         authorization: Annotated[str | None, Header()] = None,
     ) -> StreamingResponse:
@@ -80,7 +81,7 @@ def register_refresh_routes(
             media_type="text/event-stream",
         )
 
-    @app.post("/email-accounts/refresh/selected")
+    @router.post("/email-accounts/refresh/selected")
     def refresh_selected(
         payload: RefreshSelectedRequest,
         authorization: Annotated[str | None, Header()] = None,

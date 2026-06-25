@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from email.mime.text import MIMEText
 from typing import Annotated, Any
 
-from fastapi import FastAPI, Header, HTTPException, status
+from fastapi import APIRouter, Header, HTTPException, status
 
 from hx_email.api.dependencies import require_user
 from hx_email.api.schemas import (
@@ -72,10 +72,10 @@ def _json_get(
         return exc.code, _http_error_body(exc)
 
 
-def register_settings_test_routes(app: FastAPI, settings: Settings) -> None:
+def register_settings_test_routes(router: APIRouter, settings: Settings) -> None:
     """Register all settings test/validate endpoints."""
 
-    @app.post("/settings/validate-cron")
+    @router.post("/settings/validate-cron")
     def validate_cron(
         payload: CronValidateRequest,
         authorization: Annotated[str | None, Header()] = None,
@@ -98,7 +98,7 @@ def register_settings_test_routes(app: FastAPI, settings: Settings) -> None:
             return {"valid": False, "next_runs": [], "error": "Cron expression must have 5 fields"}
         return {"valid": True, "next_runs": [], "message": "croniter not available"}
 
-    @app.post("/settings/telegram-test")
+    @router.post("/settings/telegram-test")
     def telegram_test(
         payload: TelegramTestRequest,
         authorization: Annotated[str | None, Header()] = None,
@@ -125,7 +125,7 @@ def register_settings_test_routes(app: FastAPI, settings: Settings) -> None:
         result: dict[str, Any] = json.loads(body)
         return {"success": result.get("ok", False), "response": result}
 
-    @app.post("/settings/email-test")
+    @router.post("/settings/email-test")
     def email_test(
         payload: EmailTestRequest,
         authorization: Annotated[str | None, Header()] = None,
@@ -172,7 +172,7 @@ def register_settings_test_routes(app: FastAPI, settings: Settings) -> None:
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
-    @app.post("/settings/webhook-test")
+    @router.post("/settings/webhook-test")
     def webhook_test(
         payload: WebhookTestRequest,
         authorization: Annotated[str | None, Header()] = None,
@@ -195,7 +195,7 @@ def register_settings_test_routes(app: FastAPI, settings: Settings) -> None:
         )
         return {"success": True, "status_code": status_code, "response": body[:1000]}
 
-    @app.post("/settings/verification-ai-test")
+    @router.post("/settings/verification-ai-test")
     def verification_ai_test(
         payload: VerificationAITestRequest,
         authorization: Annotated[str | None, Header()] = None,
@@ -252,7 +252,7 @@ def register_settings_test_routes(app: FastAPI, settings: Settings) -> None:
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
-    @app.post("/settings/cf-worker-sync-domains")
+    @router.post("/settings/cf-worker-sync-domains")
     def cf_worker_sync_domains(
         payload: CFWorkerSyncRequest,
         authorization: Annotated[str | None, Header()] = None,

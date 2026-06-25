@@ -1,6 +1,6 @@
 from typing import Annotated, Any
 
-from fastapi import FastAPI, Header, HTTPException, Response, status
+from fastapi import APIRouter, FastAPI, Header, HTTPException, Response, status
 
 from hx_email.api.audit_routes import register_audit_routes
 from hx_email.api.dependencies import require_user
@@ -42,21 +42,32 @@ def register_routes(
     mailbox_provider: MailboxProvider,
     temp_mail_providers: dict[str, TempMailProvider],
 ) -> None:
-    register_system_routes(app, settings)
-    register_auth_routes(app, settings)
-    register_workspace_routes(app, settings)
-    register_platform_routes(app, settings)
-    register_mail_routes(app, settings, mailbox_provider)
-    register_temp_mail_routes(app, settings, temp_mail_providers)
-    register_overview_routes(app, settings)
-    register_overview_refresh_routes(app, settings)
-    register_settings_routes(app, settings)
-    register_settings_test_routes(app, settings)
-    register_data_transfer_routes(app, settings)
-    register_pool_admin_routes(app, settings)
-    register_audit_routes(app, settings)
-    register_plugin_crud_routes(app, settings)
-    register_plugin_config_routes(app, settings)
+    # Health + static-file routes stay on app directly (no /api/v1 prefix)
+    register_health_routes(app)
+    register_static_routes(app, settings)
+
+    # All business API routes go under /api/v1
+    api = APIRouter(prefix="/api/v1")
+
+    register_system_routes(api, settings)
+    register_auth_routes(api, settings)
+    register_workspace_routes(api, settings)
+    register_platform_routes(api, settings)
+    register_mail_routes(api, settings, mailbox_provider)
+    register_temp_mail_routes(api, settings, temp_mail_providers)
+    register_overview_routes(api, settings)
+    register_overview_refresh_routes(api, settings)
+    register_settings_routes(api, settings)
+    register_settings_test_routes(api, settings)
+    register_data_transfer_routes(api, settings)
+    register_pool_admin_routes(api, settings)
+    register_audit_routes(api, settings)
+    register_plugin_crud_routes(api, settings)
+    register_plugin_config_routes(api, settings)
+
+    app.include_router(api)
+
+    # External API routes stay on app directly (already use /api/external/ prefix)
     register_external_routes(app, settings, mailbox_provider, temp_mail_providers)
 
 
@@ -73,7 +84,7 @@ def register_external_routes(
     register_external_temp_mail_routes(app, settings, temp_mail_providers)
 
 
-def register_system_routes(app: FastAPI, settings: Settings) -> None:
+def register_health_routes(app: FastAPI) -> None:
     @app.get("/health")
     def health_check() -> dict[str, str]:
         return {"status": "ok", "service": "hx-email"}
@@ -82,13 +93,29 @@ def register_system_routes(app: FastAPI, settings: Settings) -> None:
     def healthz() -> str:
         return "ok"
 
-    @app.get("/csrf-token")
+
+def register_static_routes(app: FastAPI, settings: Settings) -> None:
+    @app.get("/img/{filename:path}")
+    def serve_image(filename: str) -> Response:
+        from fastapi.responses import FileResponse
+
+        static_dir = settings.data_dir / "static" / "img"
+        file_path = (static_dir / filename).resolve()
+        if not str(file_path).startswith(str(static_dir.resolve())):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+        if not file_path.is_file():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+        return FileResponse(file_path)
+
+
+def register_system_routes(router: APIRouter, settings: Settings) -> None:
+    @router.get("/csrf-token")
     def csrf_token() -> dict[str, str]:
         import secrets
 
         return {"csrf_token": secrets.token_hex(32)}
 
-    @app.get("/bootstrap")
+    @router.get("/bootstrap")
     def bootstrap(
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
@@ -103,7 +130,7 @@ def register_system_routes(app: FastAPI, settings: Settings) -> None:
             }
         }
 
-    @app.get("/scheduler/status")
+    @router.get("/scheduler/status")
     def scheduler_status(
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
@@ -118,7 +145,7 @@ def register_system_routes(app: FastAPI, settings: Settings) -> None:
             },
         }
 
-    @app.get("/system/diagnostics")
+    @router.get("/system/diagnostics")
     def system_diagnostics(
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
@@ -135,7 +162,7 @@ def register_system_routes(app: FastAPI, settings: Settings) -> None:
             ),
         }
 
-    @app.get("/system/upgrade-status")
+    @router.get("/system/upgrade-status")
     def system_upgrade_status(
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
@@ -147,28 +174,16 @@ def register_system_routes(app: FastAPI, settings: Settings) -> None:
             db_version: int = version_row[0] if version_row is not None else 0
         return {"db_version": db_version, "upgrade_needed": False}
 
-    @app.get("/img/{filename:path}")
-    def serve_image(filename: str) -> Response:
-        from fastapi.responses import FileResponse
 
-        static_dir = settings.data_dir / "static" / "img"
-        file_path = (static_dir / filename).resolve()
-        if not str(file_path).startswith(str(static_dir.resolve())):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
-        if not file_path.is_file():
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
-        return FileResponse(file_path)
-
-
-def register_data_transfer_routes(app: FastAPI, settings: Settings) -> None:
-    @app.get("/data/export")
+def register_data_transfer_routes(router: APIRouter, settings: Settings) -> None:
+    @router.get("/data/export")
     def export_data(
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
         user = require_user(settings, authorization)
         return export_core_data(settings, user.id)
 
-    @app.post("/data/import", status_code=status.HTTP_201_CREATED)
+    @router.post("/data/import", status_code=status.HTTP_201_CREATED)
     def import_data(
         payload: dict[str, Any],
         authorization: Annotated[str | None, Header()] = None,

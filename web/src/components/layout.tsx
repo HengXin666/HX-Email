@@ -46,7 +46,7 @@ export const Sidebar: React.FC = () => {
   return (
     <aside
       className={`${
-        collapsed ? 'w-16' : 'w-60'
+        collapsed ? 'w-16' : 'w-[180px]'
       } shrink-0 h-screen sticky top-0 border-r border-gh-border bg-gh-canvas-subtle/60 backdrop-blur-xl flex flex-col transition-all duration-200`}
     >
       {/* Logo */}

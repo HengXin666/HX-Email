@@ -4,8 +4,8 @@ from typing import Any
 
 from hx_email.config import Settings
 from hx_email.database import connect
+from hx_email.server.mail import MailboxMessage
 from hx_email.server.mail.verification import (
-    MailboxMessage,
     coerce_message,
 )
 

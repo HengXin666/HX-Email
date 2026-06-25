@@ -28,7 +28,7 @@ const ProtectedLayout: React.FC<{ children: React.ReactNode }> = ({ children }) 
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.18 }}
-          className="flex-1 flex flex-col min-w-0"
+          className="flex-1 flex flex-col min-w-0 overflow-hidden"
         >
           {children}
         </motion.main>

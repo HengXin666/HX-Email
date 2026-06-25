@@ -7,10 +7,9 @@ from typing import Any
 
 from hx_email.config import Settings
 from hx_email.database import connect
+from hx_email.server.mail import EmailAccountMailbox, MailboxMessage
 from hx_email.server.mail.verification import (
     CODE_PATTERN,
-    EmailAccountMailbox,
-    MailboxMessage,
     MailboxProvider,
     coerce_message,
     first_match,

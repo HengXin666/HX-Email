@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/hooks/format_after_edit.sh"
+            "command": "bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/format_after_edit.sh\""
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/hooks/verify_before_stop.sh"
+            "command": "bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/verify_before_stop.sh\""
           }
         ]
       }

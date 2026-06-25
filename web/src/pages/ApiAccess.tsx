@@ -57,7 +57,7 @@ const CodeBlock: React.FC<{ code: string; language?: string }> = ({ code, langua
 export const ApiAccess: React.FC = () => {
   const [tab, setTab] = useState<'overview' | 'endpoints' | 'examples'>('overview')
   const token = localStorage.getItem('hx_token') || '<your_token>'
-  const baseUrl = window.location.origin + '/api'
+  const baseUrl = window.location.origin + '/api/v1'
 
   return (
     <div className="flex-1 flex flex-col min-w-0">

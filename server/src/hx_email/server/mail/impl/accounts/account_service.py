@@ -1,15 +1,19 @@
-"""Account CRUD and search domain logic for email accounts."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from hx_email.config import Settings
 from hx_email.database import connect
-from hx_email.server.mail.email_accounts import (
-    EmailAccount,
-    get_email_account,
-)
+
+if TYPE_CHECKING:
+    from hx_email.server.mail.email_accounts import EmailAccount
+
+
+def _get_email_account(settings: Settings, user_id: int, account_id: int) -> EmailAccount | None:
+    from hx_email.server.mail.email_accounts import get_email_account as _gea
+
+    return _gea(settings, user_id, account_id)
 
 
 @dataclass(frozen=True)
@@ -36,14 +40,12 @@ def update_email_account(
     imap_port: int | None = None,
 ) -> EmailAccount | None:
     """Update fields on an email account. Only non-None fields are changed."""
-    existing = get_email_account(settings, user_id, account_id)
+    existing = _get_email_account(settings, user_id, account_id)
     if existing is None:
         return None
-
     with connect(settings) as connection:
         sets: list[str] = []
         params: list[object] = []
-
         if email is not None:
             sets.append("primary_address = ?")
             params.append(email)
@@ -74,27 +76,55 @@ def update_email_account(
         if imap_port is not None:
             sets.append("imap_port = ?")
             params.append(imap_port)
-
         if not sets:
             return existing
-
         params.append(account_id)
         params.append(user_id)
         connection.execute(
             f"UPDATE email_accounts SET {', '.join(sets)} WHERE id = ? AND user_id = ?",
             params,
         )
-
-    return get_email_account(settings, user_id, account_id)
+        if status is not None:
+            new_active = 1 if status == "active" else 0
+            connection.execute(
+                "UPDATE usable_emails SET status = ?, active = ?"
+                " WHERE email_account_id = ? AND user_id = ?",
+                (status, new_active, account_id, user_id),
+            )
+    return _get_email_account(settings, user_id, account_id)
 
 
 def delete_email_account(settings: Settings, user_id: int, account_id: int) -> bool:
-    """Delete an email account and its associated usable_emails."""
+    """Hard-delete an email account and all associated data (cascade)."""
     with connect(settings) as connection:
+        email_ids_rows = connection.execute(
+            "SELECT id FROM usable_emails WHERE email_account_id = ? AND user_id = ?",
+            (account_id, user_id),
+        ).fetchall()
+        email_ids = [row["id"] for row in email_ids_rows]
+        for eid in email_ids:
+            connection.execute("DELETE FROM usable_email_tags WHERE usable_email_id = ?", (eid,))
+            connection.execute(
+                "DELETE FROM platform_bindings WHERE usable_email_id = ? AND user_id = ?",
+                (eid, user_id),
+            )
+            connection.execute(
+                "DELETE FROM mail_pool_entries WHERE usable_email_id = ? AND user_id = ?",
+                (eid, user_id),
+            )
+            connection.execute(
+                "DELETE FROM verification_readings WHERE usable_email_id = ? AND user_id = ?",
+                (eid, user_id),
+            )
+            connection.execute(
+                "DELETE FROM temp_mailboxes WHERE usable_email_id = ? AND user_id = ?",
+                (eid, user_id),
+            )
         connection.execute(
             "DELETE FROM usable_emails WHERE email_account_id = ? AND user_id = ?",
             (account_id, user_id),
         )
+        connection.execute("DELETE FROM refresh_logs WHERE account_id = ?", (account_id,))
         cursor = connection.execute(
             "DELETE FROM email_accounts WHERE id = ? AND user_id = ?",
             (account_id, user_id),
@@ -103,7 +133,7 @@ def delete_email_account(settings: Settings, user_id: int, account_id: int) -> b
 
 
 def delete_email_account_by_email(settings: Settings, user_id: int, email_addr: str) -> bool:
-    """Delete an email account by its primary email address."""
+    """Hard-delete an email account by primary address with full cascade."""
     with connect(settings) as connection:
         row = connection.execute(
             "SELECT id FROM email_accounts WHERE user_id = ? AND primary_address = ?",
@@ -111,16 +141,7 @@ def delete_email_account_by_email(settings: Settings, user_id: int, email_addr: 
         ).fetchone()
         if row is None:
             return False
-        account_id: int = row["id"]
-        connection.execute(
-            "DELETE FROM usable_emails WHERE email_account_id = ? AND user_id = ?",
-            (account_id, user_id),
-        )
-        connection.execute(
-            "DELETE FROM email_accounts WHERE id = ? AND user_id = ?",
-            (account_id, user_id),
-        )
-    return True
+        return delete_email_account(settings, user_id, row["id"])
 
 
 def update_account_remark(
@@ -134,7 +155,7 @@ def update_account_remark(
         )
     if cursor.rowcount == 0:
         return None
-    return get_email_account(settings, user_id, account_id)
+    return _get_email_account(settings, user_id, account_id)
 
 
 def search_email_accounts(
@@ -157,7 +178,7 @@ def search_email_accounts(
             """,
             (user_id, like, like, like),
         ).fetchall()
-    accounts = (get_email_account(settings, user_id, row["id"]) for row in rows)
+    accounts = (_get_email_account(settings, user_id, row["id"]) for row in rows)
     return tuple(account for account in accounts if account is not None)
 
 
@@ -174,7 +195,6 @@ def _build_enhanced_query(
     where = ["ea.user_id = ?"]
     params: list[object] = [user_id]
     joins: list[str] = []
-
     if group_id is not None:
         where.append("ea.group_id = ?")
         params.append(group_id)
@@ -205,14 +225,11 @@ def _build_enhanced_query(
               AND ut_multi.tag_id IN ({placeholders})"""
         )
         params.extend(tag_set)
-
     where_sql = " AND ".join(where)
     join_sql = " ".join(joins)
-
     allowed_sort = {"id", "primary_address", "provider", "status", "created_at", "remark"}
     sort_col = sort_by if sort_by in allowed_sort else "id"
     order = "DESC" if sort_order and sort_order.upper() == "DESC" else "ASC"
-
     return (
         f"""
         SELECT DISTINCT ea.id
@@ -241,7 +258,6 @@ def list_email_accounts_enhanced(
     """Enhanced listing with pagination, filtering, and sorting."""
     page = max(page, 1)
     page_size = min(max(page_size, 1), 200)
-
     query, params = _build_enhanced_query(
         user_id,
         group_id=group_id,
@@ -251,20 +267,17 @@ def list_email_accounts_enhanced(
         sort_by=sort_by,
         sort_order=sort_order,
     )
-
     with connect(settings) as connection:
         total = connection.execute(
-            f"SELECT COUNT(DISTINCT ea.id) FROM ({query})",
+            f"SELECT COUNT(*) FROM ({query}) AS _cnt",
             params,
         ).fetchone()[0]
-
         offset = (page - 1) * page_size
         rows = connection.execute(
             f"{query} LIMIT ? OFFSET ?",
             (*params, page_size, offset),
         ).fetchall()
-
-    accounts = (get_email_account(settings, user_id, row["id"]) for row in rows)
+    accounts = (_get_email_account(settings, user_id, row["id"]) for row in rows)
     return AccountPage(
         accounts=tuple(account for account in accounts if account is not None),
         total_count=total,

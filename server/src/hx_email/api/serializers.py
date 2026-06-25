@@ -1,7 +1,7 @@
 from hx_email.server.mail.email_accounts import EmailAccount
 from hx_email.server.mail.mail_pool import MailPoolEntry
 from hx_email.server.mail.temp_mail import TempMailbox
-from hx_email.server.mail.usable_emails import UsableEmail
+from hx_email.server.mail.usable_emails import GroupInfo, UsableEmail
 from hx_email.server.mail.verification import VerificationMatch, VerificationReading
 from hx_email.server.workspace.groups import Group, Tag
 from hx_email.server.workspace.overview import WorkbenchOverview
@@ -16,10 +16,12 @@ def serialize_usable_email(usable_email: UsableEmail) -> dict[str, object]:
         "label": usable_email.label,
         "kind": usable_email.kind,
         "status": usable_email.status,
+        "group": serialize_group(usable_email.group),
+        "email_account_id": usable_email.email_account_id,
     }
 
 
-def serialize_group(group: Group | None) -> dict[str, object] | None:
+def serialize_group(group: Group | GroupInfo | None) -> dict[str, object] | None:
     if group is None:
         return None
     return {"id": group.id, "name": group.name, "color": group.color}
@@ -96,12 +98,15 @@ def serialize_email_account(account: EmailAccount) -> dict[str, object]:
         "imap_host": account.imap_host,
         "imap_port": account.imap_port,
         "username": account.username,
+        "imap_password": account.imap_password,
         "client_id": account.client_id,
+        "refresh_token": account.refresh_token,
         "has_imap_password": bool(account.imap_password),
         "has_refresh_token": bool(account.refresh_token),
         "group_id": account.group_id,
         "remark": account.remark,
         "telegram_enabled": account.telegram_enabled,
+        "last_refresh_at": account.last_refresh_at,
         "primary_usable_email": serialize_usable_email(account.primary_usable_email),
         "usable_emails": [
             serialize_usable_email(usable_email) for usable_email in account.usable_emails

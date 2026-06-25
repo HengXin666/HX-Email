@@ -10,7 +10,7 @@ dev = ["ruff>=0.8.6", "mypy>=1.14.1", "pre-commit>=4.0.0"]
 [tool.ruff]
 target-version = "py311"
 line-length = 100
-exclude = ["ref", "web"]
+exclude = ["ref", "web", ".claude", ".codex"]
 
 [tool.ruff.lint]
 # Ruff 默认规则 + 类型标注强制(ANN) + 中文命名拦截(PLC2401)
@@ -36,7 +36,7 @@ strict = true
 warn_unused_ignores = true
 disallow_untyped_defs = true
 ignore_missing_imports = true
-exclude = "^(ref|web|server/tests)/"
+exclude = "^(ref|web|server/tests|\\.claude|\\.codex)/"
 # FastAPI 装饰器 (app.get/post/put/delete) 未完整类型标注，
 # 会导致所有路由函数触发 untyped-decorator。禁用此项保留 strict 其余检查。
 disable_error_code = ["untyped-decorator"]

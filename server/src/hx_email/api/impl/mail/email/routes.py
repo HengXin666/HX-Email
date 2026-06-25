@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Annotated
 
-from fastapi import FastAPI, Header, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query
 
 from hx_email.api.dependencies import require_user
 from hx_email.api.schemas import BatchEmailRequest, DeleteEmailRequest
@@ -21,13 +21,13 @@ from hx_email.server.mail.verification import MailboxProvider
 
 
 def register_email_ops_routes(
-    app: FastAPI,
+    router: APIRouter,
     settings: Settings,
     mailbox_provider: MailboxProvider,
 ) -> None:
     """Register email operations endpoints."""
 
-    @app.post("/emails/batch")
+    @router.post("/emails/batch")
     def batch_fetch(
         payload: BatchEmailRequest,
         authorization: Annotated[str | None, Header()] = None,
@@ -42,7 +42,7 @@ def register_email_ops_routes(
             top=payload.top,
         )
 
-    @app.post("/emails/delete")
+    @router.post("/emails/delete")
     def delete_emails_endpoint(
         payload: DeleteEmailRequest,
         authorization: Annotated[str | None, Header()] = None,
@@ -56,7 +56,7 @@ def register_email_ops_routes(
         )
 
     # Must be registered before catch-all /emails/{email_addr}
-    @app.get("/emails/{email_addr}/extract-verification")
+    @router.get("/emails/{email_addr}/extract-verification")
     def extract_verification(
         email_addr: str,
         code_length: Annotated[int | None, Query()] = None,
@@ -79,7 +79,7 @@ def register_email_ops_routes(
             code_source=code_source,
         )
 
-    @app.get("/email/{email_addr}/{message_id}")
+    @router.get("/email/{email_addr}/{message_id}")
     def email_detail(
         email_addr: str,
         message_id: str,
@@ -101,7 +101,7 @@ def register_email_ops_routes(
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     # Catch-all list endpoint, registered last
-    @app.get("/emails/{email_addr}")
+    @router.get("/emails/{email_addr}")
     def email_list(
         email_addr: str,
         folder: Annotated[str, Query()] = "inbox",

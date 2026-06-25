@@ -170,7 +170,7 @@ def get_activity_stats(settings: Settings) -> dict[str, object]:
 
     result: dict[str, object] = {
         "total_actions": total_actions,
-        "top_actions": [{"action": row["action"], "count": row["cnt"]} for row in recent_rows],
+        "recent_actions": [{"action": row["action"], "count": row["cnt"]} for row in recent_rows],
         "last_activity": (last_entry_row["created_at"] if last_entry_row is not None else ""),
     }
     _set_cached(cache_key, result)

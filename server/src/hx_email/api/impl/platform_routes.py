@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import FastAPI, Header, HTTPException, status
+from fastapi import APIRouter, Header, HTTPException, status
 
 from hx_email.api.dependencies import require_user
 from hx_email.api.schemas import (
@@ -30,8 +30,8 @@ from hx_email.server.workspace.platforms import (
 )
 
 
-def register_platform_routes(app: FastAPI, settings: Settings) -> None:
-    @app.post("/platforms", status_code=status.HTTP_201_CREATED)
+def register_platform_routes(router: APIRouter, settings: Settings) -> None:
+    @router.post("/platforms", status_code=status.HTTP_201_CREATED)
     def create_user_platform(
         payload: PlatformWrite,
         authorization: Annotated[str | None, Header()] = None,
@@ -43,7 +43,7 @@ def register_platform_routes(app: FastAPI, settings: Settings) -> None:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
         return serialize_platform(platform)
 
-    @app.get("/platforms")
+    @router.get("/platforms")
     def get_platforms(
         authorization: Annotated[str | None, Header()] = None,
         q: str | None = None,
@@ -55,7 +55,7 @@ def register_platform_routes(app: FastAPI, settings: Settings) -> None:
             ]
         }
 
-    @app.put("/platforms/{platform_id}")
+    @router.put("/platforms/{platform_id}")
     def update_user_platform(
         platform_id: int,
         payload: PlatformWrite,
@@ -70,7 +70,7 @@ def register_platform_routes(app: FastAPI, settings: Settings) -> None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Platform not found")
         return serialize_platform(platform)
 
-    @app.delete("/platforms/{platform_id}", status_code=status.HTTP_204_NO_CONTENT)
+    @router.delete("/platforms/{platform_id}", status_code=status.HTTP_204_NO_CONTENT)
     def delete_user_platform(
         platform_id: int,
         authorization: Annotated[str | None, Header()] = None,
@@ -79,7 +79,7 @@ def register_platform_routes(app: FastAPI, settings: Settings) -> None:
         if not delete_platform(settings, user.id, platform_id):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Platform not found")
 
-    @app.post("/platform-candidates")
+    @router.post("/platform-candidates")
     def get_platform_candidates(
         payload: PlatformCandidateRequest,
         authorization: Annotated[str | None, Header()] = None,
@@ -94,11 +94,11 @@ def register_platform_routes(app: FastAPI, settings: Settings) -> None:
             ]
         }
 
-    register_platform_binding_routes(app, settings)
+    register_platform_binding_routes(router, settings)
 
 
-def register_platform_binding_routes(app: FastAPI, settings: Settings) -> None:
-    @app.post(
+def register_platform_binding_routes(router: APIRouter, settings: Settings) -> None:
+    @router.post(
         "/usable-emails/{usable_email_id}/platform-bindings", status_code=status.HTTP_201_CREATED
     )
     def create_user_platform_binding(
@@ -125,7 +125,7 @@ def register_platform_binding_routes(app: FastAPI, settings: Settings) -> None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
         return serialize_platform_binding(binding)
 
-    @app.get("/usable-emails/{usable_email_id}/platform-bindings")
+    @router.get("/usable-emails/{usable_email_id}/platform-bindings")
     def get_user_platform_bindings(
         usable_email_id: int,
         authorization: Annotated[str | None, Header()] = None,
@@ -138,7 +138,7 @@ def register_platform_binding_routes(app: FastAPI, settings: Settings) -> None:
             )
         return {"platform_bindings": [serialize_platform_binding(binding) for binding in bindings]}
 
-    @app.put("/platform-bindings/{binding_id}")
+    @router.put("/platform-bindings/{binding_id}")
     def update_user_platform_binding(
         binding_id: int,
         payload: PlatformBindingUpdate,

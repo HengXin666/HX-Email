@@ -1,7 +1,7 @@
 from typing import Annotated
 from urllib.error import HTTPError, URLError
 
-from fastapi import FastAPI, Header, HTTPException, Response
+from fastapi import APIRouter, Header, HTTPException, Response
 from pydantic import BaseModel
 
 from hx_email.api.dependencies import require_user
@@ -13,7 +13,7 @@ from hx_email.api.schemas import (
 )
 from hx_email.config import Settings
 from hx_email.database import connect
-from hx_email.server.mail.impl.account_transfer import (
+from hx_email.server.mail.impl.accounts.account_transfer import (
     create_oauth_account,
     save_oauth_credentials,
 )
@@ -36,15 +36,15 @@ DEFAULT_SCOPE: str = "offline_access https://outlook.office.com/IMAP.AccessAsUse
 DEFAULT_REDIRECT_URI: str = "http://localhost:8000/token-tool/callback"
 
 
-def register_token_tool_routes(app: FastAPI, settings: Settings) -> None:
-    @app.get("/token-tool/config")
+def register_token_tool_routes(router: APIRouter, settings: Settings) -> None:
+    @router.get("/token-tool/config")
     def get_token_tool_config(
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
         require_user(settings, authorization)
         return {"success": True, "data": load_config(settings)}
 
-    @app.post("/token-tool/config")
+    @router.post("/token-tool/config")
     def save_token_tool_config(
         payload: TokenToolConfigWrite,
         authorization: Annotated[str | None, Header()] = None,
@@ -53,7 +53,7 @@ def register_token_tool_routes(app: FastAPI, settings: Settings) -> None:
         save_config(settings, payload)
         return {"success": True, "data": load_config(settings)}
 
-    @app.get("/token-tool/accounts")
+    @router.get("/token-tool/accounts")
     def get_token_tool_accounts(
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
@@ -63,7 +63,7 @@ def register_token_tool_routes(app: FastAPI, settings: Settings) -> None:
             "data": [account.model_dump() for account in list_outlook_accounts(settings, user.id)],
         }
 
-    @app.post("/token-tool/prepare")
+    @router.post("/token-tool/prepare")
     def prepare_token_tool(
         payload: TokenToolPrepare,
         authorization: Annotated[str | None, Header()] = None,
@@ -91,7 +91,7 @@ def register_token_tool_routes(app: FastAPI, settings: Settings) -> None:
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
 
-    @app.get("/token-tool/callback")
+    @router.get("/token-tool/callback")
     def handle_token_tool_callback(
         code: str = "",
         state: str = "",
@@ -111,7 +111,7 @@ def register_token_tool_routes(app: FastAPI, settings: Settings) -> None:
         body = callback_html("授权成功, 请回到 Token 工具页面继续换取并保存 refresh_token")
         return Response(body, media_type="text/html; charset=utf-8")
 
-    @app.post("/token-tool/exchange")
+    @router.post("/token-tool/exchange")
     def exchange_token_tool(
         payload: TokenToolExchange,
         authorization: Annotated[str | None, Header()] = None,
@@ -129,7 +129,7 @@ def register_token_tool_routes(app: FastAPI, settings: Settings) -> None:
         except URLError as error:
             raise HTTPException(status_code=502, detail=str(error.reason)) from error
 
-    @app.post("/token-tool/save")
+    @router.post("/token-tool/save")
     def save_token_tool(
         payload: TokenToolSave,
         authorization: Annotated[str | None, Header()] = None,

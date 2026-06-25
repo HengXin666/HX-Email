@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import FastAPI, Header, HTTPException, status
+from fastapi import APIRouter, Header, HTTPException, status
 
 from hx_email.api.dependencies import require_user
 from hx_email.api.schemas import (
@@ -29,8 +29,8 @@ from hx_email.server.mail.impl.accounts import (
 )
 
 
-def register_email_account_routes(app: FastAPI, settings: Settings) -> None:
-    @app.post("/email-accounts", status_code=status.HTTP_201_CREATED)
+def register_email_account_routes(router: APIRouter, settings: Settings) -> None:
+    @router.post("/email-accounts", status_code=status.HTTP_201_CREATED)
     def create_email_account(
         payload: EmailAccountCreate,
         authorization: Annotated[str | None, Header()] = None,
@@ -57,124 +57,8 @@ def register_email_account_routes(app: FastAPI, settings: Settings) -> None:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
         return serialize_email_account(account)
 
-    @app.get("/email-accounts/{account_id}")
-    def get_account(
-        account_id: int,
-        authorization: Annotated[str | None, Header()] = None,
-    ) -> dict[str, object]:
-        user = require_user(settings, authorization)
-        account = get_email_account(settings, user.id, account_id)
-        if account is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Email account not found"
-            )
-        return serialize_email_account(account)
-
-    @app.post("/email-accounts/{account_id}/aliases", status_code=status.HTTP_201_CREATED)
-    def create_account_alias(
-        account_id: int,
-        payload: AliasCreate,
-        authorization: Annotated[str | None, Header()] = None,
-    ) -> dict[str, object]:
-        user = require_user(settings, authorization)
-        try:
-            alias = add_alias_to_email_account(
-                settings,
-                user.id,
-                account_id,
-                payload.address,
-                payload.label or payload.address,
-            )
-        except InvalidAliasAddressError as error:
-            raise HTTPException(status_code=422, detail=str(error)) from error
-        except DuplicateUsableEmailError as error:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
-        if alias is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Email account not found"
-            )
-        return serialize_usable_email(alias)
-
-    @app.post("/email-accounts/{account_id}/deactivate")
-    def deactivate_account(
-        account_id: int,
-        authorization: Annotated[str | None, Header()] = None,
-    ) -> dict[str, object]:
-        user = require_user(settings, authorization)
-        account = deactivate_email_account(settings, user.id, account_id)
-        if account is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Email account not found"
-            )
-        return serialize_email_account(account)
-
-    @app.put("/email-accounts/{account_id}")
-    def update_account(
-        account_id: int,
-        payload: AccountUpdate,
-        authorization: Annotated[str | None, Header()] = None,
-    ) -> dict[str, object]:
-        user = require_user(settings, authorization)
-        account = update_email_account(
-            settings,
-            user.id,
-            account_id,
-            email=payload.email,
-            password=payload.password,
-            client_id=payload.client_id,
-            refresh_token=payload.refresh_token,
-            group_id=payload.group_id,
-            remark=payload.remark,
-            status=payload.status,
-            provider=payload.provider,
-            imap_host=payload.imap_host,
-            imap_port=payload.imap_port,
-        )
-        if account is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Email account not found"
-            )
-        return serialize_email_account(account)
-
-    @app.delete("/email-accounts/{account_id}")
-    def delete_account(
-        account_id: int,
-        authorization: Annotated[str | None, Header()] = None,
-    ) -> dict[str, object]:
-        user = require_user(settings, authorization)
-        if not delete_email_account(settings, user.id, account_id):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Email account not found"
-            )
-        return {"success": True}
-
-    @app.patch("/email-accounts/{account_id}/remark")
-    def update_account_remark_handler(
-        account_id: int,
-        payload: RemarkUpdate,
-        authorization: Annotated[str | None, Header()] = None,
-    ) -> dict[str, object]:
-        user = require_user(settings, authorization)
-        account = update_account_remark(settings, user.id, account_id, payload.remark)
-        if account is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Email account not found"
-            )
-        return serialize_email_account(account)
-
-    @app.delete("/email-accounts/email/{email_addr:path}")
-    def delete_account_by_email(
-        email_addr: str,
-        authorization: Annotated[str | None, Header()] = None,
-    ) -> dict[str, object]:
-        user = require_user(settings, authorization)
-        if not delete_email_account_by_email(settings, user.id, email_addr):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Email account not found"
-            )
-        return {"success": True}
-
-    @app.get("/email-accounts/search")
+    # ── Static GET routes MUST be registered BEFORE /{account_id} ──
+    @router.get("/email-accounts/search")
     def search_accounts(
         q: str,
         authorization: Annotated[str | None, Header()] = None,
@@ -186,7 +70,7 @@ def register_email_account_routes(app: FastAPI, settings: Settings) -> None:
             "total": len(accounts),
         }
 
-    @app.get("/email-accounts")
+    @router.get("/email-accounts")
     def get_accounts_enhanced(
         authorization: Annotated[str | None, Header()] = None,
         group_id: int | None = None,
@@ -227,3 +111,121 @@ def register_email_account_routes(app: FastAPI, settings: Settings) -> None:
                 "total_pages": total_pages,
             },
         }
+
+    # ── Parameterized routes with {account_id} ──
+    @router.get("/email-accounts/{account_id}")
+    def get_account(
+        account_id: int,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        user = require_user(settings, authorization)
+        account = get_email_account(settings, user.id, account_id)
+        if account is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Email account not found"
+            )
+        return serialize_email_account(account)
+
+    @router.post("/email-accounts/{account_id}/aliases", status_code=status.HTTP_201_CREATED)
+    def create_account_alias(
+        account_id: int,
+        payload: AliasCreate,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        user = require_user(settings, authorization)
+        try:
+            alias = add_alias_to_email_account(
+                settings,
+                user.id,
+                account_id,
+                payload.address,
+                payload.label or payload.address,
+            )
+        except InvalidAliasAddressError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        except DuplicateUsableEmailError as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+        if alias is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Email account not found"
+            )
+        return serialize_usable_email(alias)
+
+    @router.post("/email-accounts/{account_id}/deactivate")
+    def deactivate_account(
+        account_id: int,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        user = require_user(settings, authorization)
+        account = deactivate_email_account(settings, user.id, account_id)
+        if account is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Email account not found"
+            )
+        return serialize_email_account(account)
+
+    @router.put("/email-accounts/{account_id}")
+    def update_account(
+        account_id: int,
+        payload: AccountUpdate,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        user = require_user(settings, authorization)
+        account = update_email_account(
+            settings,
+            user.id,
+            account_id,
+            email=payload.email,
+            password=payload.password,
+            client_id=payload.client_id,
+            refresh_token=payload.refresh_token,
+            group_id=payload.group_id,
+            remark=payload.remark,
+            status=payload.status,
+            provider=payload.provider,
+            imap_host=payload.imap_host,
+            imap_port=payload.imap_port,
+        )
+        if account is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Email account not found"
+            )
+        return serialize_email_account(account)
+
+    @router.delete("/email-accounts/{account_id}")
+    def delete_account(
+        account_id: int,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        user = require_user(settings, authorization)
+        if not delete_email_account(settings, user.id, account_id):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Email account not found"
+            )
+        return {"success": True}
+
+    @router.patch("/email-accounts/{account_id}/remark")
+    def update_account_remark_handler(
+        account_id: int,
+        payload: RemarkUpdate,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        user = require_user(settings, authorization)
+        account = update_account_remark(settings, user.id, account_id, payload.remark)
+        if account is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Email account not found"
+            )
+        return serialize_email_account(account)
+
+    @router.delete("/email-accounts/email/{email_addr:path}")
+    def delete_account_by_email(
+        email_addr: str,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        user = require_user(settings, authorization)
+        if not delete_email_account_by_email(settings, user.id, email_addr):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Email account not found"
+            )
+        return {"success": True}

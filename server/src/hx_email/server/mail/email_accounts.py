@@ -41,6 +41,7 @@ class EmailAccount:
     group_id: int | None = None
     remark: str = ""
     telegram_enabled: bool = True
+    last_refresh_at: str | None = None
     usable_emails: tuple[UsableEmail, ...] = ()
 
 
@@ -57,6 +58,7 @@ def add_email_account(
     client_id: str = "",
     refresh_token: str = "",
     alias_addresses: list[str] | None = None,
+    group_id: int | None = None,
 ) -> EmailAccount:
     alias_addresses = alias_addresses or []
     with connect(settings) as connection:
@@ -65,9 +67,9 @@ def add_email_account(
                 """
                 INSERT INTO email_accounts (
                     user_id, provider, primary_address, display_name, imap_host,
-                    imap_port, username, imap_password, client_id, refresh_token
+                    imap_port, username, imap_password, client_id, refresh_token, group_id
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     user_id,
@@ -80,6 +82,7 @@ def add_email_account(
                     imap_password,
                     client_id,
                     refresh_token,
+                    group_id,
                 ),
             )
         except Exception as error:
@@ -91,11 +94,11 @@ def add_email_account(
             email_cursor = connection.execute(
                 """
                 INSERT INTO usable_emails (
-                    user_id, email_account_id, address, label, kind, status, active
+                    user_id, email_account_id, address, label, kind, status, active, group_id
                 )
-                VALUES (?, ?, ?, ?, 'primary', 'active', 1)
+                VALUES (?, ?, ?, ?, 'primary', 'active', 1, ?)
                 """,
-                (user_id, account_id, primary_address, display_name),
+                (user_id, account_id, primary_address, display_name, group_id),
             )
         except Exception as error:
             raise DuplicateUsableEmailError(
@@ -124,6 +127,7 @@ def add_email_account(
         imap_password=imap_password,
         client_id=client_id,
         refresh_token=refresh_token,
+        group_id=group_id,
         usable_emails=(primary_usable_email, *alias_emails),
     )
 
@@ -136,7 +140,7 @@ def deactivate_email_account(
             """
             SELECT id, provider, primary_address, display_name, imap_host,
                    imap_port, username, imap_password, client_id, refresh_token,
-                   group_id, remark, telegram_enabled
+                   group_id, remark, telegram_enabled, last_refresh_at
             FROM email_accounts
             WHERE id = ? AND user_id = ?
             """,
@@ -176,6 +180,7 @@ def deactivate_email_account(
         group_id=account["group_id"],
         remark=account["remark"] or "",
         telegram_enabled=bool(account["telegram_enabled"]),
+        last_refresh_at=account["last_refresh_at"],
         usable_emails=usable_emails,
     )
 
@@ -186,7 +191,7 @@ def get_email_account(settings: Settings, user_id: int, account_id: int) -> Emai
             """
             SELECT id, provider, primary_address, display_name, status, imap_host,
                    imap_port, username, imap_password, client_id, refresh_token,
-                   group_id, remark, telegram_enabled
+                   group_id, remark, telegram_enabled, last_refresh_at
             FROM email_accounts
             WHERE id = ? AND user_id = ?
             """,
@@ -221,6 +226,7 @@ def get_email_account(settings: Settings, user_id: int, account_id: int) -> Emai
         group_id=account["group_id"],
         remark=account["remark"] or "",
         telegram_enabled=bool(account["telegram_enabled"]),
+        last_refresh_at=account["last_refresh_at"],
         usable_emails=usable_emails,
     )
 

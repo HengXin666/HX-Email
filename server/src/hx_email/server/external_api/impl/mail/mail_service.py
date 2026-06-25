@@ -12,11 +12,11 @@ from hx_email.server.external_api.impl.mail.helpers import (
     filter_messages,
     resolve_email,
 )
+from hx_email.server.mail import MailboxMessage
 from hx_email.server.mail.impl.email_service import _find_email_account
 from hx_email.server.mail.verification import (
     CODE_PATTERN,
     LINK_PATTERN,
-    MailboxMessage,
     MailboxProvider,
     coerce_message,
     first_match,

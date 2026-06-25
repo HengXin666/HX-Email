@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import FastAPI, Header, HTTPException, status
+from fastapi import APIRouter, Header, HTTPException, status
 
 from hx_email.api.dependencies import require_user
 from hx_email.api.schemas import (
@@ -21,8 +21,8 @@ from hx_email.server.mail.mail_pool import (
 )
 
 
-def register_mail_pool_routes(app: FastAPI, settings: Settings) -> None:
-    @app.post("/mail-pool/entries", status_code=status.HTTP_201_CREATED)
+def register_mail_pool_routes(router: APIRouter, settings: Settings) -> None:
+    @router.post("/mail-pool/entries", status_code=status.HTTP_201_CREATED)
     def create_mail_pool_entry(
         payload: MailPoolEntryCreate,
         authorization: Annotated[str | None, Header()] = None,
@@ -38,7 +38,7 @@ def register_mail_pool_routes(app: FastAPI, settings: Settings) -> None:
             )
         return serialize_mail_pool_entry(entry)
 
-    @app.get("/mail-pool/entries")
+    @router.get("/mail-pool/entries")
     def get_mail_pool_entries(
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, list[dict[str, object]]]:
@@ -50,7 +50,7 @@ def register_mail_pool_routes(app: FastAPI, settings: Settings) -> None:
             ]
         }
 
-    @app.post("/mail-pool/claim")
+    @router.post("/mail-pool/claim")
     def claim_mail_pool(
         payload: MailPoolClaimRequest,
         authorization: Annotated[str | None, Header()] = None,
@@ -64,7 +64,7 @@ def register_mail_pool_routes(app: FastAPI, settings: Settings) -> None:
             )
         return serialize_mail_pool_entry(entry)
 
-    @app.post("/mail-pool/entries/{usable_email_id}/release")
+    @router.post("/mail-pool/entries/{usable_email_id}/release")
     def release_mail_pool(
         usable_email_id: int,
         authorization: Annotated[str | None, Header()] = None,
@@ -78,7 +78,7 @@ def register_mail_pool_routes(app: FastAPI, settings: Settings) -> None:
             )
         return serialize_mail_pool_entry(entry)
 
-    @app.post("/mail-pool/entries/{usable_email_id}/complete")
+    @router.post("/mail-pool/entries/{usable_email_id}/complete")
     def complete_mail_pool(
         usable_email_id: int,
         payload: MailPoolCompleteRequest,
@@ -93,7 +93,7 @@ def register_mail_pool_routes(app: FastAPI, settings: Settings) -> None:
             )
         return serialize_mail_pool_entry(entry)
 
-    @app.post("/mail-pool/entries/{usable_email_id}/cooldown")
+    @router.post("/mail-pool/entries/{usable_email_id}/cooldown")
     def cooldown_mail_pool(
         usable_email_id: int,
         authorization: Annotated[str | None, Header()] = None,

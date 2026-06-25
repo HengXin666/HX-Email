@@ -56,6 +56,11 @@ def _insert_refresh_log(
                 now,
             ),
         )
+        if status == "success":
+            connection.execute(
+                "UPDATE email_accounts SET last_refresh_at = ? WHERE id = ?",
+                (now, account_id),
+            )
         return cursor.lastrowid or 0
 
 
@@ -65,11 +70,9 @@ def refresh_single_account(
     mailbox_provider: MailboxProvider,
 ) -> dict[str, object]:
     """Refresh the OAuth2 token for a single email account.
-
     Logs the result to refresh_logs and returns a status dict.
     """
     started_at = _now_iso()
-
     with connect(settings) as connection:
         row = connection.execute(
             """
@@ -79,15 +82,12 @@ def refresh_single_account(
             """,
             (account_id,),
         ).fetchone()
-
     if row is None:
         return {"account_id": account_id, "success": False, "message": "Account not found"}
-
     email: str = row["primary_address"]
     client_id_v: str = row["client_id"] or ""
     refresh_token_val: str = row["refresh_token"] or ""
     account_status: str = row["status"] or "inactive"
-
     if account_status != "active":
         _insert_refresh_log(
             settings,
@@ -104,7 +104,6 @@ def refresh_single_account(
             "email": email,
             "message": "Account is not active",
         }
-
     if not client_id_v or not refresh_token_val:
         _insert_refresh_log(
             settings,
@@ -121,7 +120,6 @@ def refresh_single_account(
             "email": email,
             "message": "Missing OAuth credentials",
         }
-
     result = try_refresh_oauth_token(client_id_v, refresh_token_val)
     log_status = "success" if result["success"] else "failed"
     _insert_refresh_log(
@@ -133,7 +131,6 @@ def refresh_single_account(
         str(result.get("error_detail", "")),
         started_at=started_at,
     )
-
     return {
         "account_id": account_id,
         "success": result["success"],
@@ -176,18 +173,14 @@ def _refresh_account_batch(
     """Yield SSE events while refreshing a batch of accounts."""
     total = len(accounts)
     yield sse_event("start", {"total": total})
-
     success_count = 0
     fail_count = 0
-
     for index, account in enumerate(accounts):
         account_id: int = cast(Any, account["id"])
         email: str = cast(Any, account["email"])
         started_at = _now_iso()
-
         cid: str = str(account.get("client_id", ""))
         rt: str = str(account.get("refresh_token", ""))
-
         result = try_refresh_oauth_token(cid, rt)
         log_status = "success" if result["success"] else "failed"
         _insert_refresh_log(
@@ -199,12 +192,10 @@ def _refresh_account_batch(
             str(result.get("error_detail", "")),
             started_at=started_at,
         )
-
         if result["success"]:
             success_count += 1
         else:
             fail_count += 1
-
         progress: dict[str, object] = {
             "current": index + 1,
             "total": total,
@@ -215,7 +206,6 @@ def _refresh_account_batch(
             "error_detail": result.get("error_detail", ""),
         }
         yield sse_event("progress", progress)
-
     yield sse_event(
         "complete",
         {"total": total, "success": success_count, "failed": fail_count},
@@ -250,7 +240,6 @@ def refresh_selected_accounts(
             """,
             tuple(account_ids),
         ).fetchall()
-
     accounts: list[dict[str, object]] = [
         {
             "id": row["id"],
@@ -285,7 +274,6 @@ def refresh_failed_accounts(
             ORDER BY ea.id
             """
         ).fetchall()
-
     accounts: list[dict[str, object]] = [
         {
             "id": row["id"],

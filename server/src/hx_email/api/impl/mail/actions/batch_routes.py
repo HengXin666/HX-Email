@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import FastAPI, Header, HTTPException, status
+from fastapi import APIRouter, Header, HTTPException, status
 
 from hx_email.api.dependencies import require_user
 from hx_email.api.schemas import (
@@ -24,8 +24,8 @@ from hx_email.server.mail.impl.accounts import (
 )
 
 
-def register_batch_routes(app: FastAPI, settings: Settings) -> None:
-    @app.post("/email-accounts/batch-update-group")
+def register_batch_routes(router: APIRouter, settings: Settings) -> None:
+    @router.post("/email-accounts/batch-update-group")
     def batch_update_group_handler(
         payload: BatchGroupUpdate,
         authorization: Annotated[str | None, Header()] = None,
@@ -34,7 +34,7 @@ def register_batch_routes(app: FastAPI, settings: Settings) -> None:
         updated = batch_update_group(settings, user.id, payload.account_ids, payload.group_id)
         return {"success": True, "updated_count": updated}
 
-    @app.post("/email-accounts/batch-delete")
+    @router.post("/email-accounts/batch-delete")
     def batch_delete_handler(
         payload: BatchDelete,
         authorization: Annotated[str | None, Header()] = None,
@@ -43,7 +43,7 @@ def register_batch_routes(app: FastAPI, settings: Settings) -> None:
         deleted = batch_delete_accounts(settings, user.id, payload.account_ids)
         return {"success": True, "deleted_count": deleted}
 
-    @app.post("/email-accounts/batch-update-status")
+    @router.post("/email-accounts/batch-update-status")
     def batch_update_status_handler(
         payload: BatchStatusUpdate,
         authorization: Annotated[str | None, Header()] = None,
@@ -52,7 +52,7 @@ def register_batch_routes(app: FastAPI, settings: Settings) -> None:
         updated = batch_update_status(settings, user.id, payload.account_ids, payload.status)
         return {"success": True, "updated_count": updated}
 
-    @app.post("/email-accounts/batch-notification-toggle")
+    @router.post("/email-accounts/batch-notification-toggle")
     def batch_notification_toggle_handler(
         payload: BatchNotificationToggle,
         authorization: Annotated[str | None, Header()] = None,
@@ -61,7 +61,7 @@ def register_batch_routes(app: FastAPI, settings: Settings) -> None:
         updated = batch_toggle_telegram(settings, user.id, payload.account_ids, payload.enabled)
         return {"success": True, "updated_count": updated}
 
-    @app.post("/email-accounts/tags")
+    @router.post("/email-accounts/tags")
     def account_tags_action(
         payload: BatchTagAction,
         authorization: Annotated[str | None, Header()] = None,
@@ -80,7 +80,7 @@ def register_batch_routes(app: FastAPI, settings: Settings) -> None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tag not found")
         return {"success": True}
 
-    @app.post("/email-accounts/{account_id}/telegram-toggle")
+    @router.post("/email-accounts/{account_id}/telegram-toggle")
     def telegram_toggle_handler(
         account_id: int,
         payload: TelegramToggle,

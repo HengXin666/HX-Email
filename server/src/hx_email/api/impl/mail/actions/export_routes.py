@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import FastAPI, Header, HTTPException, Response, status
+from fastapi import APIRouter, Header, HTTPException, Response, status
 
 from hx_email.api.dependencies import require_user
 from hx_email.api.schemas import ExportSelected, ExportVerify
@@ -30,8 +30,8 @@ def _extract_export_token(settings: Settings, authorization: str | None) -> str:
     return token
 
 
-def register_export_routes(app: FastAPI, settings: Settings) -> None:
-    @app.post("/export/verify")
+def register_export_routes(router: APIRouter, settings: Settings) -> None:
+    @router.post("/export/verify")
     def export_verify(
         payload: ExportVerify,
         authorization: Annotated[str | None, Header()] = None,
@@ -42,7 +42,7 @@ def register_export_routes(app: FastAPI, settings: Settings) -> None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid password")
         return {"success": True, "verify_token": verify_token}
 
-    @app.get("/email-accounts/export")
+    @router.get("/email-accounts/export")
     def export_all_accounts(
         authorization: Annotated[str | None, Header()] = None,
         x_export_token: Annotated[str | None, Header()] = None,
@@ -55,7 +55,7 @@ def register_export_routes(app: FastAPI, settings: Settings) -> None:
         }
         return Response(text, media_type="text/plain; charset=utf-8", headers=headers)
 
-    @app.post("/email-accounts/export-selected")
+    @router.post("/email-accounts/export-selected")
     def export_selected_accounts(
         payload: ExportSelected,
         authorization: Annotated[str | None, Header()] = None,

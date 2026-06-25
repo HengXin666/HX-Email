@@ -122,13 +122,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [])
 
   const refreshAccounts = useCallback(async () => {
-    const accounts = await api.listEmailAccounts()
-    setState((s) => ({ ...s, accounts }))
+    try {
+      const accounts = await api.listEmailAccounts()
+      setState((s) => ({ ...s, accounts }))
+    } catch { /* keep previous accounts on error */ }
   }, [])
 
   const refreshOverview = useCallback(async () => {
-    const overview = await api.overview()
-    setState((s) => ({ ...s, overview }))
+    try {
+      const overview = await api.overview()
+      setState((s) => ({ ...s, overview }))
+    } catch { /* keep previous overview on error */ }
   }, [])
 
   const refreshTags = useCallback(async () => {
@@ -137,7 +141,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [])
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([refreshGroups(), refreshEmails(), refreshPlatforms(), refreshAccounts(), refreshOverview(), refreshTags()])
+    await Promise.allSettled([refreshGroups(), refreshEmails(), refreshPlatforms(), refreshAccounts(), refreshOverview(), refreshTags()])
   }, [refreshGroups, refreshEmails, refreshPlatforms, refreshAccounts, refreshOverview, refreshTags])
 
   const login = useCallback(async (username: string, password: string) => {
@@ -185,7 +189,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteGroup = useCallback(async (id: number) => {
     await api.deleteGroup(id)
     await refreshGroups()
-  }, [refreshGroups])
+    await refreshEmails()
+  }, [refreshGroups, refreshEmails])
 
   const createEmail = useCallback(async (address: string, label = '', groupId?: number | null) => {
     const e = await api.createUsableEmail(address, label)

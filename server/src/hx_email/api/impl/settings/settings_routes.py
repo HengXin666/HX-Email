@@ -4,7 +4,7 @@ import platform
 import sys as sys_module
 from typing import Annotated, Any
 
-from fastapi import FastAPI, Header, status
+from fastapi import APIRouter, Header, status
 
 from hx_email.api.dependencies import require_admin, require_user
 from hx_email.api.schemas import SettingsUpdate
@@ -17,10 +17,10 @@ from hx_email.server.settings_service import (
 )
 
 
-def register_settings_routes(app: FastAPI, settings: Settings) -> None:
+def register_settings_routes(router: APIRouter, settings: Settings) -> None:
     """Register all settings CRUD and system maintenance endpoints."""
 
-    @app.get("/settings")
+    @router.get("/settings")
     def get_settings(
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, str]:
@@ -28,7 +28,7 @@ def register_settings_routes(app: FastAPI, settings: Settings) -> None:
         require_user(settings, authorization)
         return get_all_settings(settings)
 
-    @app.put("/settings")
+    @router.put("/settings")
     def put_settings(
         payload: SettingsUpdate,
         authorization: Annotated[str | None, Header()] = None,
@@ -39,7 +39,7 @@ def register_settings_routes(app: FastAPI, settings: Settings) -> None:
         update_settings(settings, updates)
         return get_all_settings(settings)
 
-    @app.get("/settings/external-api-key/plaintext")
+    @router.get("/settings/external-api-key/plaintext")
     def get_external_api_key_plaintext(
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, str]:
@@ -48,7 +48,7 @@ def register_settings_routes(app: FastAPI, settings: Settings) -> None:
         key: str = get_setting(settings, "external_api_key", "")
         return {"external_api_key": key}
 
-    @app.get("/system/version-check")
+    @router.get("/system/version-check")
     def version_check(
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
@@ -60,7 +60,7 @@ def register_settings_routes(app: FastAPI, settings: Settings) -> None:
             "up_to_date": True,
         }
 
-    @app.get("/system/deployment-info")
+    @router.get("/system/deployment-info")
     def deployment_info(
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
@@ -72,7 +72,7 @@ def register_settings_routes(app: FastAPI, settings: Settings) -> None:
             "version": VERSION,
         }
 
-    @app.post("/system/trigger-update", status_code=status.HTTP_202_ACCEPTED)
+    @router.post("/system/trigger-update", status_code=status.HTTP_202_ACCEPTED)
     def trigger_update(
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
@@ -80,7 +80,7 @@ def register_settings_routes(app: FastAPI, settings: Settings) -> None:
         require_admin(settings, authorization)
         return {"success": True, "message": "Update triggered (stub)"}
 
-    @app.post("/system/test-watchtower")
+    @router.post("/system/test-watchtower")
     def test_watchtower(
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
@@ -88,7 +88,7 @@ def register_settings_routes(app: FastAPI, settings: Settings) -> None:
         require_user(settings, authorization)
         return {"success": True, "message": "Watchtower connectivity OK (stub)"}
 
-    @app.post("/system/reload-plugins")
+    @router.post("/system/reload-plugins")
     def reload_plugins(
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:

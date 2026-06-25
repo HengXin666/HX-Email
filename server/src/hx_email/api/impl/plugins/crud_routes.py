@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import FastAPI, Header, HTTPException, status
+from fastapi import APIRouter, Header, HTTPException, status
 
 from hx_email.api.dependencies import require_user
 from hx_email.api.schemas import PluginInstallRequest
@@ -17,15 +17,15 @@ from hx_email.server.plugins import (
 )
 
 
-def register_plugin_crud_routes(app: FastAPI, settings: Settings) -> None:
-    @app.get("/plugins")
+def register_plugin_crud_routes(router: APIRouter, settings: Settings) -> None:
+    @router.get("/plugins")
     def get_plugins(
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
         require_user(settings, authorization)
         return {"success": True, "plugins": list_plugins()}
 
-    @app.post("/plugins/install")
+    @router.post("/plugins/install")
     def install(
         payload: PluginInstallRequest,
         authorization: Annotated[str | None, Header()] = None,
@@ -34,7 +34,7 @@ def register_plugin_crud_routes(app: FastAPI, settings: Settings) -> None:
         result = install_plugin(settings, source=payload.source, name=payload.name or "")
         return {"success": True, "data": result}
 
-    @app.post("/plugins/{name}/uninstall")
+    @router.post("/plugins/{name}/uninstall")
     def uninstall(
         name: str,
         authorization: Annotated[str | None, Header()] = None,
@@ -48,7 +48,7 @@ def register_plugin_crud_routes(app: FastAPI, settings: Settings) -> None:
             )
         return {"success": True}
 
-    @app.post("/plugins/{name}/test-connection")
+    @router.post("/plugins/{name}/test-connection")
     def test_connection(
         name: str,
         authorization: Annotated[str | None, Header()] = None,

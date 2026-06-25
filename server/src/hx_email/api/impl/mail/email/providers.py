@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import FastAPI, Header
+from fastapi import APIRouter, Header
 
 from hx_email.api.dependencies import require_user
 from hx_email.config import Settings
@@ -83,13 +83,13 @@ SUPPORTED_PROVIDERS: list[dict[str, object]] = [
 
 
 def register_provider_routes(
-    app: FastAPI,
+    router: APIRouter,
     settings: Settings,
     mailbox_provider: MailboxProvider,
 ) -> None:
     """Register GET /providers endpoint."""
 
-    @app.get("/providers")
+    @router.get("/providers")
     def list_providers(
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, list[dict[str, object]]]:

@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import FastAPI, Header, HTTPException, Query, status
+from fastapi import APIRouter, Header, HTTPException, Query, status
 
 from hx_email.api.dependencies import require_admin
 from hx_email.api.schemas import PoolAdminAction
@@ -11,8 +11,8 @@ from hx_email.server.admin import (
 )
 
 
-def register_pool_admin_routes(app: FastAPI, settings: Settings) -> None:
-    @app.get("/pool-admin/accounts")
+def register_pool_admin_routes(router: APIRouter, settings: Settings) -> None:
+    @router.get("/pool-admin/accounts")
     def get_pool_admin_accounts(
         authorization: Annotated[str | None, Header()] = None,
         in_pool: str | None = Query(None),
@@ -35,7 +35,7 @@ def register_pool_admin_routes(app: FastAPI, settings: Settings) -> None:
         }
         return list_pool_accounts(settings, filters)
 
-    @app.post("/pool-admin/accounts/{account_id}/action")
+    @router.post("/pool-admin/accounts/{account_id}/action")
     def pool_admin_action(
         account_id: int,
         payload: PoolAdminAction,
