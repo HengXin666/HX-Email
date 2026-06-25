@@ -1,16 +1,25 @@
 [project]
 name = "app"
 version = "0.1.0"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = []
 
 [dependency-groups]
 dev = ["ruff>=0.8.6", "mypy>=1.14.1", "pre-commit>=4.0.0"]
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py312"
 line-length = 100
-exclude = ["ref", "web", ".claude", ".codex"]
+# 排除非项目代码
+exclude = [
+    "ref/",
+    ".claude/skills/",
+    ".agents/skills/",
+    ".codex/skills/",
+    "*.bak",
+    "*.bak_*",
+    "*~",
+]
 
 [tool.ruff.lint]
 # Ruff 默认规则 + 类型标注强制(ANN) + 中文命名拦截(PLC2401)
@@ -19,7 +28,6 @@ select = [
     "PLC2401",  # 禁止非ASCII 变量/函数/类名 (拦 AI 中文命名幻觉)
     "PLC2403",  # 禁止 import ... as 中文别名
 ]
-ignore = ["ANN101", "ANN102"]
 
 [tool.ruff.lint.flake8-annotations]
 mypy-init-return = true
@@ -27,16 +35,18 @@ suppress-none-returning = true
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
-"tests/**" = ["ANN", "S101"]
-"server/tests/**" = ["ANN", "S101"]
+"**/tests/**" = ["ANN", "S101"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 strict = true
 warn_unused_ignores = true
 disallow_untyped_defs = true
-ignore_missing_imports = true
-exclude = "^(ref|web|server/tests|\\.claude|\\.codex)/"
-# FastAPI 装饰器 (app.get/post/put/delete) 未完整类型标注，
-# 会导致所有路由函数触发 untyped-decorator。禁用此项保留 strict 其余检查。
-disable_error_code = ["untyped-decorator"]
+exclude = [
+    '^ref/',
+    '^\.claude/skills/',
+    '^\.agents/skills/',
+    '^\.codex/skills/',
+    '\.bak',
+    '~$',
+]
