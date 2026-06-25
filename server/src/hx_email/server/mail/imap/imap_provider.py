@@ -20,6 +20,8 @@ from hx_email.server.mail.imap.imap_helpers import (
     decode_mime_header,
     extract_from,
     get_body,
+    imap_connect_via_proxy,
+    load_group_proxy,
     parse_date,
     recipient_from_envelope,
     try_get_imap_token,
@@ -65,6 +67,11 @@ class IMAPMailboxProvider:
         password: str = (row["imap_password"] or "").strip()
         client_id: str = (row["client_id"] or "").strip()
         refresh_token: str = (row["refresh_token"] or "").strip()
+        proxy_url: str = load_group_proxy(self._settings, account.id)
+        if proxy_url:
+            logger.info(
+                "IMAP proxy=%s account=%d (%s)", proxy_url, account.id, account.primary_address
+            )
         if client_id and refresh_token:
             access_token, tenant_used = try_get_imap_token(client_id, refresh_token)
             logger.info(
@@ -77,14 +84,26 @@ class IMAPMailboxProvider:
             )
             if account.provider in _OUTLOOK_PROVIDERS:
                 return self._imap_fetch_outlook_fallback(
-                    imap_host, imap_port, username, access_token, account
+                    imap_host, imap_port, username, access_token, account, proxy_url
                 )
             return self._imap_fetch(
-                imap_host, imap_port, username, access_token, account, use_xoauth2=True
+                imap_host,
+                imap_port,
+                username,
+                access_token,
+                account,
+                use_xoauth2=True,
+                proxy_url=proxy_url,
             )
         if password:
             return self._imap_fetch(
-                imap_host, imap_port, username, password, account, use_xoauth2=False
+                imap_host,
+                imap_port,
+                username,
+                password,
+                account,
+                use_xoauth2=False,
+                proxy_url=proxy_url,
             )
         raise RuntimeError("账户没有配置密码或 OAuth 凭证，无法连接 IMAP")  # noqa: RUF001
 
@@ -95,6 +114,7 @@ class IMAPMailboxProvider:
         username: str,
         access_token: str,
         account: EmailAccountMailbox,
+        proxy_url: str = "",
     ) -> list[MailboxMessage]:
         servers: list[str] = [primary_host]
         for alt in _OUTLOOK_IMAP_SERVERS:
@@ -110,7 +130,13 @@ class IMAPMailboxProvider:
                     account.id,
                 )
                 return self._imap_fetch(
-                    host, port, username, access_token, account, use_xoauth2=True
+                    host,
+                    port,
+                    username,
+                    access_token,
+                    account,
+                    use_xoauth2=True,
+                    proxy_url=proxy_url,
                 )
             except IMAPAuthRejectedError as exc:
                 logger.info(
@@ -139,20 +165,32 @@ class IMAPMailboxProvider:
         account: EmailAccountMailbox,
         *,
         use_xoauth2: bool = False,
+        proxy_url: str = "",
     ) -> list[MailboxMessage]:
         messages: list[MailboxMessage] = []
         conn: imaplib.IMAP4 | imaplib.IMAP4_SSL | None = None
         auth_method = "XOAUTH2" if use_xoauth2 else "password"
         try:
             ctx = ssl.create_default_context()
-            logger.info(
-                "IMAP connecting to %s:%d (user=%s, auth=%s)", host, port, username, auth_method
-            )
-            if port == 993:
-                conn = imaplib.IMAP4_SSL(host, port, ssl_context=ctx, timeout=self._timeout)
+            if proxy_url:
+                logger.info(
+                    "IMAP connecting via proxy %s to %s:%d (user=%s, auth=%s)",
+                    proxy_url,
+                    host,
+                    port,
+                    username,
+                    auth_method,
+                )
+                conn = imap_connect_via_proxy(proxy_url, host, port, self._timeout)
             else:
-                conn = imaplib.IMAP4(host, port, timeout=self._timeout)
-                conn.starttls(ssl_context=ctx)
+                logger.info(
+                    "IMAP connecting to %s:%d (user=%s, auth=%s)", host, port, username, auth_method
+                )
+                if port == 993:
+                    conn = imaplib.IMAP4_SSL(host, port, ssl_context=ctx, timeout=self._timeout)
+                else:
+                    conn = imaplib.IMAP4(host, port, timeout=self._timeout)
+                    conn.starttls(ssl_context=ctx)
             if use_xoauth2:
                 auth_string = f"user={username}\x01auth=Bearer {credential}\x01\x01".encode()
                 conn.authenticate("XOAUTH2", lambda _: auth_string)

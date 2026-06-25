@@ -290,6 +290,8 @@ def migrate(settings: Settings) -> Path:
             """,
             (settings.admin_username, hash_password(settings.admin_password)),
         )
+        if not column_exists(connection, "groups", "proxy_url"):
+            connection.execute("ALTER TABLE groups ADD COLUMN proxy_url TEXT NOT NULL DEFAULT ''")
         connection.execute("PRAGMA user_version = 7")
 
     return database_path

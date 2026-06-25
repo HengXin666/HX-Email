@@ -177,10 +177,10 @@ export const api = {
   overview: () => request<Overview>('/workbench/overview'),
 
   // ========== Groups ==========
-  createGroup: (name: string, color = '#58a6ff') =>
-    request<Group>('/groups', { method: 'POST', body: JSON.stringify({ name, color }) }),
-  updateGroup: (id: number, name: string, color: string) =>
-    request<Group>(`/groups/${id}`, { method: 'PUT', body: JSON.stringify({ name, color }) }),
+  createGroup: (name: string, color = '#58a6ff', proxy_url = '') =>
+    request<Group>('/groups', { method: 'POST', body: JSON.stringify({ name, color, proxy_url }) }),
+  updateGroup: (id: number, name: string, color: string, proxy_url = '') =>
+    request<Group>(`/groups/${id}`, { method: 'PUT', body: JSON.stringify({ name, color, proxy_url }) }),
   deleteGroup: (id: number) =>
     request<void>(`/groups/${id}`, { method: 'DELETE' }),
   listGroups: () => request<Group[]>('/groups'),

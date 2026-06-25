@@ -54,6 +54,7 @@ class AliasCreate(BaseModel):
 class GroupCreate(BaseModel):
     name: str
     color: str = "#58a6ff"
+    proxy_url: str = ""
 
 
 class TagCreate(BaseModel):

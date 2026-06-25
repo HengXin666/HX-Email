@@ -263,7 +263,7 @@ const GroupItem: React.FC<{
 const EditGroupModal: React.FC<{
   groupId: number | null
   onClose: () => void
-  onUpdate: (id: number, name: string, color: string) => Promise<any>
+  onUpdate: (id: number, name: string, color: string, proxy_url?: string) => Promise<any>
   onDelete: (id: number) => Promise<any>
 }> = ({ groupId, onClose, onUpdate, onDelete }) => {
   const { groups } = useApp()
@@ -271,6 +271,7 @@ const EditGroupModal: React.FC<{
   const g = groups.find((x) => x.id === groupId)
   const [name, setName] = useState(g?.name || '')
   const [color, setColor] = useState(g?.color || COLORS[0])
+  const [proxyUrl, setProxyUrl] = useState(g?.proxy_url || '')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
@@ -281,6 +282,7 @@ const EditGroupModal: React.FC<{
     if (current) {
       setName(current.name)
       setColor(current.color)
+      setProxyUrl(current.proxy_url || '')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupId])
@@ -288,7 +290,7 @@ const EditGroupModal: React.FC<{
   const handleSave = async () => {
     if (!g || !name.trim()) return
     try {
-      await onUpdate(g.id, name.trim(), color)
+      await onUpdate(g.id, name.trim(), color, proxyUrl)
       toast('分组已更新', 'success')
       onClose()
     } catch (err: any) {
@@ -344,6 +346,12 @@ const EditGroupModal: React.FC<{
               ))}
             </div>
           </div>
+          <Input
+            label="代理地址（可选）"
+            value={proxyUrl}
+            onChange={(e) => setProxyUrl(e.target.value)}
+            placeholder="例如: 127.0.0.1:7890 或 http://host:port"
+          />
         </div>
       </Modal>
 
@@ -504,8 +512,13 @@ const EmailCard: React.FC<{
   onRefreshAccount?: () => void
 }> = ({ email, selected, onClick, onSettings, selectedForRefresh, onToggleRefreshSelect, onRefreshAccount }) => {
   const { toast } = useToast()
-  const { refreshAccounts, refreshEmails } = useApp()
+  const { accounts, refreshAccounts, refreshEmails } = useApp()
   const [copied, setCopied] = useState(false)
+
+  const account = (accounts || []).find((a) => a.id === email.email_account_id)
+  const refreshTimeLabel = account?.last_refresh_at
+    ? formatRelativeTime(account.last_refresh_at)
+    : ''
   const [loadingCode, setLoadingCode] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const lastCodeFetchRef = React.useRef<{ time: number; codes: Set<string> }>({ time: 0, codes: new Set() })
@@ -727,7 +740,7 @@ const EmailCard: React.FC<{
 
         <div className="flex items-center justify-between mt-3 pt-2 border-t border-gh-border/60">
           <span className="text-[11px] text-gh-text-secondary flex items-center gap-1">
-            <IconClock size={10} /> {email.updated_at || '—'}
+            <IconClock size={10} /> {refreshTimeLabel || '—'}
           </span>
           <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
             <button

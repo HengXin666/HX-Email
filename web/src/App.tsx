@@ -19,7 +19,7 @@ import { AuditLog } from './pages/AuditLog'
 const ProtectedLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation()
   return (
-    <div className="flex min-h-screen bg-gh-canvas">
+    <div className="flex h-screen overflow-hidden bg-gh-canvas">
       <Sidebar />
       <AnimatePresence mode="wait">
         <motion.main

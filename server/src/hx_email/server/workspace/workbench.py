@@ -178,6 +178,7 @@ def list_workbench_emails(
             SELECT usable_emails.id, usable_emails.address, usable_emails.label,
                    usable_emails.kind, usable_emails.status,
                    groups.id AS group_id, groups.name AS group_name, groups.color AS group_color,
+                   groups.proxy_url AS group_proxy_url,
                    COUNT(DISTINCT platform_bindings.id) AS platform_binding_count
             FROM usable_emails
             {join_sql}
@@ -216,7 +217,12 @@ def list_workbench_emails(
             label=row["label"],
             kind=row["kind"],
             status=row["status"],
-            group=Group(id=row["group_id"], name=row["group_name"], color=row["group_color"])
+            group=Group(
+                id=row["group_id"],
+                name=row["group_name"],
+                color=row["group_color"],
+                proxy_url=row["group_proxy_url"] or "",
+            )
             if row["group_id"] is not None
             else None,
             tags=tuple(tags_by_email[row["id"]]),

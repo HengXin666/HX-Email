@@ -25,8 +25,8 @@ interface AppContextValue extends AppState {
   refreshPlatforms: () => Promise<void>
   refreshAccounts: () => Promise<void>
   refreshOverview: () => Promise<void>
-  createGroup: (name: string, color?: string) => Promise<Group>
-  updateGroup: (id: number, name: string, color: string) => Promise<Group>
+  createGroup: (name: string, color?: string, proxy_url?: string) => Promise<Group>
+  updateGroup: (id: number, name: string, color: string, proxy_url?: string) => Promise<Group>
   deleteGroup: (id: number) => Promise<void>
   createEmail: (address: string, label?: string, groupId?: number | null) => Promise<UsableEmail>
   organizeEmail: (id: number, data: { label?: string; group_id?: number | null; tag_ids?: number[] }) => Promise<UsableEmail>
@@ -174,14 +174,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setState((s) => ({ ...s, token: null, user: null }))
   }, [])
 
-  const createGroup = useCallback(async (name: string, color?: string) => {
-    const g = await api.createGroup(name, color)
+  const createGroup = useCallback(async (name: string, color?: string, proxy_url?: string) => {
+    const g = await api.createGroup(name, color, proxy_url)
     await refreshGroups()
     return g
   }, [refreshGroups])
 
-  const updateGroup = useCallback(async (id: number, name: string, color: string) => {
-    const g = await api.updateGroup(id, name, color)
+  const updateGroup = useCallback(async (id: number, name: string, color: string, proxy_url?: string) => {
+    const g = await api.updateGroup(id, name, color, proxy_url)
     await refreshGroups()
     return g
   }, [refreshGroups])

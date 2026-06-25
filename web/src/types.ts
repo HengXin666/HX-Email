@@ -15,6 +15,7 @@ export interface Group {
   id: number
   name: string
   color: string
+  proxy_url?: string
   count?: number // 客户端计算的内部数量
 }
 

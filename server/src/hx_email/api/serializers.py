@@ -24,7 +24,12 @@ def serialize_usable_email(usable_email: UsableEmail) -> dict[str, object]:
 def serialize_group(group: Group | GroupInfo | None) -> dict[str, object] | None:
     if group is None:
         return None
-    return {"id": group.id, "name": group.name, "color": group.color}
+    return {
+        "id": group.id,
+        "name": group.name,
+        "color": group.color,
+        "proxy_url": group.proxy_url,
+    }
 
 
 def serialize_tag(tag: Tag) -> dict[str, object]:

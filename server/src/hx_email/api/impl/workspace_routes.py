@@ -36,8 +36,13 @@ def register_workspace_routes(router: APIRouter, settings: Settings) -> None:
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
         user = require_user(settings, authorization)
-        group = create_group(settings, user.id, payload.name, payload.color)
-        return {"id": group.id, "name": group.name, "color": group.color}
+        group = create_group(settings, user.id, payload.name, payload.color, payload.proxy_url)
+        return {
+            "id": group.id,
+            "name": group.name,
+            "color": group.color,
+            "proxy_url": group.proxy_url,
+        }
 
     @router.get("/groups")
     def get_user_groups(
@@ -45,7 +50,12 @@ def register_workspace_routes(router: APIRouter, settings: Settings) -> None:
     ) -> list[dict[str, object]]:
         user = require_user(settings, authorization)
         return [
-            {"id": group.id, "name": group.name, "color": group.color}
+            {
+                "id": group.id,
+                "name": group.name,
+                "color": group.color,
+                "proxy_url": group.proxy_url,
+            }
             for group in list_groups(settings, user.id)
         ]
 
@@ -56,10 +66,17 @@ def register_workspace_routes(router: APIRouter, settings: Settings) -> None:
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
         user = require_user(settings, authorization)
-        group = update_group(settings, user.id, group_id, payload.name, payload.color)
+        group = update_group(
+            settings, user.id, group_id, payload.name, payload.color, payload.proxy_url
+        )
         if group is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
-        return {"id": group.id, "name": group.name, "color": group.color}
+        return {
+            "id": group.id,
+            "name": group.name,
+            "color": group.color,
+            "proxy_url": group.proxy_url,
+        }
 
     @router.delete("/groups/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
     def delete_user_group(

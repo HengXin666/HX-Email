@@ -12,6 +12,7 @@ class GroupInfo:
     id: int
     name: str
     color: str
+    proxy_url: str = ""
 
 
 @dataclass(frozen=True)
@@ -38,10 +39,12 @@ def group_info_from_row(row: Mapping[str, Any]) -> GroupInfo | None:
     keys = row.keys()
     name_raw = row["group_name"] if "group_name" in keys else None
     color_raw = row["group_color"] if "group_color" in keys else None
+    proxy_raw = row["group_proxy_url"] if "group_proxy_url" in keys else None
     return GroupInfo(
         id=int(gid),
         name=str(name_raw or ""),
         color=str(color_raw or ""),
+        proxy_url=str(proxy_raw or ""),
     )
 
 
@@ -70,7 +73,8 @@ def list_usable_emails(settings: Settings, user_id: int) -> list[UsableEmail]:
             """
             SELECT ue.id, ue.address, ue.label, ue.kind, ue.status,
                    ue.email_account_id,
-                   ue.group_id, g.name AS group_name, g.color AS group_color
+                   ue.group_id, g.name AS group_name, g.color AS group_color,
+                   g.proxy_url AS group_proxy_url
             FROM usable_emails ue
             LEFT JOIN groups g ON g.id = ue.group_id
             WHERE ue.user_id = ?
@@ -98,7 +102,8 @@ def get_usable_email(settings: Settings, user_id: int, usable_email_id: int) -> 
         row = connection.execute(
             """
             SELECT ue.id, ue.address, ue.label, ue.kind, ue.status,
-                   ue.group_id, g.name AS group_name, g.color AS group_color
+                   ue.group_id, g.name AS group_name, g.color AS group_color,
+                   g.proxy_url AS group_proxy_url
             FROM usable_emails ue
             LEFT JOIN groups g ON g.id = ue.group_id
             WHERE ue.id = ? AND ue.user_id = ?

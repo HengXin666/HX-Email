@@ -10,6 +10,7 @@ class Group:
     id: int
     name: str
     color: str
+    proxy_url: str = ""
 
 
 @dataclass(frozen=True)
@@ -19,13 +20,17 @@ class Tag:
     color: str
 
 
-def create_group(settings: Settings, user_id: int, name: str, color: str) -> Group:
+def create_group(
+    settings: Settings, user_id: int, name: str, color: str, proxy_url: str = ""
+) -> Group:
     with connect(settings) as connection:
         cursor = connection.execute(
-            "INSERT INTO groups (user_id, name, color) VALUES (?, ?, ?)",
-            (user_id, name, color),
+            "INSERT INTO groups (user_id, name, color, proxy_url) VALUES (?, ?, ?, ?)",
+            (user_id, name, color, proxy_url),
         )
-    return Group(id=require_inserted_id(cursor.lastrowid), name=name, color=color)
+    return Group(
+        id=require_inserted_id(cursor.lastrowid), name=name, color=color, proxy_url=proxy_url
+    )
 
 
 def create_tag(settings: Settings, user_id: int, name: str, color: str) -> Tag:
@@ -40,28 +45,38 @@ def create_tag(settings: Settings, user_id: int, name: str, color: str) -> Tag:
 def list_groups(settings: Settings, user_id: int) -> list[Group]:
     with connect(settings) as connection:
         rows = connection.execute(
-            "SELECT id, name, color FROM groups WHERE user_id = ? ORDER BY id",
+            "SELECT id, name, color, proxy_url FROM groups WHERE user_id = ? ORDER BY id",
             (user_id,),
         ).fetchall()
-    return [Group(id=row["id"], name=row["name"], color=row["color"]) for row in rows]
+    return [
+        Group(id=row["id"], name=row["name"], color=row["color"], proxy_url=row["proxy_url"] or "")
+        for row in rows
+    ]
 
 
 def update_group(
-    settings: Settings, user_id: int, group_id: int, name: str, color: str
+    settings: Settings,
+    user_id: int,
+    group_id: int,
+    name: str,
+    color: str,
+    proxy_url: str = "",
 ) -> Group | None:
     with connect(settings) as connection:
         row = connection.execute(
             """
             UPDATE groups
-            SET name = ?, color = ?
+            SET name = ?, color = ?, proxy_url = ?
             WHERE id = ? AND user_id = ?
-            RETURNING id, name, color
+            RETURNING id, name, color, proxy_url
             """,
-            (name, color, group_id, user_id),
+            (name, color, proxy_url, group_id, user_id),
         ).fetchone()
     if row is None:
         return None
-    return Group(id=row["id"], name=row["name"], color=row["color"])
+    return Group(
+        id=row["id"], name=row["name"], color=row["color"], proxy_url=row["proxy_url"] or ""
+    )
 
 
 def delete_group(settings: Settings, user_id: int, group_id: int) -> bool:

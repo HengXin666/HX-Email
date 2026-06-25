@@ -4,15 +4,20 @@ from __future__ import annotations
 
 import email
 import hashlib
+import imaplib
 import json
 import logging
 import time
 from email.header import decode_header
 from email.utils import parsedate_to_datetime
 from threading import Lock
+from typing import TYPE_CHECKING
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+
+if TYPE_CHECKING:
+    from hx_email.config import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -174,3 +179,60 @@ def try_get_imap_token(client_id: str, refresh_token: str) -> tuple[str, str]:
     if last_error is not None:
         raise last_error
     raise RuntimeError("Failed to get IMAP token: no tenants available")  # pragma: no cover
+
+
+# ── Proxy helpers ──────────────────────────────────────────────────────────
+
+
+def load_group_proxy(settings: Settings, account_id: int) -> str:
+    """Look up proxy_url from the group linked to this account's primary usable_email."""
+    from hx_email.database import connect as _connect
+
+    with _connect(settings) as conn:
+        row = conn.execute(
+            """
+            SELECT g.proxy_url FROM groups g
+            JOIN usable_emails ue ON ue.group_id = g.id
+            WHERE ue.email_account_id = ? AND ue.kind = 'primary'
+            LIMIT 1
+            """,
+            (account_id,),
+        ).fetchone()
+    return (row["proxy_url"] or "").strip() if row else ""
+
+
+def imap_connect_via_proxy(
+    proxy_url: str, host: str, port: int, timeout: int = 30
+) -> imaplib.IMAP4:
+    """Create an IMAP4 connection through an HTTP CONNECT proxy tunnel."""
+    import socket
+    import ssl as _ssl
+
+    proxy = proxy_url
+    if "://" in proxy:
+        proxy = proxy.split("://", 1)[1]
+    if ":" in proxy:
+        proxy_host, proxy_port_str = proxy.rsplit(":", 1)
+        proxy_port_num = int(proxy_port_str)
+    else:
+        proxy_host = proxy
+        proxy_port_num = 8080
+    sock = socket.create_connection((proxy_host, proxy_port_num), timeout=timeout)
+    connect_cmd = f"CONNECT {host}:{port} HTTP/1.1\r\nHost: {host}:{port}\r\n\r\n"
+    sock.sendall(connect_cmd.encode())
+    response = b""
+    while b"\r\n\r\n" not in response:
+        chunk = sock.recv(4096)
+        if not chunk:
+            break
+        response += chunk
+    status_line = response.split(b"\r\n")[0].decode(errors="replace")
+    if "200" not in status_line:
+        sock.close()
+        raise RuntimeError(f"代理 CONNECT 失败: {status_line}")
+    ctx = _ssl.create_default_context()
+    ssl_sock = ctx.wrap_socket(sock, server_hostname=host)
+    conn = imaplib.IMAP4()
+    conn.sock = ssl_sock
+    conn.file = ssl_sock.makefile("rb")
+    return conn
