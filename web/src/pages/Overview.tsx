@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { Topbar } from '../components/layout'
 import { useApp } from '../store/AppContext'
 import { Badge } from '../components/ui/Primitives'
+import { StatCard } from '../components/ui/StatCard'
 import { useToast } from '../components/ui/Toast'
 import {
   IconMail,
@@ -14,52 +15,11 @@ import {
   IconShield,
   IconZap,
   IconChevronRight,
-  IconCheck,
-  IconAlertTriangle,
   IconRefresh
 } from '../components/icons'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { VerificationStats, PoolStats, ActivityStats } from '../types'
-
-interface StatCardProps {
-  label: string
-  value: number | string
-  icon: React.FC<any>
-  color: string
-  trend?: string
-  onClick?: () => void
-}
-
-const StatCard: React.FC<StatCardProps> = ({ label, value, icon: Icon, color, trend, onClick }) => (
-  <motion.div
-    initial={{ opacity: 0, y: 10 }}
-    animate={{ opacity: 1, y: 0 }}
-    whileHover={{ y: -2 }}
-    onClick={onClick}
-    className={`relative overflow-hidden rounded-xl border border-gh-border bg-gh-canvas-subtle p-4 ${
-      onClick ? 'cursor-pointer hover:border-gh-text-muted' : ''
-    } transition-all`}
-  >
-    <div
-      className="absolute top-0 right-0 w-24 h-24 rounded-full blur-2xl opacity-20"
-      style={{ background: color }}
-    />
-    <div className="relative flex items-start justify-between">
-      <div>
-        <div className="text-xs text-gh-text-muted mb-1">{label}</div>
-        <div className="text-2xl font-bold text-gh-text tabular-nums">{value}</div>
-        {trend && <div className="text-xs text-gh-success mt-1">{trend}</div>}
-      </div>
-      <div
-        className="w-9 h-9 rounded-lg flex items-center justify-center"
-        style={{ background: color + '20', color }}
-      >
-        <Icon size={18} />
-      </div>
-    </div>
-  </motion.div>
-)
 
 export const Overview: React.FC = () => {
   const { overview, emails, groups, platforms, refreshOverview } = useApp()
@@ -101,7 +61,7 @@ export const Overview: React.FC = () => {
   const topPlatforms = platforms.slice(0, 5)
 
   return (
-    <div className="flex-1 flex flex-col min-w-0">
+    <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
       <Topbar title="工作台" subtitle="所有邮箱、平台、任务的总览视图" />
 
       <div className="flex-1 overflow-auto p-6">

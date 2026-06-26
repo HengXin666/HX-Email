@@ -5,15 +5,17 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from datetime import UTC, datetime
 from typing import Any
 
 from hx_email.config import Settings
 from hx_email.server.mail import EmailAccountMailbox, MailboxMessage
-from hx_email.server.mail.imap.imap_provider import IMAPMailboxProvider
+from hx_email.server.mail.graph.fallback_provider import FallbackMailProvider
 from hx_email.server.mail.imap.message_store import save_messages
 from hx_email.server.mail.verification import (
     CODE_PATTERN,
     LINK_PATTERN,
+    MailboxProvider,
     VerificationMatch,
     coerce_message,
     first_match,
@@ -33,6 +35,7 @@ def fetch_and_store_for_account(
     settings: Settings,
     user_id: int,
     account_id: int,
+    mailbox_provider: MailboxProvider | None = None,
 ) -> dict[str, Any]:
     """Fetch emails via IMAP for one account, store messages, extract verification codes.
 
@@ -40,7 +43,7 @@ def fetch_and_store_for_account(
     """
     from hx_email.database import connect
 
-    provider = IMAPMailboxProvider(settings)
+    provider: MailboxProvider = mailbox_provider or FallbackMailProvider(settings)
 
     # Load account info
     with connect(settings) as conn:
@@ -102,6 +105,7 @@ def fetch_and_store_for_account(
         }
 
     if not raw_messages:
+        _mark_account_refreshed(settings, account_id)
         return {
             "account_id": account_id,
             "email": email_addr,
@@ -181,6 +185,7 @@ def fetch_and_store_for_account(
                 save_history(settings, user_id, ue_id, (match,))
                 codes_found += 1
 
+    _mark_account_refreshed(settings, account_id)
     return {
         "account_id": account_id,
         "email": email_addr,
@@ -188,6 +193,16 @@ def fetch_and_store_for_account(
         "codes_found": codes_found,
         "error": "",
     }
+
+
+def _mark_account_refreshed(settings: Settings, account_id: int) -> None:
+    from hx_email.database import connect
+
+    with connect(settings) as conn:
+        conn.execute(
+            "UPDATE email_accounts SET last_refresh_at = ? WHERE id = ?",
+            (datetime.now(UTC).isoformat(), account_id),
+        )
 
 
 # ── bulk fetch (all active accounts) ─────────────────────────────────────

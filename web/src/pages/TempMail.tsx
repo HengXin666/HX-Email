@@ -60,7 +60,7 @@ export const TempMail: React.FC = () => {
   }
 
   return (
-    <div className="flex-1 flex flex-col min-w-0">
+    <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
       <Topbar
         title="临时邮箱"
         subtitle="基于 Cloudflare 的临时邮箱服务，用于快速注册"

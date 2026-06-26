@@ -270,10 +270,10 @@ def migrate(settings: Settings) -> Path:
             )
             """
         )
-        # Index for fast duplicate checks
+        # Unique index to prevent duplicate messages at DB level
         connection.execute(
             """
-            CREATE INDEX IF NOT EXISTS idx_fetched_msg_dedup
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_fetched_msg_dedup
             ON fetched_messages(usable_email_id, from_address, subject, body_hash)
             """
         )

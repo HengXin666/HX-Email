@@ -5,6 +5,7 @@ from typing import Any
 from hx_email.config import Settings
 from hx_email.database import connect
 from hx_email.server.auth import require_inserted_id
+from hx_email.server.mail.imap.message_store import delete_messages_for_email
 
 
 @dataclass(frozen=True)
@@ -189,6 +190,7 @@ def delete_usable_email(settings: Settings, user_id: int, usable_email_id: int) 
             "DELETE FROM temp_mailboxes WHERE usable_email_id = ? AND user_id = ?",
             (usable_email_id, user_id),
         )
+        delete_messages_for_email(settings, usable_email_id)
 
         # 3) Delete the email itself
         cursor = connection.execute(

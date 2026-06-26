@@ -2,20 +2,23 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Topbar } from '../components/layout'
 import { Button, Modal, Badge } from '../components/ui/Primitives'
+import { StatCard } from '../components/ui/StatCard'
+import { Pagination } from '../components/ui/Pagination'
+import { LoadingState, EmptyState } from '../components/ui/StateDisplay'
 import { useToast } from '../components/ui/Toast'
+import { usePagination } from '../hooks/usePagination'
 import {
   IconMail,
   IconCheck,
   IconX,
   IconClock,
   IconRefresh,
-  IconChevronRight,
-  IconChevronLeft,
   IconAlertTriangle,
   IconActivity,
   IconKey
 } from '../components/icons'
 import { api } from '../api/client'
+import { formatRelativeTime } from '../utils/time'
 import type { RefreshLog, RefreshStats, InvalidTokenCandidate } from '../types'
 
 const PAGE_SIZE = 20
@@ -38,82 +41,36 @@ const STATUS_ICONS: Record<string, React.FC<{ size?: number }>> = {
   pending: IconClock
 }
 
-const formatTime = (raw: string): string => {
-  if (!raw) return '—'
-  try {
-    const d = new Date(raw)
-    const now = Date.now()
-    const diff = now - d.getTime()
-    const mins = Math.floor(diff / 60000)
-    if (mins < 1) return '刚刚'
-    if (mins < 60) return `${mins} 分钟前`
-    const hours = Math.floor(mins / 60)
-    if (hours < 24) return `${hours} 小时前`
-    return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-  } catch {
-    return raw
-  }
-}
-
-const StatCard: React.FC<{
-  label: string
-  value: number
-  icon: React.FC<{ size?: number }>
-  color: string
-}> = ({ label, value, icon: IconComp, color }) => (
-  <motion.div
-    initial={{ opacity: 0, y: 10 }}
-    animate={{ opacity: 1, y: 0 }}
-    className="relative overflow-hidden rounded-xl border border-gh-border bg-gh-canvas-subtle p-4"
-  >
-    <div
-      className="absolute top-0 right-0 w-20 h-20 rounded-full blur-2xl opacity-15"
-      style={{ background: color }}
-    />
-    <div className="relative flex items-start justify-between">
-      <div>
-        <div className="text-xs text-gh-text-muted mb-1">{label}</div>
-        <div className="text-2xl font-bold text-gh-text tabular-nums">{value}</div>
-      </div>
-      <div
-        className="w-9 h-9 rounded-lg flex items-center justify-center"
-        style={{ background: color + '20', color }}
-      >
-        <IconComp size={18} />
-      </div>
-    </div>
-  </motion.div>
-)
-
 export const RefreshLogPage: React.FC = () => {
   const { toast } = useToast()
   const [logs, setLogs] = useState<RefreshLog[]>([])
   const [total, setTotal] = useState(0)
   const [stats, setStats] = useState<RefreshStats | null>(null)
   const [candidates, setCandidates] = useState<InvalidTokenCandidate[]>([])
-  const [offset, setOffset] = useState(0)
   const [statusFilter, setStatusFilter] = useState<'all' | 'success' | 'failed'>('all')
   const [loading, setLoading] = useState(true)
   const [selectedLog, setSelectedLog] = useState<RefreshLog | null>(null)
   const [showCandidates, setShowCandidates] = useState(false)
   const [candidatesLoading, setCandidatesLoading] = useState(false)
 
+  const pagination = usePagination({ pageSize: PAGE_SIZE, total })
+
   const loadLogs = useCallback(async () => {
     setLoading(true)
     try {
       const [logRes, statsRes] = await Promise.all([
-        api.getRefreshLogs(PAGE_SIZE, offset),
+        api.getRefreshLogs(PAGE_SIZE, pagination.offset),
         api.getRefreshStats()
       ])
       setLogs(logRes.logs)
       setTotal(logRes.total)
       setStats(statsRes)
-    } catch (err: any) {
-      toast(err.message, 'error')
+    } catch (err: unknown) {
+      toast((err as { message?: string }).message || '加载失败', 'error')
     } finally {
       setLoading(false)
     }
-  }, [offset, toast])
+  }, [pagination.offset, toast])
 
   useEffect(() => {
     loadLogs()
@@ -125,8 +82,8 @@ export const RefreshLogPage: React.FC = () => {
     try {
       const res = await api.getInvalidTokenCandidates(200, 0)
       setCandidates(res.candidates)
-    } catch (err: any) {
-      toast(err.message, 'error')
+    } catch (err: unknown) {
+      toast((err as { message?: string }).message || '加载失败', 'error')
     } finally {
       setCandidatesLoading(false)
     }
@@ -137,11 +94,8 @@ export const RefreshLogPage: React.FC = () => {
     return logs.filter((l) => l.status === statusFilter)
   }, [logs, statusFilter])
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
-  const currentPage = Math.floor(offset / PAGE_SIZE) + 1
-
   return (
-    <div className="flex-1 flex flex-col min-w-0">
+    <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
       <Topbar
         title="刷新日志"
         subtitle="Token 刷新历史记录"
@@ -192,7 +146,10 @@ export const RefreshLogPage: React.FC = () => {
               {(['all', 'success', 'failed'] as const).map((f) => (
                 <button
                   key={f}
-                  onClick={() => setStatusFilter(f)}
+                  onClick={() => {
+                    setStatusFilter(f)
+                    pagination.reset()
+                  }}
                   className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
                     statusFilter === f
                       ? 'bg-gh-canvas-inset text-gh-text shadow-sm'
@@ -210,7 +167,6 @@ export const RefreshLogPage: React.FC = () => {
 
           {/* Log Table */}
           <div className="rounded-xl border border-gh-border bg-gh-canvas-subtle overflow-hidden">
-            {/* Header */}
             <div className="flex items-center px-4 py-2.5 border-b border-gh-border bg-gh-canvas-inset text-xs font-semibold text-gh-text-muted uppercase tracking-wider">
               <div className="w-8 shrink-0">#</div>
               <div className="flex-1 min-w-0">邮箱</div>
@@ -219,17 +175,12 @@ export const RefreshLogPage: React.FC = () => {
               <div className="w-32 shrink-0 text-right hidden sm:block">时间</div>
             </div>
 
-            {/* Rows */}
             <div className="divide-y divide-gh-border/50">
               <AnimatePresence mode="wait">
                 {loading ? (
-                  <div className="text-center py-16 text-gh-text-secondary text-sm">
-                    加载中...
-                  </div>
+                  <LoadingState />
                 ) : filteredLogs.length === 0 ? (
-                  <div className="text-center py-16 text-gh-text-secondary text-sm">
-                    暂无刷新记录
-                  </div>
+                  <EmptyState message="暂无刷新记录" />
                 ) : (
                   filteredLogs.map((log, i) => {
                     const StatusIcon = STATUS_ICONS[log.status] || IconClock
@@ -250,7 +201,7 @@ export const RefreshLogPage: React.FC = () => {
                         }`}
                       >
                         <div className="w-8 shrink-0 text-gh-text-secondary text-xs tabular-nums">
-                          {offset + i + 1}
+                          {pagination.offset + i + 1}
                         </div>
                         <div className="flex-1 min-w-0 flex items-center gap-2">
                           <IconMail size={13} className="text-gh-text-muted shrink-0" />
@@ -272,7 +223,7 @@ export const RefreshLogPage: React.FC = () => {
                         <div className="w-32 shrink-0 text-right hidden sm:block">
                           <span className="text-xs text-gh-text-secondary flex items-center justify-end gap-1">
                             <IconClock size={10} />
-                            {formatTime(log.started_at || log.created_at)}
+                            {formatRelativeTime(log.started_at || log.created_at)}
                           </span>
                         </div>
                       </motion.div>
@@ -283,30 +234,14 @@ export const RefreshLogPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Pagination */}
-          {total > PAGE_SIZE && (
-            <div className="flex items-center justify-center gap-3">
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={offset === 0}
-                onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
-              >
-                <IconChevronLeft size={14} /> 上一页
-              </Button>
-              <span className="text-sm text-gh-text-secondary tabular-nums">
-                第 {currentPage} / {totalPages} 页
-              </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={offset + PAGE_SIZE >= total}
-                onClick={() => setOffset(offset + PAGE_SIZE)}
-              >
-                下一页 <IconChevronRight size={14} />
-              </Button>
-            </div>
-          )}
+          <Pagination
+            currentPage={pagination.page}
+            totalPages={pagination.totalPages}
+            hasPrev={pagination.hasPrev}
+            hasNext={pagination.hasNext}
+            onPrev={pagination.goPrev}
+            onNext={pagination.goNext}
+          />
         </motion.div>
       </div>
 
@@ -337,8 +272,8 @@ export const RefreshLogPage: React.FC = () => {
               </div>
             )}
             <div className="flex items-center gap-4 text-xs text-gh-text-secondary">
-              <span>开始: {formatTime(selectedLog.started_at)}</span>
-              <span>结束: {formatTime(selectedLog.completed_at)}</span>
+              <span>开始: {formatRelativeTime(selectedLog.started_at)}</span>
+              <span>结束: {formatRelativeTime(selectedLog.completed_at)}</span>
             </div>
           </div>
         )}
@@ -353,11 +288,9 @@ export const RefreshLogPage: React.FC = () => {
       >
         <div className="space-y-2">
           {candidatesLoading ? (
-            <div className="text-center py-8 text-gh-text-secondary text-sm">加载中...</div>
+            <LoadingState />
           ) : candidates.length === 0 ? (
-            <div className="text-center py-8 text-gh-text-secondary text-sm">
-              暂无疑似失效 Token
-            </div>
+            <EmptyState message="暂无疑似失效 Token" />
           ) : (
             candidates.map((c, i) => (
               <motion.div
@@ -385,7 +318,7 @@ export const RefreshLogPage: React.FC = () => {
                     )}
                     <div className="mt-1.5 text-xs text-gh-text-secondary flex items-center gap-1">
                       <IconClock size={10} />
-                      最后失败: {formatTime(c.last_failed_at)}
+                      最后失败: {formatRelativeTime(c.last_failed_at)}
                     </div>
                   </div>
                 </div>

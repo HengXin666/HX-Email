@@ -1,21 +1,21 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Topbar } from '../components/layout'
-import { Button, Modal, Badge } from '../components/ui/Primitives'
+import { Button, Badge } from '../components/ui/Primitives'
+import { Pagination } from '../components/ui/Pagination'
+import { FilterSelect } from '../components/ui/FilterSelect'
+import { ConfirmModal } from '../components/ui/ConfirmModal'
+import { LoadingState, EmptyState } from '../components/ui/StateDisplay'
 import { useToast } from '../components/ui/Toast'
+import { usePagination } from '../hooks/usePagination'
 import {
   IconMail,
   IconRefresh,
-  IconChevronRight,
-  IconChevronLeft,
-  IconSearch,
-  IconFilter,
-  IconChevronDown
+  IconSearch
 } from '../components/icons'
 import { api } from '../api/client'
-import type { PoolAdminAccount, Pagination } from '../types'
-
-const PAGE_SIZE = 20
+import { formatDateTime } from '../utils/time'
+import type { PoolAdminAccount, Pagination as PaginationType } from '../types'
 
 const POOL_STATUS_COLORS: Record<string, string> = {
   available: '#3fb950',
@@ -34,6 +34,23 @@ const POOL_STATUS_LABELS: Record<string, string> = {
   frozen: '已冻结',
   retired: '已退役'
 }
+
+const POOL_STATUS_OPTIONS = [
+  { value: 'available', label: '可用' },
+  { value: 'claimed', label: '已领取' },
+  { value: 'completed', label: '已完成' },
+  { value: 'cooling', label: '冷却中' },
+  { value: 'frozen', label: '已冻结' },
+  { value: 'retired', label: '已退役' }
+]
+
+const PROVIDER_OPTIONS = [
+  { value: 'gmail', label: 'Gmail' },
+  { value: 'outlook', label: 'Outlook' },
+  { value: 'yahoo', label: 'Yahoo' },
+  { value: 'icloud', label: 'iCloud' },
+  { value: 'other', label: '其他' }
+]
 
 const STATUS_ACTIONS: Record<string, string[]> = {
   available: ['claim', 'freeze', 'retire', 'remove_from_pool'],
@@ -70,27 +87,13 @@ const ACTION_COLORS: Record<string, string> = {
 
 const DANGER_ACTIONS = new Set(['freeze', 'retire', 'remove_from_pool'])
 
-const formatTime = (raw: string): string => {
-  if (!raw) return '--'
-  try {
-    const d = new Date(raw)
-    return d.toLocaleDateString('zh-CN', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-  } catch {
-    return raw
-  }
-}
+const PAGE_SIZE = 20
 
 export const PoolAdmin: React.FC = () => {
   const { toast } = useToast()
   const [accounts, setAccounts] = useState<PoolAdminAccount[]>([])
-  const [pagination, setPagination] = useState<Pagination | null>(null)
+  const [paginationData, setPaginationData] = useState<PaginationType | null>(null)
   const [loading, setLoading] = useState(true)
-  const [page, setPage] = useState(1)
   const [poolStatus, setPoolStatus] = useState('')
   const [provider, setProvider] = useState('')
   const [groupId, setGroupId] = useState('')
@@ -101,11 +104,16 @@ export const PoolAdmin: React.FC = () => {
     action: string
   } | null>(null)
 
+  const pagination = usePagination({
+    pageSize: PAGE_SIZE,
+    total: paginationData?.total_count ?? 0
+  })
+
   const loadAccounts = useCallback(async () => {
     setLoading(true)
     try {
       const params: Record<string, string | number> = {
-        page,
+        page: pagination.page,
         page_size: PAGE_SIZE
       }
       if (poolStatus) params.pool_status = poolStatus
@@ -115,13 +123,13 @@ export const PoolAdmin: React.FC = () => {
 
       const res = await api.listPoolAdminAccounts(params)
       setAccounts(res.accounts)
-      setPagination(res.pagination)
+      setPaginationData(res.pagination)
     } catch (err: unknown) {
       toast((err as { message?: string }).message || '加载失败', 'error')
     } finally {
       setLoading(false)
     }
-  }, [page, poolStatus, provider, groupId, search, toast])
+  }, [pagination.page, poolStatus, provider, groupId, search, toast])
 
   useEffect(() => {
     loadAccounts()
@@ -141,10 +149,8 @@ export const PoolAdmin: React.FC = () => {
     }
   }
 
-  const totalPages: number = pagination?.total_pages ?? 1
-
   return (
-    <div className="flex-1 flex flex-col min-w-0">
+    <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
       <Topbar
         title="号池管理"
         subtitle="管理邮箱池中的账号状态"
@@ -163,67 +169,36 @@ export const PoolAdmin: React.FC = () => {
         >
           {/* Filter Bar */}
           <div className="flex flex-wrap items-center gap-3">
-            {/* Pool Status Filter */}
-            <div className="relative">
-              <select
-                value={poolStatus}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
-                  setPoolStatus(e.target.value)
-                  setPage(1)
-                }}
-                className="appearance-none bg-gh-canvas-subtle border border-gh-border rounded-lg pl-9 pr-8 py-2 text-sm text-gh-text focus:outline-none focus:border-gh-accent cursor-pointer"
-              >
-                <option value="">全部状态</option>
-                <option value="available">可用</option>
-                <option value="claimed">已领取</option>
-                <option value="completed">已完成</option>
-                <option value="cooling">冷却中</option>
-                <option value="frozen">已冻结</option>
-                <option value="retired">已退役</option>
-              </select>
-              <IconFilter
-                size={14}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-gh-text-muted pointer-events-none"
-              />
-              <IconChevronDown
-                size={12}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gh-text-muted pointer-events-none"
-              />
-            </div>
+            <FilterSelect
+              value={poolStatus}
+              onChange={(v) => {
+                setPoolStatus(v)
+                pagination.reset()
+              }}
+              options={POOL_STATUS_OPTIONS}
+              placeholder="全部状态"
+            />
 
-            {/* Provider Filter */}
-            <div>
-              <select
-                value={provider}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
-                  setProvider(e.target.value)
-                  setPage(1)
-                }}
-                className="appearance-none bg-gh-canvas-subtle border border-gh-border rounded-lg px-3 py-2 text-sm text-gh-text focus:outline-none focus:border-gh-accent cursor-pointer"
-              >
-                <option value="">全部服务商</option>
-                <option value="gmail">Gmail</option>
-                <option value="outlook">Outlook</option>
-                <option value="yahoo">Yahoo</option>
-                <option value="icloud">iCloud</option>
-                <option value="other">其他</option>
-              </select>
-            </div>
+            <FilterSelect
+              value={provider}
+              onChange={(v) => {
+                setProvider(v)
+                pagination.reset()
+              }}
+              options={PROVIDER_OPTIONS}
+              placeholder="全部服务商"
+            />
 
-            {/* Group ID Filter */}
-            <div>
-              <input
-                value={groupId}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                  setGroupId(e.target.value)
-                  setPage(1)
-                }}
-                placeholder="分组 ID"
-                className="w-24 bg-gh-canvas-subtle border border-gh-border rounded-lg px-3 py-2 text-sm text-gh-text placeholder-gh-text-secondary focus:outline-none focus:border-gh-accent"
-              />
-            </div>
+            <input
+              value={groupId}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                setGroupId(e.target.value)
+                pagination.reset()
+              }}
+              placeholder="分组 ID"
+              className="w-24 bg-gh-canvas-subtle border border-gh-border rounded-lg px-3 py-2 text-sm text-gh-text placeholder-gh-text-secondary focus:outline-none focus:border-gh-accent"
+            />
 
-            {/* Search */}
             <div className="relative flex-1 min-w-[200px] max-w-sm">
               <IconSearch
                 size={14}
@@ -233,7 +208,7 @@ export const PoolAdmin: React.FC = () => {
                 value={search}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                   setSearch(e.target.value)
-                  setPage(1)
+                  pagination.reset()
                 }}
                 placeholder="搜索邮箱..."
                 className="w-full bg-gh-canvas-subtle border border-gh-border rounded-lg pl-9 pr-3 py-2 text-sm text-gh-text placeholder-gh-text-secondary focus:outline-none focus:border-gh-accent"
@@ -243,7 +218,6 @@ export const PoolAdmin: React.FC = () => {
 
           {/* Table */}
           <div className="rounded-xl border border-gh-border bg-gh-canvas-subtle overflow-hidden">
-            {/* Header */}
             <div className="flex items-center px-4 py-2.5 border-b border-gh-border bg-gh-canvas-inset text-xs font-semibold text-gh-text-muted uppercase tracking-wider">
               <div className="w-8 shrink-0">#</div>
               <div className="flex-1 min-w-0">邮箱</div>
@@ -255,17 +229,12 @@ export const PoolAdmin: React.FC = () => {
               <div className="w-48 shrink-0 text-center">操作</div>
             </div>
 
-            {/* Rows */}
             <div className="divide-y divide-gh-border/50">
               <AnimatePresence mode="wait">
                 {loading ? (
-                  <div className="text-center py-16 text-gh-text-secondary text-sm">
-                    加载中...
-                  </div>
+                  <LoadingState />
                 ) : accounts.length === 0 ? (
-                  <div className="text-center py-16 text-gh-text-secondary text-sm">
-                    暂无号池账号
-                  </div>
+                  <EmptyState message="暂无号池账号" />
                 ) : (
                   accounts.map((acct, i) => {
                     const statusColor =
@@ -280,7 +249,7 @@ export const PoolAdmin: React.FC = () => {
                         className="flex items-center px-4 py-3 text-sm hover:bg-gh-border/20 transition-colors"
                       >
                         <div className="w-8 shrink-0 text-gh-text-secondary text-xs tabular-nums">
-                          {(page - 1) * PAGE_SIZE + i + 1}
+                          {(pagination.page - 1) * PAGE_SIZE + i + 1}
                         </div>
                         <div className="flex-1 min-w-0 flex items-center gap-2">
                           <IconMail
@@ -314,7 +283,7 @@ export const PoolAdmin: React.FC = () => {
                         </div>
                         <div className="w-36 shrink-0 text-right hidden sm:block">
                           <span className="text-xs text-gh-text-secondary">
-                            {acct.claimed_at ? formatTime(acct.claimed_at) : '--'}
+                            {acct.claimed_at ? formatDateTime(acct.claimed_at) : '--'}
                           </span>
                         </div>
                         <div className="w-48 shrink-0 flex items-center justify-center gap-1 flex-wrap">
@@ -354,70 +323,32 @@ export const PoolAdmin: React.FC = () => {
             </div>
           </div>
 
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-3">
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={page <= 1}
-                onClick={() => setPage(Math.max(1, page - 1))}
-              >
-                <IconChevronLeft size={14} /> 上一页
-              </Button>
-              <span className="text-sm text-gh-text-secondary tabular-nums">
-                第 {page} / {totalPages} 页
-              </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={page >= totalPages}
-                onClick={() => setPage(page + 1)}
-              >
-                下一页 <IconChevronRight size={14} />
-              </Button>
-            </div>
-          )}
+          <Pagination
+            currentPage={pagination.page}
+            totalPages={pagination.totalPages}
+            hasPrev={pagination.hasPrev}
+            hasNext={pagination.hasNext}
+            onPrev={pagination.goPrev}
+            onNext={pagination.goNext}
+          />
         </motion.div>
       </div>
 
-      {/* Confirm Action Modal */}
-      <Modal
+      <ConfirmModal
         open={!!confirmAction}
-        onClose={() => setConfirmAction(null)}
         title="确认操作"
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setConfirmAction(null)}>
-              取消
-            </Button>
-            <Button
-              variant="danger"
-              onClick={() =>
-                confirmAction &&
-                handleAction(confirmAction.accountId, confirmAction.action)
-              }
-            >
-              确认
-            </Button>
-          </>
+        message={
+          confirmAction
+            ? `确定要对账号 #${confirmAction.accountId} 执行 ${ACTION_LABELS[confirmAction.action] || confirmAction.action} 操作吗？`
+            : ''
         }
-      >
-        {confirmAction && (
-          <div className="text-sm text-gh-text">
-            确定要对账号{' '}
-            <span className="font-mono text-gh-accent">
-              #{confirmAction.accountId}
-            </span>{' '}
-            执行
-            <span className="font-semibold text-gh-danger">
-              {' '}
-              {ACTION_LABELS[confirmAction.action] || confirmAction.action}
-            </span>{' '}
-            操作吗？
-          </div>
-        )}
-      </Modal>
+        confirmLabel="确认"
+        onConfirm={() =>
+          confirmAction &&
+          handleAction(confirmAction.accountId, confirmAction.action)
+        }
+        onCancel={() => setConfirmAction(null)}
+      />
     </div>
   )
 }

@@ -60,7 +60,7 @@ export const ApiAccess: React.FC = () => {
   const baseUrl = window.location.origin + '/api/v1'
 
   return (
-    <div className="flex-1 flex flex-col min-w-0">
+    <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
       <Topbar title="API 接入" subtitle="通过 REST API 集成 HX-Email 服务" />
 
       <div className="flex-1 overflow-auto">

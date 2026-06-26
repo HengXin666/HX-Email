@@ -8,6 +8,7 @@ from typing import Any
 from hx_email.config import Settings
 from hx_email.database import connect
 from hx_email.server.mail import EmailAccountMailbox, MailboxMessage
+from hx_email.server.mail.graph.fallback_provider import FallbackMailProvider
 from hx_email.server.mail.verification import (
     CODE_PATTERN,
     MailboxProvider,
@@ -41,14 +42,13 @@ def _find_email_account(settings: Settings, email_addr: str) -> EmailAccountMail
 
 def _build_message_dict(msg: MailboxMessage, idx: int) -> dict[str, object]:
     """Build a clean email summary dict from a MailboxMessage."""
-    body_preview: str = msg.body[:200] if msg.body else ""
     return {
-        "id": str(idx + 1),
+        "id": msg.message_id or str(idx + 1),
         "subject": msg.subject,
         "from": "",
         "to": msg.recipient_address or "",
         "date": "",
-        "body_preview": body_preview,
+        "body_preview": msg.body[:200] if msg.body else "",
         "has_attachments": False,
     }
 
@@ -67,11 +67,7 @@ def _paginate(
 
 def _resolve_method(account: EmailAccountMailbox, method: str | None) -> str:
     """Resolve the fetch method: graph, imap, or auto-detect."""
-    if method:
-        return method
-    if account.provider in ("outlook", "hotmail"):
-        return "graph"
-    return "imap"
+    return method or ("graph" if account.provider in ("outlook", "hotmail") else "imap")
 
 
 def fetch_emails(
@@ -83,7 +79,11 @@ def fetch_emails(
     top: int = 20,
     method: str | None = None,
 ) -> dict[str, object]:
-    """Fetch emails for an address; returns {emails, method, has_more}."""
+    """Fetch emails for an address; returns {emails, method, has_more}.
+
+    Graph → IMAP fallback is handled transparently by FallbackMailProvider
+    (injected by app.py).  All consumers automatically get Graph for Outlook.
+    """
     account = _find_email_account(settings, email_addr)
     if account is None:
         return {"emails": [], "method": "none", "has_more": False}
@@ -108,11 +108,29 @@ def get_email_detail(
     folder: str = "inbox",
     method: str | None = None,
 ) -> dict[str, object]:
-    """Get single email with full body."""
+    """Get single email with full body. Outlook/Hotmail → Graph first, then IMAP fallback."""
     account = _find_email_account(settings, email_addr)
     if account is None:
         return _empty_detail(email_addr, message_id)
 
+    resolved_method = _resolve_method(account, method)
+
+    # Graph path: message_id = real Graph ID, fall through to IMAP on failure
+    if resolved_method == "graph":
+        fallback = FallbackMailProvider(settings)
+        graph_msg = fallback.read_message_detail(account, message_id)
+        if graph_msg is not None:
+            return {
+                "id": message_id,
+                "subject": graph_msg.subject,
+                "from": graph_msg.from_address,
+                "to": email_addr,
+                "date": graph_msg.received_at,
+                "body": graph_msg.body,
+                "body_type": "text",
+            }
+
+    # IMAP path: message_id = positional index (1-based)
     raw_messages: list[Any] = mailbox_provider.read_messages(account)
     try:
         msg_idx = int(message_id) - 1
@@ -123,9 +141,9 @@ def get_email_detail(
         return {
             "id": message_id,
             "subject": msg.subject,
-            "from": "",
+            "from": msg.from_address if msg.from_address else "",
             "to": email_addr,
-            "date": "",
+            "date": msg.received_at if msg.received_at else "",
             "body": msg.body,
             "body_type": "text",
         }
@@ -175,11 +193,10 @@ def batch_fetch_emails(
 
         try:
             raw_messages: list[Any] = mailbox_provider.read_messages(account)
-            all_messages: list[dict[str, object]] = []
-            for idx, raw in enumerate(raw_messages):
-                msg = coerce_message(raw)
-                all_messages.append(_build_message_dict(msg, idx))
-            paged, _ = _paginate(all_messages, skip, top)
+            all_msgs = [
+                _build_message_dict(coerce_message(r), i) for i, r in enumerate(raw_messages)
+            ]
+            paged, _ = _paginate(all_msgs, skip, top)
             results.append(
                 {
                     "account_id": account_id,
@@ -191,12 +208,7 @@ def batch_fetch_emails(
             success_count += 1
         except Exception as exc:
             results.append(
-                {
-                    "account_id": account_id,
-                    "success": False,
-                    "error": str(exc),
-                    "emails": [],
-                }
+                {"account_id": account_id, "success": False, "error": str(exc), "emails": []}
             )
             failed_count += 1
 
@@ -214,21 +226,13 @@ def _fetch_account_by_id(settings: Settings, account_id: int) -> EmailAccountMai
     """Look up an email account by its primary key."""
     with connect(settings) as connection:
         row = connection.execute(
-            """
-            SELECT id, provider, primary_address
-            FROM email_accounts
-            WHERE id = ?
-            """,
+            "SELECT id, provider, primary_address FROM email_accounts WHERE id = ?",
             (account_id,),
         ).fetchone()
-
     if row is None:
         return None
-
     return EmailAccountMailbox(
-        id=row["id"],
-        provider=row["provider"],
-        primary_address=row["primary_address"],
+        id=row["id"], provider=row["provider"], primary_address=row["primary_address"]
     )
 
 

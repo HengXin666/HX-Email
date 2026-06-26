@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from hx_email.config import Settings
 from hx_email.database import connect
+from hx_email.server.mail.imap.message_store import delete_messages_for_email
 
 if TYPE_CHECKING:
     from hx_email.server.mail.email_accounts import EmailAccount
@@ -120,6 +121,7 @@ def delete_email_account(settings: Settings, user_id: int, account_id: int) -> b
                 "DELETE FROM temp_mailboxes WHERE usable_email_id = ? AND user_id = ?",
                 (eid, user_id),
             )
+            delete_messages_for_email(settings, eid)
         connection.execute(
             "DELETE FROM usable_emails WHERE email_account_id = ? AND user_id = ?",
             (account_id, user_id),

@@ -2,18 +2,18 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Topbar } from '../components/layout'
 import { Button, Badge } from '../components/ui/Primitives'
+import { Pagination } from '../components/ui/Pagination'
+import { FilterSelect } from '../components/ui/FilterSelect'
+import { LoadingState, EmptyState } from '../components/ui/StateDisplay'
 import { useToast } from '../components/ui/Toast'
+import { usePagination } from '../hooks/usePagination'
 import {
   IconRefresh,
-  IconChevronRight,
-  IconChevronLeft,
-  IconShield,
   IconClock,
-  IconServer,
-  IconFilter,
-  IconChevronDown
+  IconServer
 } from '../components/icons'
 import { api } from '../api/client'
+import { formatDateTimeFull } from '../utils/time'
 import type { AuditLogEntry } from '../types'
 
 const PAGE_SIZE = 50
@@ -35,38 +35,48 @@ const ACTION_COLORS: Record<string, string> = {
   cooldown: '#a371f7'
 }
 
-const formatTime = (raw: string): string => {
-  if (!raw) return '--'
-  try {
-    const d = new Date(raw)
-    return d.toLocaleString('zh-CN', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    })
-  } catch {
-    return raw
-  }
-}
+const ACTION_OPTIONS = [
+  { value: 'create', label: 'create' },
+  { value: 'update', label: 'update' },
+  { value: 'delete', label: 'delete' },
+  { value: 'claim', label: 'claim' },
+  { value: 'release', label: 'release' },
+  { value: 'complete', label: 'complete' },
+  { value: 'freeze', label: 'freeze' },
+  { value: 'unfreeze', label: 'unfreeze' },
+  { value: 'retire', label: 'retire' },
+  { value: 'login', label: 'login' },
+  { value: 'logout', label: 'logout' }
+]
+
+const RESOURCE_TYPE_OPTIONS = [
+  { value: 'account', label: 'account' },
+  { value: 'pool_entry', label: 'pool_entry' },
+  { value: 'email', label: 'email' },
+  { value: 'platform', label: 'platform' },
+  { value: 'binding', label: 'binding' },
+  { value: 'token', label: 'token' },
+  { value: 'user', label: 'user' },
+  { value: 'setting', label: 'setting' }
+]
 
 export const AuditLog: React.FC = () => {
   const { toast } = useToast()
   const [logs, setLogs] = useState<AuditLogEntry[]>([])
   const [total, setTotal] = useState(0)
-  const [offset, setOffset] = useState(0)
   const [actionFilter, setActionFilter] = useState('')
   const [resourceType, setResourceType] = useState('')
   const [loading, setLoading] = useState(true)
   const [expandedId, setExpandedId] = useState<number | null>(null)
+
+  const pagination = usePagination({ pageSize: PAGE_SIZE, total })
 
   const loadLogs = useCallback(async () => {
     setLoading(true)
     try {
       const params: Record<string, string | number> = {
         limit: PAGE_SIZE,
-        offset
+        offset: pagination.offset
       }
       if (actionFilter) params.action = actionFilter
       if (resourceType) params.resource_type = resourceType
@@ -79,17 +89,14 @@ export const AuditLog: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }, [offset, actionFilter, resourceType, toast])
+  }, [pagination.offset, actionFilter, resourceType, toast])
 
   useEffect(() => {
     loadLogs()
   }, [loadLogs])
 
-  const totalPages: number = Math.max(1, Math.ceil(total / PAGE_SIZE))
-  const currentPage: number = Math.floor(offset / PAGE_SIZE) + 1
-
   return (
-    <div className="flex-1 flex flex-col min-w-0">
+    <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
       <Topbar
         title="审计日志"
         subtitle="系统操作审计记录"
@@ -108,70 +115,29 @@ export const AuditLog: React.FC = () => {
         >
           {/* Filter Bar */}
           <div className="flex items-center gap-3">
-            <div className="relative">
-              <select
-                value={actionFilter}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
-                  setActionFilter(e.target.value)
-                  setOffset(0)
-                }}
-                className="appearance-none bg-gh-canvas-subtle border border-gh-border rounded-lg pl-9 pr-8 py-2 text-sm text-gh-text focus:outline-none focus:border-gh-accent cursor-pointer"
-              >
-                <option value="">全部操作</option>
-                <option value="create">create</option>
-                <option value="update">update</option>
-                <option value="delete">delete</option>
-                <option value="claim">claim</option>
-                <option value="release">release</option>
-                <option value="complete">complete</option>
-                <option value="freeze">freeze</option>
-                <option value="unfreeze">unfreeze</option>
-                <option value="retire">retire</option>
-                <option value="login">login</option>
-                <option value="logout">logout</option>
-              </select>
-              <IconFilter
-                size={14}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-gh-text-muted pointer-events-none"
-              />
-              <IconChevronDown
-                size={12}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gh-text-muted pointer-events-none"
-              />
-            </div>
-            <div className="relative">
-              <select
-                value={resourceType}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
-                  setResourceType(e.target.value)
-                  setOffset(0)
-                }}
-                className="appearance-none bg-gh-canvas-subtle border border-gh-border rounded-lg pl-9 pr-8 py-2 text-sm text-gh-text focus:outline-none focus:border-gh-accent cursor-pointer"
-              >
-                <option value="">全部资源类型</option>
-                <option value="account">account</option>
-                <option value="pool_entry">pool_entry</option>
-                <option value="email">email</option>
-                <option value="platform">platform</option>
-                <option value="binding">binding</option>
-                <option value="token">token</option>
-                <option value="user">user</option>
-                <option value="setting">setting</option>
-              </select>
-              <IconServer
-                size={14}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-gh-text-muted pointer-events-none"
-              />
-              <IconChevronDown
-                size={12}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gh-text-muted pointer-events-none"
-              />
-            </div>
+            <FilterSelect
+              value={actionFilter}
+              onChange={(v) => {
+                setActionFilter(v)
+                pagination.reset()
+              }}
+              options={ACTION_OPTIONS}
+              placeholder="全部操作"
+            />
+            <FilterSelect
+              value={resourceType}
+              onChange={(v) => {
+                setResourceType(v)
+                pagination.reset()
+              }}
+              options={RESOURCE_TYPE_OPTIONS}
+              placeholder="全部资源类型"
+              icon={IconServer}
+            />
           </div>
 
           {/* Log Table */}
           <div className="rounded-xl border border-gh-border bg-gh-canvas-subtle overflow-hidden">
-            {/* Header */}
             <div className="flex items-center px-4 py-2.5 border-b border-gh-border bg-gh-canvas-inset text-xs font-semibold text-gh-text-muted uppercase tracking-wider">
               <div className="w-8 shrink-0">#</div>
               <div className="flex-1 min-w-0">时间</div>
@@ -187,17 +153,12 @@ export const AuditLog: React.FC = () => {
               <div className="w-36 shrink-0 text-right hidden sm:block">IP</div>
             </div>
 
-            {/* Rows */}
             <div className="divide-y divide-gh-border/50">
               <AnimatePresence mode="wait">
                 {loading ? (
-                  <div className="text-center py-16 text-gh-text-secondary text-sm">
-                    加载中...
-                  </div>
+                  <LoadingState />
                 ) : logs.length === 0 ? (
-                  <div className="text-center py-16 text-gh-text-secondary text-sm">
-                    暂无审计记录
-                  </div>
+                  <EmptyState message="暂无审计记录" />
                 ) : (
                   logs.map((log, i) => {
                     const actionColor =
@@ -217,7 +178,7 @@ export const AuditLog: React.FC = () => {
                           className="flex items-center px-4 py-3 text-sm hover:bg-gh-border/20 transition-colors cursor-pointer"
                         >
                           <div className="w-8 shrink-0 text-gh-text-secondary text-xs tabular-nums">
-                            {offset + i + 1}
+                            {pagination.offset + i + 1}
                           </div>
                           <div className="flex-1 min-w-0 flex items-center gap-1.5">
                             <IconClock
@@ -225,7 +186,7 @@ export const AuditLog: React.FC = () => {
                               className="text-gh-text-muted shrink-0"
                             />
                             <span className="text-xs text-gh-text-secondary font-mono">
-                              {formatTime(log.created_at)}
+                              {formatDateTimeFull(log.created_at)}
                             </span>
                           </div>
                           <div className="w-20 shrink-0 text-center">
@@ -315,7 +276,7 @@ export const AuditLog: React.FC = () => {
                                       时间
                                     </div>
                                     <div className="text-sm text-gh-text">
-                                      {formatTime(log.created_at)}
+                                      {formatDateTimeFull(log.created_at)}
                                     </div>
                                   </div>
                                   <div className="col-span-2">
@@ -339,30 +300,14 @@ export const AuditLog: React.FC = () => {
             </div>
           </div>
 
-          {/* Pagination */}
-          {total > PAGE_SIZE && (
-            <div className="flex items-center justify-center gap-3">
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={offset === 0}
-                onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
-              >
-                <IconChevronLeft size={14} /> 上一页
-              </Button>
-              <span className="text-sm text-gh-text-secondary tabular-nums">
-                第 {currentPage} / {totalPages} 页
-              </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={offset + PAGE_SIZE >= total}
-                onClick={() => setOffset(offset + PAGE_SIZE)}
-              >
-                下一页 <IconChevronRight size={14} />
-              </Button>
-            </div>
-          )}
+          <Pagination
+            currentPage={pagination.page}
+            totalPages={pagination.totalPages}
+            hasPrev={pagination.hasPrev}
+            hasNext={pagination.hasNext}
+            onPrev={pagination.goPrev}
+            onNext={pagination.goNext}
+          />
         </motion.div>
       </div>
     </div>

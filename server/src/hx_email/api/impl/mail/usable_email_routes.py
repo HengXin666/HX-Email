@@ -267,7 +267,8 @@ def register_usable_email_routes(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Usable email not found"
             )
         messages = get_stored_messages(settings, usable_email_id, limit=limit, offset=offset)
-        return {"messages": messages, "total": len(messages)}
+        total = get_message_count(settings, usable_email_id)
+        return {"messages": messages, "total": total}
 
     @router.post("/usable-emails/{usable_email_id}/fetch-emails")
     def trigger_email_fetch(
@@ -291,5 +292,7 @@ def register_usable_email_routes(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="This email is not linked to an IMAP account",
             )
-        result = fetch_and_store_for_account(settings, user.id, row["email_account_id"])
+        result = fetch_and_store_for_account(
+            settings, user.id, row["email_account_id"], mailbox_provider
+        )
         return result

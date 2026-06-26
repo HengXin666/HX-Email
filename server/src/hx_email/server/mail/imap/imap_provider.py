@@ -120,7 +120,7 @@ class IMAPMailboxProvider:
         for alt in _OUTLOOK_IMAP_SERVERS:
             if alt not in servers:
                 servers.append(alt)
-        last_error: RuntimeError | None = None
+        last_error: Exception | None = None
         for host in servers:
             try:
                 logger.info(
@@ -138,23 +138,24 @@ class IMAPMailboxProvider:
                     use_xoauth2=True,
                     proxy_url=proxy_url,
                 )
-            except IMAPAuthRejectedError as exc:
+            except Exception as exc:
                 logger.info(
-                    "IMAP server %s rejected connection for account %d, trying next...",
+                    "IMAP server %s failed for account %d: %s, trying next...",
                     host,
                     account.id,
+                    exc,
                 )
                 last_error = exc
                 continue
-        raise last_error  # type: ignore[misc]
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("No Outlook IMAP servers available")
 
     def _load_account_row(self, account_id: int) -> sqlite3.Row | None:
         with connect(self._settings) as conn:
-            return conn.execute(  # type: ignore[no-any-return]
-                "SELECT imap_host, imap_port, username, imap_password, "
-                "client_id, refresh_token FROM email_accounts WHERE id = ?",
-                (account_id,),
-            ).fetchone()
+            sql: str = "SELECT imap_host, imap_port, username, imap_password, "
+            sql += "client_id, refresh_token FROM email_accounts WHERE id = ?"
+            return conn.execute(sql, (account_id,)).fetchone()  # type: ignore[no-any-return]
 
     def _imap_fetch(
         self,
@@ -277,9 +278,7 @@ class IMAPMailboxProvider:
                     exc,
                 )
                 raise IMAPAuthRejectedError(error_str) from exc
-            elif (
-                "login failed" in error_str.lower() or "authentication failed" in error_str.lower()
-            ):
+            if "login failed" in error_str.lower() or "authentication failed" in error_str.lower():
                 error_str = f"IMAP 登录失败（密码/授权码可能错误）: {error_str}"  # noqa: RUF001
             logger.warning(
                 "IMAP protocol error for %s:%d user=%s auth=%s: %s",

@@ -74,7 +74,7 @@ export const Platforms: React.FC = () => {
   }
 
   return (
-    <div className="flex-1 flex flex-col min-w-0">
+    <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
       <Topbar
         title="平台管理"
         subtitle="管理所有注册的平台及其邮箱绑定关系"

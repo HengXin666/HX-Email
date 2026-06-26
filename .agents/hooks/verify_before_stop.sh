@@ -2,6 +2,7 @@
 # Stop: Agent 准备结束时强制跑全量校验。
 # 退出码约定: exit 2 = 阻止/续写结束, stderr 内容回灌给 Agent 让其自修。
 set -uo pipefail
+cd "${CLAUDE_PROJECT_DIR}"
 if bash scripts/verify.sh >/tmp/cc_verify.log 2>&1; then
   exit 0
 fi

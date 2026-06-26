@@ -39,23 +39,10 @@ def save_messages(
             ).hexdigest()[:32]
             from_addr = msg.from_address or ""
 
-            # Check duplicate
-            exists = conn.execute(
+            # INSERT OR IGNORE: atomic dedup via UNIQUE index — no TOCTOU race
+            cursor = conn.execute(
                 """
-                SELECT 1 FROM fetched_messages
-                WHERE usable_email_id = ?
-                  AND from_address = ?
-                  AND subject = ?
-                  AND body_hash = ?
-                """,
-                (usable_email_id, from_addr, msg.subject, body_hash),
-            ).fetchone()
-            if exists:
-                continue
-
-            conn.execute(
-                """
-                INSERT INTO fetched_messages (
+                INSERT OR IGNORE INTO fetched_messages (
                     user_id, usable_email_id, email_account_id,
                     from_address, recipient_address, subject, body,
                     received_at, body_hash
@@ -73,7 +60,8 @@ def save_messages(
                     body_hash,
                 ),
             )
-            inserted += 1
+            if cursor.rowcount > 0:
+                inserted += 1
 
     return inserted
 

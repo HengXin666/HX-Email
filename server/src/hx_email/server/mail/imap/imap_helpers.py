@@ -185,20 +185,54 @@ def try_get_imap_token(client_id: str, refresh_token: str) -> tuple[str, str]:
 
 
 def load_group_proxy(settings: Settings, account_id: int) -> str:
-    """Look up proxy_url from the group linked to this account's primary usable_email."""
+    """Look up proxy_url from the group linked to this account.
+
+    Checks usable_emails (any kind) first, then falls back to email_accounts.group_id.
+    """
+    import logging
+
     from hx_email.database import connect as _connect
+
+    _log = logging.getLogger(__name__)
 
     with _connect(settings) as conn:
         row = conn.execute(
             """
             SELECT g.proxy_url FROM groups g
             JOIN usable_emails ue ON ue.group_id = g.id
-            WHERE ue.email_account_id = ? AND ue.kind = 'primary'
+            WHERE ue.email_account_id = ?
+              AND g.proxy_url IS NOT NULL AND g.proxy_url != ''
             LIMIT 1
             """,
             (account_id,),
         ).fetchone()
-    return (row["proxy_url"] or "").strip() if row else ""
+        if row:
+            result: str = str(row["proxy_url"]).strip()
+            _log.info(
+                "load_group_proxy(account=%d): found via usable_emails -> %s", account_id, result
+            )
+            return result
+        # Fallback: check email_accounts.group_id directly
+        row = conn.execute(
+            """
+            SELECT g.proxy_url FROM groups g
+            JOIN email_accounts ea ON ea.group_id = g.id
+            WHERE ea.id = ?
+              AND g.proxy_url IS NOT NULL AND g.proxy_url != ''
+            LIMIT 1
+            """,
+            (account_id,),
+        ).fetchone()
+        if row:
+            result = str(row["proxy_url"]).strip()
+            _log.info(
+                "load_group_proxy(account=%d): found via email_accounts.group_id -> %s",
+                account_id,
+                result,
+            )
+            return result
+    _log.warning("load_group_proxy(account=%d): no proxy found", account_id)
+    return ""
 
 
 def imap_connect_via_proxy(
@@ -232,7 +266,22 @@ def imap_connect_via_proxy(
         raise RuntimeError(f"代理 CONNECT 失败: {status_line}")
     ctx = _ssl.create_default_context()
     ssl_sock = ctx.wrap_socket(sock, server_hostname=host)
-    conn = imaplib.IMAP4()
+    # Use __new__ to create IMAP4 without triggering its open() which
+    # would try to connect to localhost:143 (Python 3.13+ behavior).
+    conn = imaplib.IMAP4.__new__(imaplib.IMAP4)
+    conn.debug = 0
+    conn.state = "LOGOUT"
+    conn.literal = None
+    conn.tagged_commands = {}
+    conn.untagged_responses = {}
+    conn.continuation_response = ""
+    conn.is_readonly = False
+    conn.tagnum = 0
+    conn._tls_established = False  # type: ignore[attr-defined]
+    conn._mode_ascii()
+    conn.host = host
+    conn.port = port
     conn.sock = ssl_sock
     conn.file = ssl_sock.makefile("rb")
+    conn._connect()
     return conn

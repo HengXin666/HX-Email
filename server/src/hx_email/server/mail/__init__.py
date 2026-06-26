@@ -17,3 +17,4 @@ class MailboxMessage:
     body: str
     from_address: str = ""
     received_at: str = ""
+    message_id: str = ""

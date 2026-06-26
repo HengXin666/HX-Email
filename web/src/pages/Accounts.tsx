@@ -11,6 +11,9 @@ const EMAIL_BODY_STYLE = {
 import { useApp } from '../store/AppContext'
 import { useToast } from '../components/ui/Toast'
 import { Button, Modal, Input, Badge, Card } from '../components/ui/Primitives'
+import { ConfirmModal } from '../components/ui/ConfirmModal'
+import { CopyButton } from '../components/ui/CopyButton'
+import { LoadingState, EmptyState } from '../components/ui/StateDisplay'
 import {
   IconFolderPlus,
   IconEdit,
@@ -35,31 +38,6 @@ import {
 } from '../components/icons'
 import { api, streamRefresh } from '../api/client'
 import type { UsableEmail, VerificationMatch, SSERefreshEvent, AccountImportResult } from '../types'
-
-// ========== 通用确认弹窗 ==========
-const ConfirmModal: React.FC<{
-  open: boolean
-  title: string
-  message: string
-  confirmLabel?: string
-  danger?: boolean
-  loading?: boolean
-  onConfirm: () => void
-  onCancel: () => void
-}> = ({ open, title, message, confirmLabel = '确认', danger = true, loading, onConfirm, onCancel }) => (
-  <Modal open={open} onClose={onCancel} title={title} size="sm"
-    footer={
-      <>
-        <Button variant="ghost" onClick={onCancel} disabled={loading}>取消</Button>
-        <Button variant={danger ? 'danger' : 'primary'} onClick={onConfirm} loading={loading}>
-          {confirmLabel}
-        </Button>
-      </>
-    }
-  >
-    <p className="text-sm text-gh-text-secondary">{message}</p>
-  </Modal>
-)
 
 const COLORS = [
   '#58a6ff',
@@ -274,6 +252,8 @@ const EditGroupModal: React.FC<{
   const [proxyUrl, setProxyUrl] = useState(g?.proxy_url || '')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [testLoading, setTestLoading] = useState(false)
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
 
   // 仅在 groupId 变化（切换编辑目标）时同步表单；依赖原始值而非对象引用，
   // 避免因 context 中 groups 数组引用更新而不断重置用户正在编辑的内容。
@@ -313,6 +293,20 @@ const EditGroupModal: React.FC<{
     }
   }
 
+  const handleTestProxy = async () => {
+    if (!proxyUrl.trim()) return
+    setTestLoading(true)
+    setTestResult(null)
+    try {
+      const res = await api.testProxy(proxyUrl.trim())
+      setTestResult({ success: res.success, message: res.message })
+    } catch (err: any) {
+      setTestResult({ success: false, message: err.message })
+    } finally {
+      setTestLoading(false)
+    }
+  }
+
   return (
     <>
       <Modal
@@ -346,12 +340,32 @@ const EditGroupModal: React.FC<{
               ))}
             </div>
           </div>
-          <Input
-            label="代理地址（可选）"
-            value={proxyUrl}
-            onChange={(e) => setProxyUrl(e.target.value)}
-            placeholder="例如: 127.0.0.1:7890 或 http://host:port"
-          />
+          <div>
+            <label className="text-xs font-medium text-gh-text-muted block mb-1.5">代理地址（可选）</label>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <Input
+                  value={proxyUrl}
+                  onChange={(e) => { setProxyUrl(e.target.value); setTestResult(null) }}
+                  placeholder="例如: 127.0.0.1:7890 或 http://host:port"
+                />
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleTestProxy}
+                loading={testLoading}
+                disabled={!proxyUrl.trim()}
+              >
+                测试
+              </Button>
+            </div>
+            {testResult && (
+              <div className={`mt-1 text-xs ${testResult.success ? 'text-green-400' : 'text-red-400'}`}>
+                {testResult.message}
+              </div>
+            )}
+          </div>
         </div>
       </Modal>
 
@@ -377,7 +391,7 @@ const EmailList: React.FC<{
   onToggleRefreshSelect: (accountId: number) => void
   onRefreshAccount: () => void
 }> = ({ groupId, selectedEmailId, onSelect, selectedForRefresh, onToggleRefreshSelect, onRefreshAccount }) => {
-  const { emails, groups, accounts, refreshEmails } = useApp()
+  const { emails, groups, accounts, refreshEmails, refreshAccounts } = useApp()
   const [showAdd, setShowAdd] = useState(false)
   const [showSettings, setShowSettings] = useState<number | null>(null)
   const [query, setQuery] = useState('')
@@ -430,7 +444,7 @@ const EmailList: React.FC<{
             <span className="text-xs text-gh-text-secondary tabular-nums">{filtered.length}</span>
           </div>
           <button
-            onClick={refreshEmails}
+            onClick={() => { refreshAccounts(); refreshEmails() }}
             className="p-1.5 rounded-md text-gh-text-muted hover:text-gh-text hover:bg-gh-border/40 transition-colors"
             title="刷新"
           >
@@ -871,6 +885,8 @@ const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
   const [tab, setTab] = React.useState<'messages' | 'verify' | 'bindings'>('messages')
   const [fetching, setFetching] = React.useState(false)
   const [fetchResult, setFetchResult] = React.useState<string | null>(null)
+  // Guard against race conditions when rapidly switching emails
+  const activeLoadIdRef = React.useRef<number | null>(null)
 
   const account = (accounts || []).find((a) => a.id === email?.email_account_id)
   const aliases = account?.usable_emails.filter((u) => u.kind === 'alias') || []
@@ -878,6 +894,8 @@ const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
 
   const loadData = React.useCallback(async (showSpinner = true) => {
     if (!email) return
+    const emailId: number = email.id
+    activeLoadIdRef.current = emailId
     if (showSpinner) setLoading(true)
     else setSyncing(true)
     try {
@@ -887,6 +905,7 @@ const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
           api.tempCodes(email.id),
           api.tempLinks(email.id)
         ])
+        if (activeLoadIdRef.current !== emailId) return
         setMessages(m)
         setCodes(c)
         setLinks(l)
@@ -896,6 +915,7 @@ const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
           api.getMessages(email.id).catch(() => []),
           api.readVerification(email.id).catch(() => ({ matches: [] }))
         ])
+        if (activeLoadIdRef.current !== emailId) return
         setMessages(storedMsgs.map((m: any) => ({
           id: m.id,
           from_address: m.from_address || '—',
@@ -912,30 +932,38 @@ const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
           url: x.link
         })))
       } else {
+        if (activeLoadIdRef.current !== emailId) return
         setMessages([])
         setCodes([])
         setLinks([])
       }
       const b = await api.listBindings(email.id)
+      if (activeLoadIdRef.current !== emailId) return
       setBindings(b)
       setLastRefreshed(new Date())
     } catch (err: any) {
+      if (activeLoadIdRef.current !== emailId) return
       console.error(err)
       toast(err?.message || '加载失败', 'error')
     } finally {
-      setLoading(false)
-      setSyncing(false)
+      if (activeLoadIdRef.current === emailId) {
+        setLoading(false)
+        setSyncing(false)
+      }
     }
   }, [email, toast, hasIMAP])
 
   // 手动触发 IMAP 拉取
   const handleFetchEmails = async () => {
     if (!email || !hasIMAP) return
+    const emailId: number = email.id
+    activeLoadIdRef.current = emailId
     setFetching(true)
     setFetchResult(null)
     setSyncing(true)
     try {
       const res = await api.fetchEmails(email.id)
+      if (activeLoadIdRef.current !== emailId) return
       const error = res.error || ''
       if (error) {
         toast(`拉取失败: ${error}`, 'error')
@@ -949,11 +977,14 @@ const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
         setTimeout(() => loadData(false), 300)
       }
     } catch (err: any) {
+      if (activeLoadIdRef.current !== emailId) return
       toast(`网络错误: ${err.message}`, 'error')
       setFetchResult(`❌ ${err.message}`)
     } finally {
-      setFetching(false)
-      setSyncing(false)
+      if (activeLoadIdRef.current === emailId) {
+        setFetching(false)
+        setSyncing(false)
+      }
     }
   }
 
@@ -961,6 +992,11 @@ const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
 
   useEffect(() => {
     if (!email) return
+    // Clear previous email's data immediately to avoid showing stale content
+    setMessages([])
+    setCodes([])
+    setLinks([])
+    setBindings([])
     setFetchResult(null)
     // Cache-first: load immediately with spinner (first load), then background sync
     loadData(true)
