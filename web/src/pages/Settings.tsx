@@ -87,6 +87,14 @@ interface TabProps {
   user: { is_admin: boolean } | null
 }
 
+interface AdminUserSummary {
+  id: number
+  username: string
+  is_admin: boolean
+  email_account_count: number
+  usable_email_count: number
+}
+
 /* ═══════════════════════════════════════════
    Tab 1: 基础
    ═══════════════════════════════════════════ */
@@ -103,12 +111,16 @@ const BasicTab: React.FC<TabProps> = ({ settings, setSetting, toast, user }) => 
   const [pyVersion, setPyVersion] = useState<string>('')
   const [platform, setPlatform] = useState<string>('')
   const [hasUpdate, setHasUpdate] = useState(false)
+  const [repositoryUrl, setRepositoryUrl] = useState<string>('')
+  const [announcementLoading, setAnnouncementLoading] = useState(false)
+  const [announcement, setAnnouncement] = useState<{ title: string; body: string; html_url: string; latest_version: string; has_update: boolean } | null>(null)
   const [showAPIKey, setShowAPIKey] = useState(false)
 
   useEffect(() => {
     api.getVersionCheck().then((v) => {
-      setVersion(v.current_version)
+      setVersion(v.current_version || v.version || '')
       setHasUpdate(v.has_update)
+      setRepositoryUrl(v.repository_url || '')
     }).catch(() => {})
     api.getDeploymentInfo().then((d) => {
       setPyVersion(d.python_version)
@@ -127,6 +139,23 @@ const BasicTab: React.FC<TabProps> = ({ settings, setSetting, toast, user }) => 
     } catch (err: any) {
       toast(err.message, 'error')
     } finally { setPwdLoading(false) }
+  }
+
+  const handleUpdateAnnouncement = async () => {
+    setAnnouncementLoading(true)
+    try {
+      const res = await api.getUpdateAnnouncement()
+      setAnnouncement(res)
+      if (res.success) {
+        toast(res.has_update ? '发现新版本公告' : '已获取最新公告', 'success')
+      } else {
+        toast(res.title || '无法获取更新公告', 'info')
+      }
+    } catch (err: any) {
+      toast(err.message || '获取更新公告失败', 'error')
+    } finally {
+      setAnnouncementLoading(false)
+    }
   }
 
   const handleAITest = async () => {
@@ -228,6 +257,34 @@ const BasicTab: React.FC<TabProps> = ({ settings, setSetting, toast, user }) => 
             value={hasUpdate ? '有可用更新' : '已是最新'}
             color={hasUpdate ? 'text-gh-warning' : 'text-gh-success'}
           />
+          {repositoryUrl && (
+            <StatusRow icon={IconCode} label="项目仓库" value={repositoryUrl.replace('https://github.com/', '')} />
+          )}
+          <div className="pt-2">
+            <Button variant="secondary" size="sm" onClick={handleUpdateAnnouncement} loading={announcementLoading}>
+              <IconDownload size={13} /> 获取更新公告
+            </Button>
+          </div>
+          {announcement && (
+            <div className="rounded-md border border-gh-border bg-gh-canvas-inset p-3 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div className="font-medium text-gh-text">{announcement.title || announcement.latest_version}</div>
+                <span className={announcement.has_update ? 'text-xs text-gh-warning' : 'text-xs text-gh-success'}>
+                  {announcement.has_update ? '有更新' : '当前版本'}
+                </span>
+              </div>
+              {announcement.body && (
+                <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-xs text-gh-text-secondary font-sans">
+                  {announcement.body}
+                </pre>
+              )}
+              {announcement.html_url && (
+                <a href={announcement.html_url} target="_blank" rel="noreferrer" className="mt-2 inline-flex text-xs text-gh-accent hover:underline">
+                  查看发布页
+                </a>
+              )}
+            </div>
+          )}
         </div>
       </Card>
     </motion.div>
@@ -1030,6 +1087,136 @@ const AutomationTab: React.FC<TabProps> = ({ settings, setSetting, toast }) => {
   )
 }
 
+
+/* ═══════════════════════════════════════════
+   Tab 5: 用户管理
+   ═══════════════════════════════════════════ */
+
+const UserManagementTab: React.FC<TabProps> = ({ toast, user }) => {
+  const [users, setUsers] = useState<AdminUserSummary[]>([])
+  const [registrationEnabled, setRegistrationEnabled] = useState(false)
+  const [loadingUsers, setLoadingUsers] = useState(true)
+  const [savingRegistration, setSavingRegistration] = useState(false)
+
+  const loadUsers = useCallback(async () => {
+    setLoadingUsers(true)
+    try {
+      const [registration, userRows] = await Promise.all([
+        api.getRegistrationSetting(),
+        api.listAdminUsers()
+      ])
+      setRegistrationEnabled(registration.registration_enabled)
+      setUsers(userRows)
+    } catch (err: any) {
+      toast(err.message || '加载用户管理数据失败', 'error')
+    } finally {
+      setLoadingUsers(false)
+    }
+  }, [toast])
+
+  useEffect(() => {
+    if (user?.is_admin) void loadUsers()
+  }, [loadUsers, user?.is_admin])
+
+  const handleRegistrationChange = async (enabled: boolean) => {
+    setSavingRegistration(true)
+    try {
+      const res = await api.updateRegistrationSetting(enabled)
+      setRegistrationEnabled(res.registration_enabled)
+      toast(res.registration_enabled ? '已开启系统注册' : '已关闭系统注册', 'success')
+    } catch (err: any) {
+      toast(err.message || '更新注册开关失败', 'error')
+    } finally {
+      setSavingRegistration(false)
+    }
+  }
+
+  if (!user?.is_admin) return null
+
+  return (
+    <motion.div
+      key="users"
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -8 }}
+      transition={{ type: 'spring', stiffness: 300, damping: 28 }}
+      className="space-y-5"
+    >
+      <Card className="p-5">
+        <SectionHeader>系统注册</SectionHeader>
+        <div className="flex items-center justify-between p-3 rounded-md bg-gh-canvas-inset border border-gh-border">
+          <div>
+            <div className="text-sm text-gh-text">允许新用户注册</div>
+            <div className="text-xs text-gh-text-secondary">关闭后仅已有用户可以登录。</div>
+          </div>
+          <Toggle
+            enabled={registrationEnabled}
+            onChange={handleRegistrationChange}
+            disabled={loadingUsers || savingRegistration}
+          />
+        </div>
+      </Card>
+
+      <Card className="overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gh-border">
+          <div>
+            <SectionHeader>注册用户</SectionHeader>
+            <div className="text-xs text-gh-text-secondary -mt-2">查看每个用户拥有的邮箱账号数与可用邮箱数。</div>
+          </div>
+          <Button variant="secondary" size="sm" onClick={loadUsers} loading={loadingUsers}>
+            <IconRefresh size={13} /> 刷新
+          </Button>
+        </div>
+
+        {loadingUsers ? (
+          <div className="py-10 text-center text-sm text-gh-text-secondary">
+            <IconRefresh size={16} className="inline animate-spin mr-2" /> 加载中...
+          </div>
+        ) : users.length === 0 ? (
+          <div className="py-10 text-center text-sm text-gh-text-secondary">暂无用户</div>
+        ) : (
+          <div>
+            <div className="grid grid-cols-[80px_1fr_120px_120px_120px] gap-3 px-5 py-2.5 bg-gh-canvas-inset border-b border-gh-border text-xs font-semibold text-gh-text-muted uppercase tracking-wider">
+              <div>ID</div>
+              <div>用户名</div>
+              <div className="text-center">角色</div>
+              <div className="text-center">邮箱账号</div>
+              <div className="text-center">可用邮箱</div>
+            </div>
+            <div className="divide-y divide-gh-border/50">
+              {users.map((item) => (
+                <div
+                  key={item.id}
+                  className="grid grid-cols-[80px_1fr_120px_120px_120px] gap-3 px-5 py-3 text-sm items-center hover:bg-gh-border/20 transition-colors"
+                >
+                  <div className="text-xs text-gh-text-secondary tabular-nums">#{item.id}</div>
+                  <div className="min-w-0 flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-gh-purple to-gh-pink flex items-center justify-center text-xs font-semibold text-white">
+                      {item.username.slice(0, 1).toUpperCase()}
+                    </div>
+                    <span className="text-gh-text truncate">{item.username}</span>
+                  </div>
+                  <div className="text-center">
+                    <span className={
+                      item.is_admin
+                        ? 'inline-flex px-2 py-0.5 rounded-full text-xs text-gh-warning bg-gh-warning/10 border border-gh-warning/30'
+                        : 'inline-flex px-2 py-0.5 rounded-full text-xs text-gh-text-secondary bg-gh-border/20 border border-gh-border'
+                    }>
+                      {item.is_admin ? '管理员' : '普通用户'}
+                    </span>
+                  </div>
+                  <div className="text-center text-gh-text">{item.email_account_count}</div>
+                  <div className="text-center text-gh-text">{item.usable_email_count}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </Card>
+    </motion.div>
+  )
+}
+
 /* ═══════════════════════════════════════════
    Main Settings Page
    ═══════════════════════════════════════════ */
@@ -1067,7 +1254,8 @@ export const Settings: React.FC = () => {
     { k: 'basic', label: '基础', icon: IconSettings },
     { k: 'tempmail', label: '临时邮箱', icon: IconMail },
     { k: 'apisecurity', label: 'API 安全', icon: IconShield },
-    { k: 'automation', label: '自动化', icon: IconZap }
+    { k: 'automation', label: '自动化', icon: IconZap },
+    ...(user?.is_admin ? [{ k: 'users', label: '用户管理', icon: IconUser }] : [])
   ] as const
 
   const tabProps: TabProps = { settings, setSetting, toast, user }
@@ -1123,6 +1311,7 @@ export const Settings: React.FC = () => {
               {tab === 'tempmail' && <TempMailTab {...tabProps} />}
               {tab === 'apisecurity' && <ApiSecurityTab {...tabProps} />}
               {tab === 'automation' && <AutomationTab {...tabProps} />}
+              {tab === 'users' && user?.is_admin && <UserManagementTab {...tabProps} />}
             </AnimatePresence>
           )}
         </div>

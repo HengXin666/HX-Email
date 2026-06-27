@@ -256,7 +256,12 @@ def _transition_pool_status(
 
 def _serialize_account(row: sqlite3.Row) -> dict[str, object]:
     return {
+        # `id` is kept as usable_email_id for backward-compatible list rendering.
+        # State-machine actions must use `entry_id`, because mail_pool_entries.id
+        # and usable_emails.id are distinct sequences and can collide accidentally.
         "id": row["account_id"],
+        "usable_email_id": row["account_id"],
+        "entry_id": row["entry_id"],
         "email": row["email"],
         "provider": row["provider"],
         "pool_status": row["pool_status"],

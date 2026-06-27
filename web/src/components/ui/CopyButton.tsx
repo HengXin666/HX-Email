@@ -15,7 +15,7 @@ export const CopyButton: React.FC<CopyButtonProps> = ({
   timeout = 2000
 }) => {
   const [copied, setCopied] = React.useState(false)
-  const timerRef = React.useRef<ReturnType<typeof setTimeout>>()
+  const timerRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   const handleCopy = async (e: React.MouseEvent) => {
     e.stopPropagation()

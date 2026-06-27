@@ -5,6 +5,7 @@ from fastapi import APIRouter, Header, HTTPException, status
 from hx_email.api.dependencies import bearer_token, require_admin, require_user
 from hx_email.api.schemas import Credentials, RegistrationSettingUpdate
 from hx_email.config import Settings
+from hx_email.database import connect
 from hx_email.server.auth import (
     authenticate_token,
     create_session,
@@ -68,6 +69,13 @@ def register_auth_routes(router: APIRouter, settings: Settings) -> None:
             "user": {"id": user.id, "username": user.username, "is_admin": user.is_admin},
         }
 
+    @router.get("/admin/settings/registration")
+    def get_registration_setting(
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, bool]:
+        require_admin(settings, authorization)
+        return {"registration_enabled": registration_enabled(settings)}
+
     @router.put("/admin/settings/registration")
     def update_registration_setting(
         payload: RegistrationSettingUpdate,
@@ -75,3 +83,37 @@ def register_auth_routes(router: APIRouter, settings: Settings) -> None:
     ) -> dict[str, bool]:
         require_admin(settings, authorization)
         return {"registration_enabled": set_registration_enabled(settings, payload.enabled)}
+
+    @router.get("/admin/users")
+    def list_registered_users(
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        require_admin(settings, authorization)
+        with connect(settings) as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    users.id,
+                    users.username,
+                    users.is_admin,
+                    COUNT(DISTINCT email_accounts.id) AS email_account_count,
+                    COUNT(DISTINCT usable_emails.id) AS usable_email_count
+                FROM users
+                LEFT JOIN email_accounts ON email_accounts.user_id = users.id
+                LEFT JOIN usable_emails ON usable_emails.user_id = users.id
+                GROUP BY users.id, users.username, users.is_admin
+                ORDER BY users.id
+                """
+            ).fetchall()
+        return {
+            "users": [
+                {
+                    "id": row["id"],
+                    "username": row["username"],
+                    "is_admin": bool(row["is_admin"]),
+                    "email_account_count": row["email_account_count"],
+                    "usable_email_count": row["usable_email_count"],
+                }
+                for row in rows
+            ]
+        }

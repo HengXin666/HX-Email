@@ -70,24 +70,25 @@ def register_token_tool_routes(router: APIRouter, settings: Settings) -> None:
     ) -> dict[str, object]:
         require_user(settings, authorization)
         try:
-            result = prepare_oauth(
-                OAuthConfig(
-                    client_id=payload.client_id,
-                    redirect_uri=payload.redirect_uri,
-                    scope=payload.scope,
-                    tenant=payload.tenant,
-                    prompt_consent=payload.prompt_consent,
-                )
+            return build_prepare_response(
+                {
+                    "client_id": payload.client_id,
+                    "redirect_uri": payload.redirect_uri,
+                    "scope": payload.scope,
+                    "tenant": payload.tenant,
+                    "prompt_consent": payload.prompt_consent,
+                }
             )
-            return {
-                "success": True,
-                "data": {
-                    "authorize_url": result["authorization_url"],
-                    "authorization_url": result["authorization_url"],
-                    "state": result["state"],
-                    "scope": result["scope"],
-                },
-            }
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+
+    @router.post("/token-tool/prepare-from-config")
+    def prepare_token_tool_from_config(
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        require_user(settings, authorization)
+        try:
+            return build_prepare_response(load_config(settings))
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
 
@@ -163,6 +164,27 @@ def register_token_tool_routes(router: APIRouter, settings: Settings) -> None:
                 "data": {"account_id": payload.account_id, "email": payload.email},
             }
         raise HTTPException(status_code=422, detail="Mode must be create or update")
+
+
+def build_prepare_response(config: dict[str, object]) -> dict[str, object]:
+    result = prepare_oauth(
+        OAuthConfig(
+            client_id=str(config.get("client_id") or ""),
+            redirect_uri=str(config.get("redirect_uri") or DEFAULT_REDIRECT_URI),
+            scope=str(config.get("scope") or DEFAULT_SCOPE),
+            tenant=str(config.get("tenant") or "consumers"),
+            prompt_consent=bool(config.get("prompt_consent")),
+        )
+    )
+    return {
+        "success": True,
+        "data": {
+            "authorize_url": result["authorization_url"],
+            "authorization_url": result["authorization_url"],
+            "state": result["state"],
+            "scope": result["scope"],
+        },
+    }
 
 
 def resolve_exchange_input(payload: TokenToolExchange) -> tuple[str, str]:

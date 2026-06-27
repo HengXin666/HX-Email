@@ -10,7 +10,7 @@ interface UseCopyToClipboardReturn {
  */
 export function useCopyToClipboard(timeout = 2000): UseCopyToClipboardReturn {
   const [copied, setCopied] = useState(false)
-  const timerRef = useRef<ReturnType<typeof setTimeout>>()
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   const copy = useCallback(async (text: string) => {
     try {

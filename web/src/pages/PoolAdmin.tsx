@@ -100,7 +100,7 @@ export const PoolAdmin: React.FC = () => {
   const [search, setSearch] = useState('')
   const [actionLoading, setActionLoading] = useState<number | null>(null)
   const [confirmAction, setConfirmAction] = useState<{
-    accountId: number
+    account: PoolAdminAccount
     action: string
   } | null>(null)
 
@@ -135,10 +135,21 @@ export const PoolAdmin: React.FC = () => {
     loadAccounts()
   }, [loadAccounts])
 
-  const handleAction = async (accountId: number, action: string): Promise<void> => {
-    setActionLoading(accountId)
+  const getActionTargetId = (account: PoolAdminAccount, action: string): number | null => {
+    if (action === 'add_to_pool') return account.usable_email_id || account.id
+    return account.entry_id > 0 ? account.entry_id : null
+  }
+
+  const handleAction = async (account: PoolAdminAccount, action: string): Promise<void> => {
+    const targetId = getActionTargetId(account, action)
+    if (targetId === null) {
+      toast('该邮箱没有对应的号池条目，不能执行此操作', 'error')
+      return
+    }
+
+    setActionLoading(account.id)
     try {
-      const res = await api.executePoolAction(accountId, action)
+      const res = await api.executePoolAction(targetId, action)
       toast(res.message || `${ACTION_LABELS[action] || action} 成功`, 'success')
       await loadAccounts()
     } catch (err: unknown) {
@@ -293,11 +304,11 @@ export const PoolAdmin: React.FC = () => {
                               onClick={() => {
                                 if (DANGER_ACTIONS.has(action)) {
                                   setConfirmAction({
-                                    accountId: acct.id,
+                                    account: acct,
                                     action
                                   })
                                 } else {
-                                  handleAction(acct.id, action)
+                                  handleAction(acct, action)
                                 }
                               }}
                               disabled={actionLoading === acct.id}
@@ -339,13 +350,13 @@ export const PoolAdmin: React.FC = () => {
         title="确认操作"
         message={
           confirmAction
-            ? `确定要对账号 #${confirmAction.accountId} 执行 ${ACTION_LABELS[confirmAction.action] || confirmAction.action} 操作吗？`
+            ? `确定要对账号 #${confirmAction.account.id} 执行 ${ACTION_LABELS[confirmAction.action] || confirmAction.action} 操作吗？`
             : ''
         }
         confirmLabel="确认"
         onConfirm={() =>
           confirmAction &&
-          handleAction(confirmAction.accountId, confirmAction.action)
+          handleAction(confirmAction.account, confirmAction.action)
         }
         onCancel={() => setConfirmAction(null)}
       />

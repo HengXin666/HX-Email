@@ -126,7 +126,7 @@ export const Sidebar: React.FC = () => {
             {!collapsed && <span>退出登录</span>}
           </button>
           <a
-            href="https://github.com"
+            href="https://github.com/HengXin666/HX-Email"
             target="_blank"
             rel="noreferrer"
             className="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-gh-text-muted hover:text-gh-text hover:bg-gh-border/40 transition-colors"

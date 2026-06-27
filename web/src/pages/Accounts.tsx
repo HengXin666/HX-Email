@@ -10,7 +10,7 @@ const EMAIL_BODY_STYLE = {
 } as React.CSSProperties
 import { useApp } from '../store/AppContext'
 import { useToast } from '../components/ui/Toast'
-import { Button, Modal, Input, Badge, Card } from '../components/ui/Primitives'
+import { Button, Modal, Input, Badge, Card, Checkbox, Select } from '../components/ui/Primitives'
 import { ConfirmModal } from '../components/ui/ConfirmModal'
 import { CopyButton } from '../components/ui/CopyButton'
 import { LoadingState, EmptyState } from '../components/ui/StateDisplay'
@@ -387,10 +387,12 @@ const EmailList: React.FC<{
   groupId: number | null
   selectedEmailId: number | null
   onSelect: (e: UsableEmail) => void
-  selectedForRefresh: Set<number>
-  onToggleRefreshSelect: (accountId: number) => void
+  selectedEmailIds: Set<number>
+  poolEmailIds: Set<number>
+  onToggleEmailSelect: (emailId: number) => void
   onRefreshAccount: () => void
-}> = ({ groupId, selectedEmailId, onSelect, selectedForRefresh, onToggleRefreshSelect, onRefreshAccount }) => {
+  onPoolChanged: () => void | Promise<void>
+}> = ({ groupId, selectedEmailId, onSelect, selectedEmailIds, poolEmailIds, onToggleEmailSelect, onRefreshAccount, onPoolChanged }) => {
   const { emails, groups, accounts, refreshEmails, refreshAccounts } = useApp()
   const [showAdd, setShowAdd] = useState(false)
   const [showSettings, setShowSettings] = useState<number | null>(null)
@@ -489,8 +491,9 @@ const EmailList: React.FC<{
               selected={selectedEmailId === e.id}
               onClick={() => onSelect(e)}
               onSettings={() => setShowSettings(e.id)}
-              selectedForRefresh={e.email_account_id ? selectedForRefresh.has(e.email_account_id) : false}
-              onToggleRefreshSelect={e.email_account_id ? () => onToggleRefreshSelect(e.email_account_id!) : undefined}
+              selectedForBulk={selectedEmailIds.has(e.id)}
+              inPool={poolEmailIds.has(e.id)}
+              onToggleBulkSelect={() => onToggleEmailSelect(e.id)}
               onRefreshAccount={onRefreshAccount}
             />
           ))}
@@ -507,10 +510,16 @@ const EmailList: React.FC<{
         )}
       </div>
 
-      <AddEmailModal open={showAdd} onClose={() => setShowAdd(false)} defaultGroupId={groupId} />
+      <AddEmailModal
+        open={showAdd}
+        onClose={() => setShowAdd(false)}
+        defaultGroupId={groupId}
+        onPoolChanged={onPoolChanged}
+      />
       <EmailSettingsModal
         emailId={showSettings}
         onClose={() => setShowSettings(null)}
+        onPoolChanged={onPoolChanged}
       />
     </div>
   )
@@ -521,10 +530,11 @@ const EmailCard: React.FC<{
   selected: boolean
   onClick: () => void
   onSettings: () => void
-  selectedForRefresh?: boolean
-  onToggleRefreshSelect?: () => void
+  selectedForBulk?: boolean
+  inPool?: boolean
+  onToggleBulkSelect?: () => void
   onRefreshAccount?: () => void
-}> = ({ email, selected, onClick, onSettings, selectedForRefresh, onToggleRefreshSelect, onRefreshAccount }) => {
+}> = ({ email, selected, onClick, onSettings, selectedForBulk, inPool, onToggleBulkSelect, onRefreshAccount }) => {
   const { toast } = useToast()
   const { accounts, refreshAccounts, refreshEmails } = useApp()
   const [copied, setCopied] = useState(false)
@@ -582,7 +592,7 @@ const EmailCard: React.FC<{
         // User is probably waiting for a NEW verification email — find fresh codes
         const freshMatches = res.matches.filter((m: any) => m.code && !prev.codes.has(m.code))
         if (freshMatches.length > 0) {
-          const code = freshMatches[0].code
+          const code = freshMatches[0].code || ''
           navigator.clipboard.writeText(code)
           toast(`新验证码 ${code} 已复制 (距上次 ${Math.floor(secondsSinceLast)}秒)`, 'success')
           // Update seen codes
@@ -692,12 +702,13 @@ const EmailCard: React.FC<{
     <motion.div layout initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
       <Card selected={selected} onClick={onClick} className={`p-3 ${isInactive ? 'opacity-60' : ''}`}>
         <div className="flex items-start gap-2">
-          {hasAccount && onToggleRefreshSelect ? (
+          {onToggleBulkSelect ? (
             <div className="shrink-0 pt-1" onClick={(e) => e.stopPropagation()}>
               <input
                 type="checkbox"
-                checked={!!selectedForRefresh}
-                onChange={onToggleRefreshSelect}
+                checked={!!selectedForBulk}
+                onChange={onToggleBulkSelect}
+                title="选择此邮箱用于批量操作"
                 className="w-3.5 h-3.5 rounded border-gh-border bg-gh-canvas-inset text-gh-accent focus:ring-gh-accent/30 cursor-pointer"
               />
             </div>
@@ -728,6 +739,9 @@ const EmailCard: React.FC<{
                 <Badge color="#6e7681">已停用</Badge>
               ) : (
                 <Badge color="#3fb950">活跃</Badge>
+              )}
+              {inPool && (
+                <Badge color="#3fb950">邮箱池</Badge>
               )}
             </div>
             <button
@@ -1410,6 +1424,25 @@ function sanitizeHtml(raw: string): string {
     .replace(/\bon\w+\s*=\s*'[^']*'/gi, '')
 }
 
+function normalizePoolEntries(response: any): any[] {
+  if (Array.isArray(response)) return response
+  if (Array.isArray(response?.entries)) return response.entries
+  return []
+}
+
+function getPoolEntryUsableEmailId(entry: any): number | null {
+  const raw = entry?.usable_email?.id ?? entry?.usable_email_id
+  const id = typeof raw === 'number' ? raw : Number(raw)
+  return Number.isFinite(id) ? id : null
+}
+
+function getPoolEmailIdSet(response: any): Set<number> {
+  const ids = normalizePoolEntries(response)
+    .map(getPoolEntryUsableEmailId)
+    .filter((id): id is number => id !== null)
+  return new Set(ids)
+}
+
 const VerifyTab: React.FC<{ codes: any[]; links: any[] }> = ({ codes, links }) => {
   const { toast } = useToast()
   if (codes.length === 0 && links.length === 0) {
@@ -1569,7 +1602,8 @@ const AddEmailModal: React.FC<{
   open: boolean
   onClose: () => void
   defaultGroupId: number | null
-}> = ({ open, onClose, defaultGroupId }) => {
+  onPoolChanged?: () => void | Promise<void>
+}> = ({ open, onClose, defaultGroupId, onPoolChanged }) => {
   const { refreshAccounts, refreshEmails, groups } = useApp()
   const { toast } = useToast()
   const [groupId, setGroupId] = useState<number | ''>('')
@@ -1604,7 +1638,7 @@ const AddEmailModal: React.FC<{
         group_id: groupId || null,
         add_to_pool: addToPool,
       })
-      await Promise.all([refreshAccounts(), refreshEmails()])
+      await Promise.all([refreshAccounts(), refreshEmails(), addToPool ? onPoolChanged?.() : Promise.resolve()])
       setResult(res)
       if (res.imported > 0) toast(`成功导入 ${res.imported} 个账户`, 'success')
       if (res.skipped > 0) toast(`跳过 ${res.skipped} 个重复账户`, 'info')
@@ -1765,11 +1799,13 @@ const AddEmailModal: React.FC<{
 const EmailSettingsModal: React.FC<{
   emailId: number | null
   onClose: () => void
-}> = ({ emailId, onClose }) => {
+  onPoolChanged?: () => void | Promise<void>
+}> = ({ emailId, onClose, onPoolChanged }) => {
   const { emails, groups, tags, organizeEmail, addAlias, accounts, refreshAccounts, refreshEmails } = useApp()
   const { toast } = useToast()
   const email = emails.find((e) => e.id === emailId)
   const account = (accounts || []).find((a) => a.id === email?.email_account_id)
+  const [activeTab, setActiveTab] = useState<'info' | 'credentials'>('info')
   const [label, setLabel] = useState('')
   const [groupId, setGroupId] = useState<number | ''>('')
   const [tagIds, setTagIds] = useState<number[]>([])
@@ -1786,6 +1822,7 @@ const EmailSettingsModal: React.FC<{
   const [remark, setRemark] = useState('')
   // 邮箱池
   const [inPool, setInPool] = useState(false)
+  const [initialInPool, setInitialInPool] = useState(false)
   const [poolLoaded, setPoolLoaded] = useState(false)
   // 已有别名列表
   const aliases = (account?.usable_emails || []).filter((u) => u.kind === 'alias')
@@ -1796,6 +1833,8 @@ const EmailSettingsModal: React.FC<{
       setGroupId(email.group?.id || '')
       setTagIds(email.tags?.map((t) => t.id) || [])
       setCredLoaded(false)
+      setInPool(false)
+      setInitialInPool(false)
       setPoolLoaded(false)
       setShowPwd(false)
       setRemark('')
@@ -1818,14 +1857,27 @@ const EmailSettingsModal: React.FC<{
 
   // 加载邮箱池状态
   useEffect(() => {
-    if (email && !poolLoaded) {
-      api.listPoolEntries().then((entries: any) => {
-        const inPoolEntries = entries.entries || entries
-        setInPool(inPoolEntries.some((e: any) => e.usable_email?.id === email.id))
-        setPoolLoaded(true)
-      }).catch(() => setPoolLoaded(true))
-    }
-  }, [email, poolLoaded])
+    if (!email) return
+    let cancelled = false
+    const emailId = email.id
+    setPoolLoaded(false)
+    setInPool(false)
+    setInitialInPool(false)
+    api.listPoolEntries().then((entries: any) => {
+      if (cancelled) return
+      const currentInPool = getPoolEmailIdSet(entries).has(emailId)
+      setInPool(currentInPool)
+      setInitialInPool(currentInPool)
+    }).catch(() => {
+      if (!cancelled) {
+        setInPool(false)
+        setInitialInPool(false)
+      }
+    }).finally(() => {
+      if (!cancelled) setPoolLoaded(true)
+    })
+    return () => { cancelled = true }
+  }, [email?.id])
 
   const handleSave = async () => {
     if (!email) return
@@ -1846,9 +1898,13 @@ const EmailSettingsModal: React.FC<{
           remark: remark || null,
         })
       }
-      // 处理邮箱池变更
-      if (inPool && email.email_account_id) {
-        try { await api.addPoolEntry(email.id) } catch {}
+      // Pool API currently supports add-only from this page.
+      if (inPool && !initialInPool && email.email_account_id) {
+        try {
+          await api.addPoolEntry(email.id)
+          await onPoolChanged?.()
+          setInitialInPool(true)
+        } catch {}
       }
       toast('已保存', 'success')
       refreshAccounts()
@@ -1896,140 +1952,89 @@ const EmailSettingsModal: React.FC<{
     >
       {email && (
         <div className="space-y-4">
-          {/* 邮箱地址（只读展示，对齐导入凭证布局） */}
-          <div className="px-3 py-2 rounded-md bg-gh-canvas-inset border border-gh-border">
-            <div className="text-xs text-gh-text-secondary">邮箱地址</div>
-            <div className="text-sm font-mono text-gh-text">{email.address}</div>
-          </div>
-
-          {/* 备注名称 */}
-          <Input label="备注名称" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="例如：主邮箱" />
-
-          {/* 账号备注（多行） */}
-          <div>
-            <label className="text-xs font-medium text-gh-text-muted block mb-1.5">
-              账号备注
-            </label>
-            <textarea
-              value={remark}
-              onChange={(e) => setRemark(e.target.value)}
-              placeholder="添加账号备注信息…"
-              rows={3}
-              className="w-full bg-gh-canvas-inset border border-gh-border rounded-md px-3 py-2 text-sm text-gh-text placeholder-gh-text-secondary focus:outline-none focus:border-gh-accent resize-y"
-            />
-          </div>
-
-          {/* 分组 */}
-          <div>
-            <label className="text-xs font-medium text-gh-text-muted block mb-1.5">分组</label>
-            <select
-              value={groupId}
-              onChange={(e) => setGroupId(e.target.value ? Number(e.target.value) : '')}
-              className="w-full bg-gh-canvas-inset border border-gh-border rounded-md px-3 py-1.5 text-sm text-gh-text focus:outline-none focus:border-gh-accent"
+          {/* Tab bar */}
+          <div className="flex border-b border-gh-border -mx-5 -mt-4 px-5">
+            <button
+              type="button"
+              onClick={() => setActiveTab('info')}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'info'
+                  ? 'border-gh-accent text-gh-accent'
+                  : 'border-transparent text-gh-text-muted hover:text-gh-text'
+              }`}
             >
-              <option value="">无分组</option>
-              {groups.map((g) => (
-                <option key={g.id} value={g.id}>{g.name}</option>
-              ))}
-            </select>
+              信息
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('credentials')}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'credentials'
+                  ? 'border-gh-accent text-gh-accent'
+                  : 'border-transparent text-gh-text-muted hover:text-gh-text'
+              }`}
+            >
+              凭证
+            </button>
           </div>
 
-          {/* 邮箱池 */}
-          <label className="flex items-center gap-2 text-sm text-gh-text-secondary cursor-pointer">
-            <input
-              type="checkbox"
-              checked={inPool}
-              onChange={(e) => setInPool(e.target.checked)}
-              className="w-4 h-4 rounded border-gh-border bg-gh-canvas-inset text-gh-accent focus:ring-gh-accent/30"
-            />
-            加入邮箱池
-          </label>
-
-          {email.email_account_id && (
+          {activeTab === 'info' && (
             <>
-              {/* 状态 */}
+              {/* 邮箱地址（只读展示） */}
+              <div className="px-3 py-2 rounded-md bg-gh-canvas-inset border border-gh-border">
+                <div className="text-xs text-gh-text-secondary">邮箱地址</div>
+                <div className="text-sm font-mono text-gh-text">{email.address}</div>
+              </div>
+
+              {/* 备注名称 */}
+              <Input label="备注名称" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="例如：主邮箱" />
+
+              {/* 账号备注（多行） */}
               <div>
-                <label className="text-xs font-medium text-gh-text-muted block mb-1.5">状态</label>
-                <select
-                  value={credStatus}
-                  onChange={(e) => setCredStatus(e.target.value)}
-                  className="w-full bg-gh-canvas-inset border border-gh-border rounded-md px-3 py-1.5 text-sm text-gh-text focus:outline-none focus:border-gh-accent"
-                >
-                  <option value="active">正常</option>
-                  <option value="inactive">停用</option>
-                </select>
-              </div>
-
-              {/* 凭证信息 */}
-              <div className="pt-3 border-t border-gh-border">
-                <label className="text-xs font-semibold text-gh-text-muted block mb-3">
-                  凭证信息
+                <label className="text-xs font-medium text-gh-text-muted block mb-1.5">
+                  账号备注
                 </label>
-                <div className="space-y-2">
-                  {/* 密码 - 带显隐切换 */}
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-medium text-gh-text-muted">
-                      {isOutlook ? '密码' : 'IMAP 授权码 / 应用密码'}
-                    </label>
-                    <div className="relative">
-                      <input
-                        type={showPwd ? 'text' : 'password'}
-                        value={credPwd}
-                        onChange={(e) => setCredPwd(e.target.value)}
-                        placeholder={isOutlook ? 'Outlook 密码' : 'IMAP 授权码或应用密码'}
-                        className="w-full bg-gh-canvas-inset border border-gh-border rounded-md pl-3 pr-10 py-1.5 text-sm text-gh-text font-mono placeholder-gh-text-secondary focus:outline-none focus:border-gh-accent focus:ring-1 focus:ring-gh-accent/50 transition-colors"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPwd(!showPwd)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-gh-text-muted hover:text-gh-text transition-colors"
-                        title={showPwd ? '隐藏密码' : '显示密码'}
-                      >
-                        {showPwd ? (
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
-                            <line x1="1" y1="1" x2="23" y2="23" />
-                          </svg>
-                        ) : (
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                            <circle cx="12" cy="12" r="3" />
-                          </svg>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                  {isOutlook && (
-                    <>
-                      <Input
-                        label="Client ID"
-                        value={credCid}
-                        onChange={(e) => setCredCid(e.target.value)}
-                        placeholder="OAuth Client ID"
-                      />
-                      <div>
-                        <label className="text-xs font-medium text-gh-text-muted block mb-1.5">
-                          Refresh Token（不填写则不更新）
-                        </label>
-                        <textarea
-                          value={credRtk}
-                          onChange={(e) => setCredRtk(e.target.value)}
-                          placeholder="OAuth Refresh Token"
-                          rows={3}
-                          className="w-full bg-gh-canvas-inset border border-gh-border rounded-md px-3 py-2 text-sm text-gh-text font-mono focus:outline-none focus:border-gh-accent"
-                        />
-                      </div>
-                    </>
-                  )}
-                </div>
+                <textarea
+                  value={remark}
+                  onChange={(e) => setRemark(e.target.value)}
+                  placeholder="添加账号备注信息…"
+                  rows={3}
+                  className="w-full bg-gh-canvas-inset border border-gh-border rounded-md px-3 py-2 text-sm text-gh-text placeholder-gh-text-secondary focus:outline-none focus:border-gh-accent resize-y"
+                />
               </div>
 
-              {/* 别名管理 */}
+              {/* 分组 */}
+              <Select
+                label="分组"
+                value={groupId}
+                onChange={(v) => setGroupId(v ? Number(v) : '')}
+                options={[
+                  { value: '', label: '无分组' },
+                  ...groups.map((g) => ({ value: g.id, label: g.name }))
+                ]}
+              />
+
+              {/* 邮箱池 */}
+              {poolLoaded && initialInPool ? (
+                <div className="inline-flex items-center gap-2 text-sm text-gh-success">
+                  <IconCheck size={14} />
+                  已加入邮箱池
+                </div>
+              ) : email.email_account_id ? (
+                <Checkbox
+                  label={poolLoaded ? '加入邮箱池' : '正在检测邮箱池状态…'}
+                  checked={inPool}
+                  onChange={setInPool}
+                />
+              ) : (
+                <div className="text-sm text-gh-text-secondary">无关联账户，不能加入邮箱池</div>
+              )}
+
+              {/* 别名邮箱 */}
               <div className="pt-3 border-t border-gh-border">
                 <label className="text-xs font-medium text-gh-text-muted block mb-1.5">
                   别名邮箱
                 </label>
-                {/* 已有别名列表 */}
                 {aliases.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mb-2">
                     {aliases.map((a) => (
@@ -2043,7 +2048,6 @@ const EmailSettingsModal: React.FC<{
                     ))}
                   </div>
                 )}
-                {/* 添加别名 */}
                 <div className="flex gap-2">
                   <Input
                     value={newAlias}
@@ -2056,42 +2060,130 @@ const EmailSettingsModal: React.FC<{
                   </Button>
                 </div>
               </div>
+
+              {/* 标签 */}
+              <div>
+                <label className="text-xs font-medium text-gh-text-muted block mb-1.5">标签</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {tags.map((t) => {
+                    const active = tagIds.includes(t.id)
+                    return (
+                      <button
+                        key={t.id}
+                        onClick={() =>
+                          setTagIds(active ? tagIds.filter((x) => x !== t.id) : [...tagIds, t.id])
+                        }
+                        className={`px-2.5 py-1 text-xs font-medium rounded-full border transition-all ${
+                          active
+                            ? 'border-transparent'
+                            : 'border-gh-border text-gh-text-muted hover:border-gh-text-muted'
+                        }`}
+                        style={
+                          active
+                            ? {
+                                background: t.color + '20',
+                                borderColor: t.color + '50',
+                                color: t.color
+                              }
+                            : undefined
+                        }
+                      >
+                        {active && '✓ '}{t.name}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
             </>
           )}
 
-          {/* 标签 */}
-          <div>
-            <label className="text-xs font-medium text-gh-text-muted block mb-1.5">标签</label>
-            <div className="flex flex-wrap gap-1.5">
-              {tags.map((t) => {
-                const active = tagIds.includes(t.id)
-                return (
-                  <button
-                    key={t.id}
-                    onClick={() =>
-                      setTagIds(active ? tagIds.filter((x) => x !== t.id) : [...tagIds, t.id])
-                    }
-                    className={`px-2.5 py-1 text-xs font-medium rounded-full border transition-all ${
-                      active
-                        ? 'border-transparent'
-                        : 'border-gh-border text-gh-text-muted hover:border-gh-text-muted'
-                    }`}
-                    style={
-                      active
-                        ? {
-                            background: t.color + '20',
-                            borderColor: t.color + '50',
-                            color: t.color
-                          }
-                        : undefined
-                    }
-                  >
-                    {active && '✓ '}{t.name}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
+          {activeTab === 'credentials' && (
+            <>
+              {email.email_account_id ? (
+                <>
+                  {/* 状态 */}
+                  <Select
+                    label="状态"
+                    value={credStatus}
+                    onChange={setCredStatus}
+                    options={[
+                      { value: 'active', label: '正常' },
+                      { value: 'inactive', label: '停用' }
+                    ]}
+                  />
+
+                  {/* 凭证信息 */}
+                  <div className="pt-3 border-t border-gh-border">
+                    <label className="text-xs font-semibold text-gh-text-muted block mb-3">
+                      凭证信息
+                    </label>
+                    <div className="space-y-2">
+                      {/* 密码 - 带显隐切换 */}
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-medium text-gh-text-muted">
+                          {isOutlook ? '密码' : 'IMAP 授权码 / 应用密码'}
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showPwd ? 'text' : 'password'}
+                            value={credPwd}
+                            onChange={(e) => setCredPwd(e.target.value)}
+                            placeholder={isOutlook ? 'Outlook 密码' : 'IMAP 授权码或应用密码'}
+                            className="w-full bg-gh-canvas-inset border border-gh-border rounded-md pl-3 pr-10 py-1.5 text-sm text-gh-text font-mono placeholder-gh-text-secondary focus:outline-none focus:border-gh-accent focus:ring-1 focus:ring-gh-accent/50 transition-colors"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPwd(!showPwd)}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-gh-text-muted hover:text-gh-text transition-colors"
+                            title={showPwd ? '隐藏密码' : '显示密码'}
+                          >
+                            {showPwd ? (
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                                <line x1="1" y1="1" x2="23" y2="23" />
+                              </svg>
+                            ) : (
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                <circle cx="12" cy="12" r="3" />
+                              </svg>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                      {isOutlook && (
+                        <>
+                          <Input
+                            label="Client ID"
+                            value={credCid}
+                            onChange={(e) => setCredCid(e.target.value)}
+                            placeholder="OAuth Client ID"
+                          />
+                          <div>
+                            <label className="text-xs font-medium text-gh-text-muted block mb-1.5">
+                              Refresh Token（不填写则不更新）
+                            </label>
+                            <textarea
+                              value={credRtk}
+                              onChange={(e) => setCredRtk(e.target.value)}
+                              placeholder="OAuth Refresh Token"
+                              rows={3}
+                              className="w-full bg-gh-canvas-inset border border-gh-border rounded-md px-3 py-2 text-sm text-gh-text font-mono focus:outline-none focus:border-gh-accent"
+                            />
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                </>
+              ) : (
+                <div className="text-center py-8 text-gh-text-muted text-sm">
+                  该邮箱没有关联的账户，无法管理凭证
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
     </Modal>
@@ -2345,15 +2437,42 @@ const RefreshConfirmModal: React.FC<{
 export const Accounts: React.FC = () => {
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null)
   const [selectedEmail, setSelectedEmail] = useState<UsableEmail | null>(null)
-  const [selectedForRefresh, setSelectedForRefresh] = useState<Set<number>>(new Set())
+  const [selectedEmailIds, setSelectedEmailIds] = useState<Set<number>>(new Set())
+  const [poolEmailIds, setPoolEmailIds] = useState<Set<number>>(new Set())
+  const [bulkGroupOpen, setBulkGroupOpen] = useState(false)
+  const [bulkGroupId, setBulkGroupId] = useState<number | ''>('')
+  const [bulkLoading, setBulkLoading] = useState(false)
   const [refreshProgress, setRefreshProgress] = useState<SSERefreshEvent | null>(null)
   const [refreshRunning, setRefreshRunning] = useState(false)
   const [refreshConfirm, setRefreshConfirm] = useState<'all' | 'failed' | null>(null)
   const [refreshPreviewAccounts, setRefreshPreviewAccounts] = useState<RefreshPreviewItem[]>([])
   const [refreshPreviewLoading, setRefreshPreviewLoading] = useState(false)
-  const { emails, accounts, refreshAccounts, refreshEmails } = useApp()
+  const { emails, accounts, groups, refreshAccounts, refreshEmails } = useApp()
   const { toast } = useToast()
   const refreshTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const selectedEmails = useMemo(
+    () => emails.filter((email) => selectedEmailIds.has(email.id)),
+    [emails, selectedEmailIds]
+  )
+
+  const selectedAccountIds = useMemo(
+    () => Array.from(new Set(
+      selectedEmails
+        .map((email) => email.email_account_id)
+        .filter((id): id is number => typeof id === 'number')
+    )),
+    [selectedEmails]
+  )
+
+  const refreshPoolEmailIds = React.useCallback(async () => {
+    const entries = await api.listPoolEntries()
+    setPoolEmailIds(getPoolEmailIdSet(entries))
+  }, [])
+
+  useEffect(() => {
+    refreshPoolEmailIds().catch(() => setPoolEmailIds(new Set()))
+  }, [refreshPoolEmailIds])
 
   // 安全超时：防止 SSE 流异常时进度条永久卡住（兜底机制，正常由 complete 事件关闭）
   useEffect(() => {
@@ -2376,15 +2495,20 @@ export const Accounts: React.FC = () => {
     if (selectedEmail && !emails.find((e) => e.id === selectedEmail.id)) {
       setSelectedEmail(null)
     }
+    const validEmailIds = new Set(emails.map((e) => e.id))
+    setSelectedEmailIds((prev) => {
+      const next = new Set(Array.from(prev).filter((id) => validEmailIds.has(id)))
+      return next.size === prev.size ? prev : next
+    })
   }, [emails, selectedEmail])
 
-  const toggleSelectForRefresh = (accountId: number): void => {
-    setSelectedForRefresh((prev) => {
+  const toggleSelectEmail = (emailId: number): void => {
+    setSelectedEmailIds((prev) => {
       const next = new Set(prev)
-      if (next.has(accountId)) {
-        next.delete(accountId)
+      if (next.has(emailId)) {
+        next.delete(emailId)
       } else {
-        next.add(accountId)
+        next.add(emailId)
       }
       return next
     })
@@ -2439,6 +2563,53 @@ export const Accounts: React.FC = () => {
     }
   }
 
+  const handleBulkGroup = async (): Promise<void> => {
+    const ids = Array.from(selectedEmailIds)
+    if (ids.length === 0) return
+    setBulkLoading(true)
+    try {
+      await Promise.all(ids.map((id) => api.organizeUsableEmail(id, { group_id: bulkGroupId || null })))
+      await refreshEmails()
+      toast(`已更新 ${ids.length} 个邮箱的分组`, 'success')
+      setSelectedEmailIds(new Set())
+      setBulkGroupOpen(false)
+    } catch (err: any) {
+      toast(err.message, 'error')
+    } finally {
+      setBulkLoading(false)
+    }
+  }
+
+  const handleBulkAddToPool = async (): Promise<void> => {
+    if (selectedEmails.length === 0) return
+    setBulkLoading(true)
+    try {
+      const currentPoolIds = poolEmailIds.size > 0
+        ? poolEmailIds
+        : getPoolEmailIdSet(await api.listPoolEntries())
+      const candidates = selectedEmails.filter(
+        (email) => !!email.email_account_id && !currentPoolIds.has(email.id)
+      )
+      if (candidates.length === 0) {
+        toast('选中的邮箱都已在邮箱池，或没有关联账户', 'info')
+        return
+      }
+      const results = await Promise.allSettled(candidates.map((email) => api.addPoolEntry(email.id)))
+      const success = results.filter((r) => r.status === 'fulfilled').length
+      const failed = results.length - success
+      await refreshPoolEmailIds()
+      if (success > 0) {
+        toast(`已加入邮箱池 ${success} 个邮箱`, failed > 0 ? 'info' : 'success')
+        setSelectedEmailIds(new Set())
+      }
+      if (failed > 0) toast(`${failed} 个邮箱加入失败或已存在`, 'error')
+    } catch (err: any) {
+      toast(err.message, 'error')
+    } finally {
+      setBulkLoading(false)
+    }
+  }
+
   const doRefresh = async (): Promise<void> => {
     const mode = refreshConfirm
     setRefreshConfirm(null)
@@ -2466,7 +2637,7 @@ export const Accounts: React.FC = () => {
   }
 
   const handleRefreshSelected = async (): Promise<void> => {
-    const ids = Array.from(selectedForRefresh)
+    const ids = selectedAccountIds
     if (ids.length === 0) return
     setRefreshRunning(true)
     setRefreshProgress(null)
@@ -2482,7 +2653,7 @@ export const Accounts: React.FC = () => {
               `刷新完成: 成功 ${e.success ?? 0}, 失败 ${e.failed ?? 0}`,
               (e.failed ?? 0) > 0 ? 'error' : 'success'
             )
-            setSelectedForRefresh(new Set())
+            setSelectedEmailIds(new Set())
             refreshAccounts()
             refreshEmails()
           }
@@ -2524,15 +2695,38 @@ export const Accounts: React.FC = () => {
             >
               <IconAlertTriangle size={14} /> 刷新失败
             </Button>
-            {selectedForRefresh.size > 0 && (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={handleRefreshSelected}
-                disabled={refreshRunning}
-              >
-                <IconRefresh size={14} /> 刷新选中 ({selectedForRefresh.size})
-              </Button>
+            {selectedEmailIds.size > 0 && (
+              <>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setBulkGroupId(selectedGroupId ?? '')
+                    setBulkGroupOpen(true)
+                  }}
+                  disabled={bulkLoading}
+                >
+                  <IconTag size={14} /> 分组选中 ({selectedEmailIds.size})
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleBulkAddToPool}
+                  disabled={bulkLoading}
+                >
+                  <IconFolderPlus size={14} /> 加入邮箱池 ({selectedEmailIds.size})
+                </Button>
+                {selectedAccountIds.length > 0 && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleRefreshSelected}
+                    disabled={refreshRunning}
+                  >
+                    <IconRefresh size={14} /> 刷新选中账户 ({selectedAccountIds.length})
+                  </Button>
+                )}
+              </>
             )}
           </div>
         }
@@ -2553,6 +2747,35 @@ export const Accounts: React.FC = () => {
         onCancel={() => setRefreshConfirm(null)}
       />
 
+      <Modal
+        open={bulkGroupOpen}
+        onClose={() => setBulkGroupOpen(false)}
+        title="批量分组"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setBulkGroupOpen(false)} disabled={bulkLoading}>取消</Button>
+            <Button variant="primary" onClick={handleBulkGroup} loading={bulkLoading} disabled={selectedEmailIds.size === 0}>
+              更新分组 ({selectedEmailIds.size})
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-gh-text-secondary">
+            将选中的 {selectedEmailIds.size} 个邮箱移动到目标分组。
+          </p>
+          <Select
+            label="目标分组"
+            value={bulkGroupId}
+            onChange={(v) => setBulkGroupId(v ? Number(v) : '')}
+            options={[
+              { value: '', label: '无分组' },
+              ...groups.map((g) => ({ value: g.id, label: g.name }))
+            ]}
+          />
+        </div>
+      </Modal>
+
       <div className="flex-1 flex min-h-0 overflow-hidden">
         <GroupSidebar
           selectedGroupId={selectedGroupId}
@@ -2565,9 +2788,11 @@ export const Accounts: React.FC = () => {
           groupId={selectedGroupId}
           selectedEmailId={selectedEmail?.id || null}
           onSelect={setSelectedEmail}
-          selectedForRefresh={selectedForRefresh}
-          onToggleRefreshSelect={toggleSelectForRefresh}
+          selectedEmailIds={selectedEmailIds}
+          poolEmailIds={poolEmailIds}
+          onToggleEmailSelect={toggleSelectEmail}
           onRefreshAccount={handleRefreshAccountDone}
+          onPoolChanged={refreshPoolEmailIds}
         />
         <EmailDetail email={selectedEmail} />
       </div>

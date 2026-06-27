@@ -50,10 +50,26 @@ export const settingsApi = {
 
   getVersionCheck: () =>
     request<{
+      version?: string
       current_version: string
       latest_version?: string
       has_update: boolean
+      repository_url?: string
     }>('/system/version-check'),
+
+  getUpdateAnnouncement: () =>
+    request<{
+      success: boolean
+      source: string
+      current_version: string
+      latest_version: string
+      has_update: boolean
+      title: string
+      body: string
+      html_url: string
+      published_at: string
+      repository_url: string
+    }>('/system/update-announcement'),
 
   getDeploymentInfo: () =>
     request<{ python_version: string; platform: string }>('/system/deployment-info'),

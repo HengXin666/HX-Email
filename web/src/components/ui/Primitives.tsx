@@ -37,11 +37,12 @@ export const Modal: React.FC<ModalProps> = ({ open, onClose, title, children, fo
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.95, opacity: 0, y: 20 }}
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-            className={`w-full ${widthClass} bg-gh-canvas-subtle border border-gh-border rounded-xl shadow-2xl overflow-hidden`}
+            className={`w-full ${widthClass} bg-gh-canvas-subtle border border-gh-border rounded-xl shadow-2xl overflow-hidden flex flex-col`}
+            style={{ maxHeight: 'calc(100vh - 2rem)' }}
             onClick={(e) => e.stopPropagation()}
           >
             {title && (
-              <div className="flex items-center justify-between px-5 py-3 border-b border-gh-border">
+              <div className="flex items-center justify-between px-5 py-3 border-b border-gh-border flex-shrink-0">
                 <h3 className="text-base font-semibold text-gh-text">{title}</h3>
                 <button
                   onClick={onClose}
@@ -51,9 +52,9 @@ export const Modal: React.FC<ModalProps> = ({ open, onClose, title, children, fo
                 </button>
               </div>
             )}
-            <div className="px-5 py-4">{children}</div>
+            <div className="px-5 py-4 overflow-y-auto flex-1">{children}</div>
             {footer && (
-              <div className="px-5 py-3 bg-gh-canvas-inset border-t border-gh-border flex justify-end gap-2">
+              <div className="px-5 py-3 bg-gh-canvas-inset border-t border-gh-border flex justify-end gap-2 flex-shrink-0">
                 {footer}
               </div>
             )}
@@ -172,6 +173,133 @@ interface CardProps {
   className?: string
   onClick?: () => void
   selected?: boolean
+}
+
+// ========== Checkbox ==========
+
+interface CheckboxProps {
+  label?: React.ReactNode
+  checked: boolean
+  onChange: (checked: boolean) => void
+  id?: string
+  disabled?: boolean
+  title?: string
+  className?: string
+  labelClassName?: string
+}
+
+export const Checkbox: React.FC<CheckboxProps> = ({
+  label,
+  checked,
+  onChange,
+  id,
+  disabled = false,
+  title,
+  className = '',
+  labelClassName = ''
+}) => {
+  const generatedId = React.useId()
+  const checkboxId = id ?? generatedId
+
+  return (
+    <label
+      htmlFor={checkboxId}
+      title={title}
+      className={`inline-flex items-center gap-2.5 group select-none ${
+        disabled ? 'cursor-not-allowed opacity-55' : 'cursor-pointer'
+      } ${className}`}
+    >
+      <input
+        id={checkboxId}
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+        className="sr-only peer"
+      />
+      <span
+        className={`relative w-4 h-4 rounded-md border flex items-center justify-center flex-shrink-0 transition-all duration-150 ${
+          checked
+            ? 'bg-gh-accent border-gh-accent shadow-[0_0_0_3px_rgba(88,166,255,0.14)]'
+            : 'border-gh-border bg-gh-canvas-inset shadow-inner shadow-black/10 group-hover:border-gh-text-muted group-hover:bg-gh-border/20'
+        } peer-focus-visible:ring-2 peer-focus-visible:ring-gh-accent/40 peer-focus-visible:ring-offset-1 peer-focus-visible:ring-offset-gh-canvas`}
+      >
+        {checked && (
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+        )}
+      </span>
+      {label && (
+        <span className={`text-sm text-gh-text-secondary group-hover:text-gh-text transition-colors ${labelClassName}`}>
+          {label}
+        </span>
+      )}
+    </label>
+  )
+}
+
+// ========== Select ==========
+
+interface SelectOption {
+  value: string | number
+  label: string
+  disabled?: boolean
+}
+
+interface SelectProps {
+  label?: string
+  value: string | number
+  onChange: (value: string) => void
+  options: SelectOption[]
+  id?: string
+  disabled?: boolean
+  className?: string
+  selectClassName?: string
+}
+
+export const Select: React.FC<SelectProps> = ({
+  label,
+  value,
+  onChange,
+  options,
+  id,
+  disabled = false,
+  className = '',
+  selectClassName = ''
+}) => {
+  const generatedId = React.useId()
+  const selectId = id ?? `select-${generatedId}`
+
+  return (
+    <div className={`flex flex-col gap-1.5 ${className}`}>
+      {label && (
+        <label htmlFor={selectId} className="text-xs font-medium text-gh-text-muted">
+          {label}
+        </label>
+      )}
+      <div className="relative group/select">
+        <select
+          id={selectId}
+          value={value}
+          disabled={disabled}
+          onChange={(e) => onChange(e.target.value)}
+          className={`w-full appearance-none rounded-lg border border-gh-border bg-gh-canvas-inset px-3 py-2 pr-9 text-sm text-gh-text shadow-inner shadow-black/10 transition-all duration-150 cursor-pointer hover:border-gh-text-muted hover:bg-gh-border/20 focus:outline-none focus:border-gh-accent focus:ring-2 focus:ring-gh-accent/25 disabled:cursor-not-allowed disabled:opacity-55 ${selectClassName}`}
+        >
+          {options.map((opt) => (
+            <option key={opt.value} value={opt.value} disabled={opt.disabled}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+        <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-gh-text-muted transition-colors group-hover/select:text-gh-text-secondary">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export const Card: React.FC<CardProps> = ({ children, className = '', onClick, selected }) => (

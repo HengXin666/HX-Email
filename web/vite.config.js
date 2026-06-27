@@ -6,21 +6,7 @@ export default defineConfig({
     plugins: [react()],
     server: {
         proxy: {
-            "/admin": apiTarget,
-            "/auth": apiTarget,
-            "/data": apiTarget,
-            "/email-accounts": apiTarget,
-            "/groups": apiTarget,
-            "/health": apiTarget,
-            "/mail-pool": apiTarget,
-            "/platform-bindings": apiTarget,
-            "/platform-candidates": apiTarget,
-            "/platforms": apiTarget,
-            "/tags": apiTarget,
-            "/temp-mail": apiTarget,
-            "/token-tool": apiTarget,
-            "/usable-emails": apiTarget,
-            "/workbench": apiTarget,
+            "/api/v1": apiTarget,
         },
     },
     test: {

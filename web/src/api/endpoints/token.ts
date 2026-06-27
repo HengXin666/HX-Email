@@ -27,6 +27,11 @@ export const tokenApi = {
       body: JSON.stringify(data)
     }).then((r) => r.data),
 
+  prepareTokenToolFromConfig: () =>
+    request<{ success: boolean; data: TokenPrepareResult }>('/token-tool/prepare-from-config', {
+      method: 'POST'
+    }).then((r) => r.data),
+
   exchangeTokenTool: (data: { code?: string; state?: string; callback_url?: string }) =>
     request<{ success: boolean; data: TokenExchangeResult }>('/token-tool/exchange', {
       method: 'POST',

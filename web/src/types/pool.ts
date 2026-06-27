@@ -13,6 +13,8 @@ export interface MailPoolEntry {
 
 export interface PoolAdminAccount {
   id: number
+  usable_email_id: number
+  entry_id: number
   email: string
   provider: string
   pool_status: string
