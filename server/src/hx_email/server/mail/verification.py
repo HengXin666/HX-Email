@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from hx_email.config import Settings
 from hx_email.database import connect
@@ -36,6 +36,13 @@ class VerificationState:
 class MailboxProvider(Protocol):
     def read_messages(
         self, email_account: EmailAccountMailbox
+    ) -> list[MailboxMessage | dict[str, object]]: ...
+
+
+@runtime_checkable
+class FolderMailboxProvider(Protocol):
+    def read_messages_folder(
+        self, email_account: EmailAccountMailbox, *, folder: str, top: int
     ) -> list[MailboxMessage | dict[str, object]]: ...
 
 
