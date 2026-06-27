@@ -13,12 +13,10 @@ from hx_email.server.mail import EmailAccountMailbox, MailboxMessage
 from hx_email.server.mail.graph.fallback_provider import FallbackMailProvider
 from hx_email.server.mail.imap.message_store import save_messages
 from hx_email.server.mail.verification import (
-    CODE_PATTERN,
-    LINK_PATTERN,
     MailboxProvider,
     VerificationMatch,
     coerce_message,
-    first_match,
+    extract_verification_code,
 )
 
 logger = logging.getLogger(__name__)
@@ -137,14 +135,13 @@ def fetch_and_store_for_account(
         total_stored += stored
         for msg in broadcast:
             content = f"{msg.subject}\n{msg.body}"
-            code = first_match(CODE_PATTERN, content)
-            link = first_match(LINK_PATTERN, content)
-            if code or link:
+            code = extract_verification_code(content)
+            if code:
                 from hx_email.server.mail.verification import save_history
 
                 match = VerificationMatch(
                     code=code,
-                    link=link,
+                    link=None,
                     recipient_address=msg.recipient_address,
                     certainty="medium",
                     subject=msg.subject,
@@ -170,14 +167,13 @@ def fetch_and_store_for_account(
 
         for msg in relevant:
             content = f"{msg.subject}\n{msg.body}"
-            code = first_match(CODE_PATTERN, content)
-            link = first_match(LINK_PATTERN, content)
-            if code or link:
+            code = extract_verification_code(content)
+            if code:
                 from hx_email.server.mail.verification import save_history
 
                 match = VerificationMatch(
                     code=code,
-                    link=link,
+                    link=None,
                     recipient_address=msg.recipient_address,
                     certainty="high",
                     subject=msg.subject,

@@ -42,14 +42,18 @@ def _find_email_account(settings: Settings, email_addr: str) -> EmailAccountMail
 
 def _build_message_dict(msg: MailboxMessage, idx: int) -> dict[str, object]:
     """Build a clean email summary dict from a MailboxMessage."""
+    body_text: str = msg.body or ""
+    preview: str = body_text[:200]
+    if len(body_text) > 200:
+        preview = preview + "..."
     return {
         "id": msg.message_id or str(idx + 1),
         "subject": msg.subject,
-        "from": "",
-        "to": msg.recipient_address or "",
-        "date": "",
-        "body_preview": msg.body[:200] if msg.body else "",
-        "has_attachments": False,
+        "from": msg.from_address or "",
+        "date": msg.received_at or "",
+        "is_read": msg.is_read,
+        "has_attachments": msg.has_attachments,
+        "body_preview": preview,
     }
 
 
@@ -89,7 +93,9 @@ def fetch_emails(
         return {"emails": [], "method": "none", "has_more": False}
 
     resolved_method = _resolve_method(account, method)
-    raw_messages: list[Any] = mailbox_provider.read_messages(account)
+    raw_messages: list[Any] = mailbox_provider.read_messages(
+        account, folder=folder, skip=skip, top=top
+    )
 
     all_messages: list[dict[str, object]] = []
     for idx, raw in enumerate(raw_messages):
@@ -244,25 +250,31 @@ def extract_verification_code(
     code_regex: str | None = None,
     code_source: str = "all",
 ) -> dict[str, object]:
-    """Extract verification code from latest emails."""
+    """Extract verification code from latest emails.
+
+    When no custom regex or length is given, uses keyword-context-aware
+    extraction that only matches codes near verification keywords.
+    """
     account = _find_email_account(settings, email_addr)
     if account is None:
         return {"verification_code": "", "matched_email_id": "", "match_count": 0}
 
     raw_messages: list[Any] = mailbox_provider.read_messages(account)
-    pattern = re.compile(code_regex) if code_regex else CODE_PATTERN
+    from hx_email.server.mail.verification import extract_verification_code as _vc
+
+    has_custom_pattern: bool = bool(code_regex) or code_length is not None
+    if has_custom_pattern:
+        pattern: re.Pattern[str] = re.compile(code_regex) if code_regex else CODE_PATTERN
 
     for idx, raw in enumerate(raw_messages):
         msg = coerce_message(raw)
-
         if code_source == "subject":
-            content = msg.subject
+            content: str = msg.subject
         elif code_source == "body":
             content = msg.body
         else:
             content = f"{msg.subject}\n{msg.body}"
-
-        code = first_match(pattern, content)
+        code = first_match(pattern, content) if has_custom_pattern else _vc(content)
         if code is not None:
             return {
                 "verification_code": code,

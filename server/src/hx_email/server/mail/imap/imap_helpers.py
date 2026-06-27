@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import email
 import hashlib
-import imaplib
 import json
 import logging
 import time
@@ -17,7 +16,8 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 if TYPE_CHECKING:
-    from hx_email.config import Settings
+    pass
+
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +107,90 @@ def extract_from(msg: email.message.Message) -> str:
     return decode_mime_header(str(from_val))
 
 
+def has_attachments(msg: email.message.Message) -> bool:
+    """Detect attachments via Content-Disposition header."""
+    if not msg.is_multipart():
+        return False
+    for part in msg.walk():
+        try:
+            disp = str(part.get("Content-Disposition", "") or "").lower()
+        except Exception:
+            disp = ""
+        if "attachment" in disp:
+            return True
+    return False
+
+
+def extract_flags_from_fetch(fetch_item: object) -> str:
+    """Extract IMAP flags string from a FETCH response item."""
+    try:
+        if isinstance(fetch_item, tuple) and fetch_item:
+            meta = fetch_item[0]
+            if isinstance(meta, bytes | bytearray):
+                return meta.decode("utf-8", errors="ignore")
+            return str(meta)
+        if isinstance(fetch_item, bytes | bytearray):
+            return fetch_item.decode("utf-8", errors="ignore")
+        return str(fetch_item)
+    except Exception:
+        return ""
+
+
+def strip_html(html_text: str) -> str:
+    """Strip HTML tags, returning readable plain text."""
+    if not html_text:
+        return ""
+    import re
+
+    text = re.sub(r"(?is)<script.*?>.*?</script>", " ", html_text)
+    text = re.sub(r"(?is)<style.*?>.*?</style>", " ", text)
+    text = re.sub(r"(?s)<[^>]+>", " ", text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+def extract_text_and_html(msg: email.message.Message) -> tuple[str, str]:
+    """Extract text/plain and text/html bodies, skipping attachments."""
+    text_part = ""
+    html_part = ""
+
+    def _decode_payload(part: email.message.Message) -> str:
+        try:
+            payload = part.get_payload(decode=True)
+            charset = part.get_content_charset() or "utf-8"
+            if isinstance(payload, bytes | bytearray):
+                return payload.decode(charset, errors="replace")
+            return str(payload) if payload is not None else ""
+        except Exception:
+            try:
+                return str(part.get_payload())
+            except Exception:
+                return ""
+
+    if msg.is_multipart():
+        for part in msg.walk():
+            try:
+                disp = str(part.get("Content-Disposition", "") or "").lower()
+            except Exception:
+                disp = ""
+            if "attachment" in disp:
+                continue
+            ct = (part.get_content_type() or "").lower()
+            if ct == "text/plain" and not text_part:
+                text_part = _decode_payload(part)
+            elif ct == "text/html" and not html_part:
+                html_part = _decode_payload(part)
+            if text_part and html_part:
+                break
+    else:
+        ct = (msg.get_content_type() or "").lower()
+        if ct == "text/html":
+            html_part = _decode_payload(msg)
+        else:
+            text_part = _decode_payload(msg)
+    return text_part or "", html_part or ""
+
+
 # ── OAuth token helpers ──────────────────────────────────────────────────
 
 
@@ -179,109 +263,3 @@ def try_get_imap_token(client_id: str, refresh_token: str) -> tuple[str, str]:
     if last_error is not None:
         raise last_error
     raise RuntimeError("Failed to get IMAP token: no tenants available")  # pragma: no cover
-
-
-# ── Proxy helpers ──────────────────────────────────────────────────────────
-
-
-def load_group_proxy(settings: Settings, account_id: int) -> str:
-    """Look up proxy_url from the group linked to this account.
-
-    Checks usable_emails (any kind) first, then falls back to email_accounts.group_id.
-    """
-    import logging
-
-    from hx_email.database import connect as _connect
-
-    _log = logging.getLogger(__name__)
-
-    with _connect(settings) as conn:
-        row = conn.execute(
-            """
-            SELECT g.proxy_url FROM groups g
-            JOIN usable_emails ue ON ue.group_id = g.id
-            WHERE ue.email_account_id = ?
-              AND g.proxy_url IS NOT NULL AND g.proxy_url != ''
-            LIMIT 1
-            """,
-            (account_id,),
-        ).fetchone()
-        if row:
-            result: str = str(row["proxy_url"]).strip()
-            _log.info(
-                "load_group_proxy(account=%d): found via usable_emails -> %s", account_id, result
-            )
-            return result
-        # Fallback: check email_accounts.group_id directly
-        row = conn.execute(
-            """
-            SELECT g.proxy_url FROM groups g
-            JOIN email_accounts ea ON ea.group_id = g.id
-            WHERE ea.id = ?
-              AND g.proxy_url IS NOT NULL AND g.proxy_url != ''
-            LIMIT 1
-            """,
-            (account_id,),
-        ).fetchone()
-        if row:
-            result = str(row["proxy_url"]).strip()
-            _log.info(
-                "load_group_proxy(account=%d): found via email_accounts.group_id -> %s",
-                account_id,
-                result,
-            )
-            return result
-    _log.warning("load_group_proxy(account=%d): no proxy found", account_id)
-    return ""
-
-
-def imap_connect_via_proxy(
-    proxy_url: str, host: str, port: int, timeout: int = 30
-) -> imaplib.IMAP4:
-    """Create an IMAP4 connection through an HTTP CONNECT proxy tunnel."""
-    import socket
-    import ssl as _ssl
-
-    proxy = proxy_url
-    if "://" in proxy:
-        proxy = proxy.split("://", 1)[1]
-    if ":" in proxy:
-        proxy_host, proxy_port_str = proxy.rsplit(":", 1)
-        proxy_port_num = int(proxy_port_str)
-    else:
-        proxy_host = proxy
-        proxy_port_num = 8080
-    sock = socket.create_connection((proxy_host, proxy_port_num), timeout=timeout)
-    connect_cmd = f"CONNECT {host}:{port} HTTP/1.1\r\nHost: {host}:{port}\r\n\r\n"
-    sock.sendall(connect_cmd.encode())
-    response = b""
-    while b"\r\n\r\n" not in response:
-        chunk = sock.recv(4096)
-        if not chunk:
-            break
-        response += chunk
-    status_line = response.split(b"\r\n")[0].decode(errors="replace")
-    if "200" not in status_line:
-        sock.close()
-        raise RuntimeError(f"代理 CONNECT 失败: {status_line}")
-    ctx = _ssl.create_default_context()
-    ssl_sock = ctx.wrap_socket(sock, server_hostname=host)
-    # Use __new__ to create IMAP4 without triggering its open() which
-    # would try to connect to localhost:143 (Python 3.13+ behavior).
-    conn = imaplib.IMAP4.__new__(imaplib.IMAP4)
-    conn.debug = 0
-    conn.state = "LOGOUT"
-    conn.literal = None
-    conn.tagged_commands = {}
-    conn.untagged_responses = {}
-    conn.continuation_response = ""
-    conn.is_readonly = False
-    conn.tagnum = 0
-    conn._tls_established = False  # type: ignore[attr-defined]
-    conn._mode_ascii()
-    conn.host = host
-    conn.port = port
-    conn.sock = ssl_sock
-    conn.file = ssl_sock.makefile("rb")
-    conn._connect()
-    return conn

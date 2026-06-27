@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 from dataclasses import dataclass
+from urllib.parse import quote, urlencode
 
 from hx_email.config import Settings
 from hx_email.database import connect
@@ -109,11 +110,15 @@ class GraphMailProvider:
     ) -> GraphReadResult:
         """Call Graph API to list messages in a folder."""
         folder_path = resolve_graph_folder(folder)
-        url = (
-            f"{_GRAPH_BASE_URL}/me/mailFolders/{folder_path}/messages"
-            f"?$top={top}&$orderby=receivedDateTime desc"
-            f"&$select=id,subject,from,toRecipients,receivedDateTime,body"
+        query: str = urlencode(
+            {
+                "$top": str(top),
+                "$orderby": "receivedDateTime desc",
+                "$select": "id,subject,from,toRecipients,receivedDateTime,body",
+            },
+            quote_via=quote,
         )
+        url: str = f"{_GRAPH_BASE_URL}/me/mailFolders/{folder_path}/messages?{query}"
         try:
             data = graph_get(url, access_token)
         except Exception as exc:
@@ -179,11 +184,15 @@ def graph_list_message_ids(
 ) -> list[str]:
     """List message IDs (lightweight — only fetches ids) via Graph API."""
     folder_path = resolve_graph_folder(folder)
-    url = (
-        f"{_GRAPH_BASE_URL}/me/mailFolders/{folder_path}/messages"
-        f"?$top={top}&$orderby=receivedDateTime desc"
-        f"&$select=id"
+    query: str = urlencode(
+        {
+            "$top": str(top),
+            "$orderby": "receivedDateTime desc",
+            "$select": "id",
+        },
+        quote_via=quote,
     )
+    url: str = f"{_GRAPH_BASE_URL}/me/mailFolders/{folder_path}/messages?{query}"
     try:
         data = graph_get(url, access_token)
     except Exception:

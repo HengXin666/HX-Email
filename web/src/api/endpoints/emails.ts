@@ -92,7 +92,7 @@ export const emailsApi = {
 
   // Email Accounts
   listEmailAccounts: () =>
-    request<{ email_accounts: EmailAccount[] }>('/email-accounts').then((r) => r.email_accounts),
+    request<{ accounts: EmailAccount[] }>('/email-accounts').then((r) => r.accounts),
 
   createEmailAccount: (data: {
     provider: string

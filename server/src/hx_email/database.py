@@ -11,15 +11,15 @@ def column_exists(connection: sqlite3.Connection, table: str, column: str) -> bo
 
 
 def connect(settings: Settings) -> sqlite3.Connection:
-    connection = sqlite3.connect(settings.database_path)
+    connection = sqlite3.connect(settings.database_path, timeout=30)
     connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA journal_mode=WAL")
     return connection
 
 
 def migrate(settings: Settings) -> Path:
     database_path = settings.database_path
     database_path.parent.mkdir(parents=True, exist_ok=True)
-
     with sqlite3.connect(database_path) as connection:
         connection.execute(
             """
@@ -198,6 +198,10 @@ def migrate(settings: Settings) -> Path:
             """
         )
         connection.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_vrf_dedup"
+            " ON verification_readings(usable_email_id, code)"
+        )
+        connection.execute(
             """
             CREATE TABLE IF NOT EXISTS mail_pool_entries (
                 id INTEGER PRIMARY KEY,
@@ -293,5 +297,4 @@ def migrate(settings: Settings) -> Path:
         if not column_exists(connection, "groups", "proxy_url"):
             connection.execute("ALTER TABLE groups ADD COLUMN proxy_url TEXT NOT NULL DEFAULT ''")
         connection.execute("PRAGMA user_version = 7")
-
     return database_path

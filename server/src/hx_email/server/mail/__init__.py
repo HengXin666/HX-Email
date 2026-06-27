@@ -18,3 +18,5 @@ class MailboxMessage:
     from_address: str = ""
     received_at: str = ""
     message_id: str = ""
+    is_read: bool = False
+    has_attachments: bool = False

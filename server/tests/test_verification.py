@@ -62,7 +62,7 @@ def test_verification_reading_filters_messages_by_target_usable_email_address(tm
     assert primary_reading.json()["matches"] == [
         {
             "code": "111111",
-            "link": "https://service.test/owner",
+            "link": None,
             "recipient_address": "owner@example.com",
             "certainty": "certain",
             "subject": "Owner verification",
@@ -73,7 +73,7 @@ def test_verification_reading_filters_messages_by_target_usable_email_address(tm
     assert alias_reading.json()["matches"] == [
         {
             "code": "222222",
-            "link": "https://service.test/alias",
+            "link": None,
             "recipient_address": "alias@example.com",
             "certainty": "certain",
             "subject": "Alias verification",
@@ -114,7 +114,7 @@ def test_verification_reading_marks_messages_without_recipient_as_uncertain(tmp_
     assert reading.json()["matches"] == [
         {
             "code": "333333",
-            "link": "https://service.test/uncertain",
+            "link": None,
             "recipient_address": None,
             "certainty": "uncertain",
             "subject": "Verification",

@@ -190,7 +190,7 @@ def delete_usable_email(settings: Settings, user_id: int, usable_email_id: int) 
             "DELETE FROM temp_mailboxes WHERE usable_email_id = ? AND user_id = ?",
             (usable_email_id, user_id),
         )
-        delete_messages_for_email(settings, usable_email_id)
+        delete_messages_for_email(settings, usable_email_id, connection=connection)
 
         # 3) Delete the email itself
         cursor = connection.execute(

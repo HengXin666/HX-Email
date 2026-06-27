@@ -171,7 +171,13 @@ def extract_verification_code(
     code_source: str = "all",
     claim_token: str | None = None,
 ) -> dict[str, object]:
-    """Extract verification code from messages."""
+    """Extract verification code from messages.
+
+    When no custom regex or length is given, uses keyword-context-aware
+    extraction that only matches codes near verification keywords.
+    """
+    from hx_email.server.mail.verification import extract_verification_code as vrf_extract
+
     resolved_email = resolve_email(settings, email, claim_token)
     account = _find_email_account(settings, resolved_email)
     if account is None:
@@ -183,7 +189,9 @@ def extract_verification_code(
         all_msgs, from_contains, subject_contains, since_minutes
     )
 
-    pattern: re.Pattern[str] = re.compile(code_regex) if code_regex else CODE_PATTERN
+    has_custom_pattern: bool = bool(code_regex) or code_length is not None
+    if has_custom_pattern:
+        pattern: re.Pattern[str] = re.compile(code_regex) if code_regex else CODE_PATTERN
 
     for idx, msg in enumerate(filtered):
         if code_source == "subject":
@@ -193,7 +201,7 @@ def extract_verification_code(
         else:
             content = f"{msg.subject}\n{msg.body or ''}"
 
-        code = first_match(pattern, content)
+        code = first_match(pattern, content) if has_custom_pattern else vrf_extract(content)
         if code is not None:
             return {
                 "verification_code": code,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import UTC
 from sqlite3 import Row
 from typing import TYPE_CHECKING
@@ -98,13 +99,29 @@ def get_message_count(settings: Settings, usable_email_id: int) -> int:
     return row["cnt"] if row else 0
 
 
-def delete_messages_for_email(settings: Settings, usable_email_id: int) -> int:
+def delete_messages_for_email(
+    settings: Settings,
+    usable_email_id: int,
+    *,
+    connection: sqlite3.Connection | None = None,
+) -> int:
+    """Delete all fetched messages for a usable_email.
+
+    Accepts an optional connection to reuse within a caller's transaction,
+    avoiding SQLite "database is locked" errors from concurrent write connections.
+    """
+    if connection is not None:
+        cursor = connection.execute(
+            "DELETE FROM fetched_messages WHERE usable_email_id = ?",
+            (usable_email_id,),
+        )
+        return cursor.rowcount
     with connect(settings) as conn:
         cursor = conn.execute(
             "DELETE FROM fetched_messages WHERE usable_email_id = ?",
             (usable_email_id,),
         )
-    return cursor.rowcount
+        return cursor.rowcount
 
 
 # ── helpers ──────────────────────────────────────────────────────────────
