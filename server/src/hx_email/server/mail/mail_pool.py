@@ -50,6 +50,18 @@ def add_mail_pool_entry(
     return entry
 
 
+def remove_mail_pool_entry(settings: Settings, user_id: int, usable_email_id: int) -> bool:
+    with connect(settings) as connection:
+        cursor = connection.execute(
+            """
+            DELETE FROM mail_pool_entries
+            WHERE usable_email_id = ? AND user_id = ?
+            """,
+            (usable_email_id, user_id),
+        )
+    return cursor.rowcount > 0
+
+
 def list_mail_pool_entries(settings: Settings, user_id: int) -> tuple[MailPoolEntry, ...]:
     with connect(settings) as connection:
         rows = connection.execute(

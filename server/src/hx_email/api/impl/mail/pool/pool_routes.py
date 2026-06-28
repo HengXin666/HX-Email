@@ -18,6 +18,7 @@ from hx_email.server.mail.mail_pool import (
     cooldown_mail_pool_entry,
     list_mail_pool_entries,
     release_mail_pool_entry,
+    remove_mail_pool_entry,
 )
 
 
@@ -49,6 +50,19 @@ def register_mail_pool_routes(router: APIRouter, settings: Settings) -> None:
                 for entry in list_mail_pool_entries(settings, user.id)
             ]
         }
+
+    @router.delete("/mail-pool/entries/{usable_email_id}", status_code=status.HTTP_204_NO_CONTENT)
+    def delete_mail_pool_entry(
+        usable_email_id: int,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> None:
+        user = require_user(settings, authorization)
+        removed = remove_mail_pool_entry(settings, user.id, usable_email_id)
+        if not removed:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Mail pool entry not found",
+            )
 
     @router.post("/mail-pool/claim")
     def claim_mail_pool(

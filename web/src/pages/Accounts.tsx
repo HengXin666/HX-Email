@@ -8,6 +8,7 @@ const EMAIL_BODY_STYLE = {
   overflowWrap: 'break-word' as const,
   maxWidth: '100%',
 } as React.CSSProperties
+const OUTLOOK_ALIAS_MANAGE_URL = 'https://account.live.com/names/manage'
 import { useApp } from '../store/AppContext'
 import { useToast } from '../components/ui/Toast'
 import { Button, Modal, Input, Badge, Card, Checkbox, Select } from '../components/ui/Primitives'
@@ -492,7 +493,6 @@ const EmailList: React.FC<{
               onClick={() => onSelect(e)}
               onSettings={() => setShowSettings(e.id)}
               selectedForBulk={selectedEmailIds.has(e.id)}
-              inPool={poolEmailIds.has(e.id)}
               onToggleBulkSelect={() => onToggleEmailSelect(e.id)}
               onRefreshAccount={onRefreshAccount}
             />
@@ -531,10 +531,9 @@ const EmailCard: React.FC<{
   onClick: () => void
   onSettings: () => void
   selectedForBulk?: boolean
-  inPool?: boolean
   onToggleBulkSelect?: () => void
   onRefreshAccount?: () => void
-}> = ({ email, selected, onClick, onSettings, selectedForBulk, inPool, onToggleBulkSelect, onRefreshAccount }) => {
+}> = ({ email, selected, onClick, onSettings, selectedForBulk, onToggleBulkSelect, onRefreshAccount }) => {
   const { toast } = useToast()
   const { accounts, refreshAccounts, refreshEmails } = useApp()
   const [copied, setCopied] = useState(false)
@@ -691,13 +690,6 @@ const EmailCard: React.FC<{
     }
   }
 
-  const kindLabel: Record<string, string> = {
-    primary: '主',
-    alias: '别名',
-    custom: '自定',
-    temp: '临时'
-  }
-
   return (
     <motion.div layout initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
       <Card selected={selected} onClick={onClick} className={`p-3 ${isInactive ? 'opacity-60' : ''}`}>
@@ -727,27 +719,14 @@ const EmailCard: React.FC<{
               {email.label && (
                 <span className="text-xs text-gh-text-secondary truncate">{email.label}</span>
               )}
-              <Badge color={
-                email.kind === 'primary' ? '#58a6ff' :
-                email.kind === 'alias' ? '#a371f7' :
-                email.kind === 'temp' ? '#f0883e' : '#6e7681'
-              }>
-                {kindLabel[email.kind]}
-              </Badge>
-              {/* 状态标签 */}
-              {isInactive ? (
-                <Badge color="#6e7681">已停用</Badge>
-              ) : (
-                <Badge color="#3fb950">活跃</Badge>
-              )}
-              {inPool && (
-                <Badge color="#3fb950">邮箱池</Badge>
-              )}
             </div>
             <button
               onClick={handleCopy}
               className="text-sm text-gh-text font-medium truncate max-w-full hover:text-gh-accent transition-colors group inline-flex items-center gap-1"
             >
+              {email.kind === 'primary' && (
+                <span className="text-[11px] text-gh-accent shrink-0">主</span>
+              )}
               <span className="truncate">{email.address}</span>
               {copied ? (
                 <IconCheck size={12} className="shrink-0 text-gh-success" />
@@ -1898,13 +1877,14 @@ const EmailSettingsModal: React.FC<{
           remark: remark || null,
         })
       }
-      // Pool API currently supports add-only from this page.
       if (inPool && !initialInPool && email.email_account_id) {
-        try {
-          await api.addPoolEntry(email.id)
-          await onPoolChanged?.()
-          setInitialInPool(true)
-        } catch {}
+        await api.addPoolEntry(email.id)
+        await onPoolChanged?.()
+        setInitialInPool(true)
+      } else if (!inPool && initialInPool && email.email_account_id) {
+        await api.removePoolEntry(email.id)
+        await onPoolChanged?.()
+        setInitialInPool(false)
       }
       toast('已保存', 'success')
       refreshAccounts()
@@ -2015,16 +1995,13 @@ const EmailSettingsModal: React.FC<{
               />
 
               {/* 邮箱池 */}
-              {poolLoaded && initialInPool ? (
-                <div className="inline-flex items-center gap-2 text-sm text-gh-success">
-                  <IconCheck size={14} />
-                  已加入邮箱池
-                </div>
-              ) : email.email_account_id ? (
+              {email.email_account_id ? (
                 <Checkbox
-                  label={poolLoaded ? '加入邮箱池' : '正在检测邮箱池状态…'}
+                  label={inPool ? '已加入邮箱池' : '加入邮箱池'}
                   checked={inPool}
                   onChange={setInPool}
+                  disabled={!poolLoaded}
+                  title={poolLoaded ? undefined : '正在检测邮箱池状态…'}
                 />
               ) : (
                 <div className="text-sm text-gh-text-secondary">无关联账户，不能加入邮箱池</div>
@@ -2032,9 +2009,22 @@ const EmailSettingsModal: React.FC<{
 
               {/* 别名邮箱 */}
               <div className="pt-3 border-t border-gh-border">
-                <label className="text-xs font-medium text-gh-text-muted block mb-1.5">
-                  别名邮箱
-                </label>
+                <div className="mb-1.5 flex items-center justify-between gap-2">
+                  <label className="text-xs font-medium text-gh-text-muted">
+                    别名邮箱
+                  </label>
+                  {isOutlook && (
+                    <a
+                      href={OUTLOOK_ALIAS_MANAGE_URL}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-gh-accent hover:underline"
+                    >
+                      <IconLink size={11} />
+                      设置别名邮箱
+                    </a>
+                  )}
+                </div>
                 {aliases.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mb-2">
                     {aliases.map((a) => (

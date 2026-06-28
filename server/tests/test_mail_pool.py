@@ -4,6 +4,9 @@ from fastapi.testclient import TestClient
 from hx_email.app import create_app
 from hx_email.config import Settings
 from hx_email.database import migrate
+from hx_email.server.auth import create_session, register_user
+from hx_email.server.mail.mail_pool import add_mail_pool_entry, list_mail_pool_entries
+from hx_email.server.mail.usable_emails import add_usable_email
 
 
 @dataclass(frozen=True)
@@ -213,3 +216,33 @@ def test_mail_pool_release_complete_cooldown_project_reuse_and_user_isolation(tm
     assert [entry["usable_email"]["id"] for entry in bob_entries.json()["entries"]] == [
         bob_email["id"]
     ]
+
+
+def test_mail_pool_entry_can_be_removed_by_owner_only(tmp_path) -> None:
+    settings = Settings(data_dir=tmp_path)
+    migrate(settings)
+    client = TestClient(create_app(settings))
+    alice = register_user(settings, "alice", "alice-pass")
+    bob = register_user(settings, "bob", "bob-pass")
+    alice_headers = {"Authorization": f"Bearer {create_session(settings, alice)}"}
+    bob_headers = {"Authorization": f"Bearer {create_session(settings, bob)}"}
+    alice_email = add_usable_email(settings, alice.id, "alice@example.com", "Alice")
+    bob_email = add_usable_email(settings, bob.id, "bob@example.com", "Bob")
+    add_mail_pool_entry(settings, alice.id, alice_email.id)
+    add_mail_pool_entry(settings, bob.id, bob_email.id)
+
+    cross_user_remove = client.delete(
+        f"/api/v1/mail-pool/entries/{alice_email.id}",
+        headers=bob_headers,
+    )
+    removed = client.delete(
+        f"/api/v1/mail-pool/entries/{alice_email.id}",
+        headers=alice_headers,
+    )
+    alice_entries = list_mail_pool_entries(settings, alice.id)
+    bob_entries = list_mail_pool_entries(settings, bob.id)
+
+    assert cross_user_remove.status_code == 404
+    assert removed.status_code == 204
+    assert alice_entries == ()
+    assert [entry.usable_email.id for entry in bob_entries] == [bob_email.id]

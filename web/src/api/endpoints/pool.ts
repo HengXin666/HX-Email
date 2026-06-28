@@ -11,6 +11,11 @@ export const poolApi = {
       body: JSON.stringify({ usable_email_id })
     }),
 
+  removePoolEntry: (usable_email_id: number) =>
+    request<null>(`/mail-pool/entries/${usable_email_id}`, {
+      method: 'DELETE'
+    }),
+
   claimPool: (project_key: string) =>
     request<MailPoolEntry>('/mail-pool/claim', {
       method: 'POST',
