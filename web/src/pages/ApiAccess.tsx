@@ -1,46 +1,56 @@
-import React, { useState } from 'react'
-import { motion } from 'framer-motion'
-import { Topbar } from '../components/layout'
-import { useToast } from '../components/ui/Toast'
-import { Button, Card } from '../components/ui/Primitives'
-import { IconCode, IconCopy, IconCheck, IconKey, IconGlobe, IconDatabase, IconShield } from '../components/icons'
+import { motion } from "framer-motion";
+import React, { useState } from "react";
+import {
+  IconCheck,
+  IconCode,
+  IconCopy,
+  IconDatabase,
+  IconGlobe,
+  IconKey,
+  IconShield,
+} from "../components/icons";
+import { Topbar } from "../components/layout";
+import { Button, Card } from "../components/ui/Primitives";
+import { useToast } from "../components/ui/Toast";
 
 interface EndpointRowProps {
-  method: string
-  path: string
-  desc: string
+  method: string;
+  path: string;
+  desc: string;
 }
 
 const methodColor: Record<string, string> = {
-  GET: 'text-gh-success bg-gh-success/10 border-gh-success/30',
-  POST: 'text-gh-accent bg-gh-accent/10 border-gh-accent/30',
-  PUT: 'text-gh-warning bg-gh-warning/10 border-gh-warning/30',
-  DELETE: 'text-gh-danger bg-gh-danger/10 border-gh-danger/30'
-}
+  GET: "text-gh-success bg-gh-success/10 border-gh-success/30",
+  POST: "text-gh-accent bg-gh-accent/10 border-gh-accent/30",
+  PUT: "text-gh-warning bg-gh-warning/10 border-gh-warning/30",
+  DELETE: "text-gh-danger bg-gh-danger/10 border-gh-danger/30",
+};
 
 const EndpointRow: React.FC<EndpointRowProps> = ({ method, path, desc }) => (
   <div className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-gh-border/30 transition-colors group">
-    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border font-mono ${methodColor[method]}`}>
+    <span
+      className={`text-[10px] font-bold px-1.5 py-0.5 rounded border font-mono ${methodColor[method]}`}
+    >
       {method}
     </span>
     <code className="text-xs text-gh-text font-mono flex-1 truncate">{path}</code>
     <span className="text-xs text-gh-text-secondary hidden md:block flex-1 truncate">{desc}</span>
   </div>
-)
+);
 
-const CodeBlock: React.FC<{ code: string; language?: string }> = ({ code, language = 'bash' }) => {
-  const { toast } = useToast()
-  const [copied, setCopied] = useState(false)
+const CodeBlock: React.FC<{ code: string; language?: string }> = ({ code, language = "bash" }) => {
+  const { toast } = useToast();
+  const [copied, setCopied] = useState(false);
   return (
     <div className="relative rounded-lg border border-gh-border bg-gh-canvas-inset overflow-hidden">
       <div className="flex items-center justify-between px-3 py-1.5 bg-gh-border/30 border-b border-gh-border">
         <span className="text-[10px] text-gh-text-secondary uppercase">{language}</span>
         <button
           onClick={() => {
-            navigator.clipboard.writeText(code)
-            toast('已复制', 'success')
-            setCopied(true)
-            setTimeout(() => setCopied(false), 1500)
+            navigator.clipboard.writeText(code);
+            toast("已复制", "success");
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
           }}
           className="text-gh-text-muted hover:text-gh-text transition-colors p-1"
         >
@@ -51,13 +61,13 @@ const CodeBlock: React.FC<{ code: string; language?: string }> = ({ code, langua
         <code>{code}</code>
       </pre>
     </div>
-  )
-}
+  );
+};
 
 export const ApiAccess: React.FC = () => {
-  const [tab, setTab] = useState<'overview' | 'endpoints' | 'examples'>('overview')
-  const token = localStorage.getItem('hx_token') || '<your_token>'
-  const baseUrl = window.location.origin + '/api/v1'
+  const [tab, setTab] = useState<"overview" | "endpoints" | "examples">("overview");
+  const token = localStorage.getItem("hx_token") || "<your_token>";
+  const baseUrl = window.location.origin + "/api/v1";
 
   return (
     <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
@@ -79,7 +89,8 @@ export const ApiAccess: React.FC = () => {
               <div className="flex-1">
                 <h2 className="text-xl font-bold text-gh-text">HX-Email REST API</h2>
                 <p className="text-sm text-gh-text-muted mt-1 max-w-2xl">
-                  基于 FastAPI 构建，共 42 个端点，支持邮箱管理、平台绑定、临时邮箱、验证码读取等核心能力。
+                  基于 FastAPI 构建，共 42
+                  个端点，支持邮箱管理、平台绑定、临时邮箱、验证码读取等核心能力。
                 </p>
                 <div className="flex flex-wrap gap-3 mt-4">
                   <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-gh-canvas-inset border border-gh-border text-xs">
@@ -99,17 +110,17 @@ export const ApiAccess: React.FC = () => {
           {/* Tabs */}
           <div className="flex items-center gap-1 border-b border-gh-border">
             {[
-              { k: 'overview', label: '快速入门' },
-              { k: 'endpoints', label: '接口列表' },
-              { k: 'examples', label: '代码示例' }
+              { k: "overview", label: "快速入门" },
+              { k: "endpoints", label: "接口列表" },
+              { k: "examples", label: "代码示例" },
             ].map((t) => (
               <button
                 key={t.k}
                 onClick={() => setTab(t.k as any)}
                 className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
                   tab === t.k
-                    ? 'border-gh-accent text-gh-accent'
-                    : 'border-transparent text-gh-text-muted hover:text-gh-text'
+                    ? "border-gh-accent text-gh-accent"
+                    : "border-transparent text-gh-text-muted hover:text-gh-text"
                 }`}
               >
                 {t.label}
@@ -117,13 +128,28 @@ export const ApiAccess: React.FC = () => {
             ))}
           </div>
 
-          {tab === 'overview' && (
+          {tab === "overview" && (
             <div className="space-y-4">
               <div className="grid md:grid-cols-3 gap-3">
                 {[
-                  { icon: IconKey, color: '#58a6ff', title: 'Bearer Token', desc: '所有需要认证的接口通过 Header 传递 Authorization' },
-                  { icon: IconDatabase, color: '#3fb950', title: 'JSON 格式', desc: '请求/响应统一使用 JSON 格式，Content-Type: application/json' },
-                  { icon: IconShield, color: '#a371f7', title: '用户隔离', desc: '每个用户的数据相互隔离，Token 对应具体用户' }
+                  {
+                    icon: IconKey,
+                    color: "#58a6ff",
+                    title: "Bearer Token",
+                    desc: "所有需要认证的接口通过 Header 传递 Authorization",
+                  },
+                  {
+                    icon: IconDatabase,
+                    color: "#3fb950",
+                    title: "JSON 格式",
+                    desc: "请求/响应统一使用 JSON 格式，Content-Type: application/json",
+                  },
+                  {
+                    icon: IconShield,
+                    color: "#a371f7",
+                    title: "用户隔离",
+                    desc: "每个用户的数据相互隔离，Token 对应具体用户",
+                  },
                 ].map((item, i) => (
                   <motion.div
                     key={i}
@@ -142,10 +168,7 @@ export const ApiAccess: React.FC = () => {
 
               <div>
                 <h3 className="text-sm font-semibold text-gh-text mb-2">认证方式</h3>
-                <CodeBlock
-                  language="http"
-                  code={`Authorization: Bearer ${token}`}
-                />
+                <CodeBlock language="http" code={`Authorization: Bearer ${token}`} />
               </div>
 
               <div>
@@ -175,7 +198,7 @@ export const ApiAccess: React.FC = () => {
             </div>
           )}
 
-          {tab === 'endpoints' && (
+          {tab === "endpoints" && (
             <div className="rounded-xl border border-gh-border bg-gh-canvas-subtle overflow-hidden">
               <div className="px-4 py-2 border-b border-gh-border bg-gh-canvas-inset">
                 <span className="text-xs font-semibold text-gh-text-muted uppercase tracking-wider">
@@ -183,52 +206,86 @@ export const ApiAccess: React.FC = () => {
                 </span>
               </div>
               <div className="p-2">
-                <div className="text-[11px] font-semibold text-gh-accent uppercase tracking-wider px-3 py-1.5">系统 & 认证</div>
+                <div className="text-[11px] font-semibold text-gh-accent uppercase tracking-wider px-3 py-1.5">
+                  系统 & 认证
+                </div>
                 <EndpointRow method="GET" path="/health" desc="健康检查" />
                 <EndpointRow method="POST" path="/auth/login" desc="登录" />
                 <EndpointRow method="POST" path="/auth/register" desc="注册" />
                 <EndpointRow method="POST" path="/auth/logout" desc="注销" />
 
-                <div className="text-[11px] font-semibold text-gh-accent uppercase tracking-wider px-3 py-1.5 mt-3">工作台</div>
+                <div className="text-[11px] font-semibold text-gh-accent uppercase tracking-wider px-3 py-1.5 mt-3">
+                  工作台
+                </div>
                 <EndpointRow method="GET" path="/workbench/overview" desc="工作台概览统计" />
                 <EndpointRow method="GET" path="/workbench/usable-emails" desc="分页查询可用邮箱" />
                 <EndpointRow method="POST" path="/groups" desc="创建分组" />
                 <EndpointRow method="POST" path="/tags" desc="创建标签" />
 
-                <div className="text-[11px] font-semibold text-gh-accent uppercase tracking-wider px-3 py-1.5 mt-3">可用邮箱</div>
+                <div className="text-[11px] font-semibold text-gh-accent uppercase tracking-wider px-3 py-1.5 mt-3">
+                  可用邮箱
+                </div>
                 <EndpointRow method="POST" path="/usable-emails" desc="创建自定义邮箱" />
                 <EndpointRow method="GET" path="/usable-emails" desc="所有可用邮箱" />
-                <EndpointRow method="PUT" path="/usable-emails/:id/organize" desc="整理邮箱 (标签/分组)" />
-                <EndpointRow method="POST" path="/usable-emails/:id/verification/read" desc="读取验证码" />
-                <EndpointRow method="GET" path="/usable-emails/:id/verification/history" desc="验证历史" />
+                <EndpointRow
+                  method="PUT"
+                  path="/usable-emails/:id/organize"
+                  desc="整理邮箱 (标签/分组)"
+                />
+                <EndpointRow
+                  method="POST"
+                  path="/usable-emails/:id/verification/read"
+                  desc="读取验证码"
+                />
+                <EndpointRow
+                  method="GET"
+                  path="/usable-emails/:id/verification/history"
+                  desc="验证历史"
+                />
 
-                <div className="text-[11px] font-semibold text-gh-accent uppercase tracking-wider px-3 py-1.5 mt-3">平台</div>
+                <div className="text-[11px] font-semibold text-gh-accent uppercase tracking-wider px-3 py-1.5 mt-3">
+                  平台
+                </div>
                 <EndpointRow method="POST" path="/platforms" desc="创建平台" />
                 <EndpointRow method="GET" path="/platforms" desc="平台列表" />
                 <EndpointRow method="PUT" path="/platforms/:id" desc="更新平台" />
-                <EndpointRow method="POST" path="/usable-emails/:id/platform-bindings" desc="绑定平台" />
+                <EndpointRow
+                  method="POST"
+                  path="/usable-emails/:id/platform-bindings"
+                  desc="绑定平台"
+                />
 
-                <div className="text-[11px] font-semibold text-gh-accent uppercase tracking-wider px-3 py-1.5 mt-3">邮箱池</div>
+                <div className="text-[11px] font-semibold text-gh-accent uppercase tracking-wider px-3 py-1.5 mt-3">
+                  邮箱池
+                </div>
                 <EndpointRow method="POST" path="/mail-pool/entries" desc="加入邮箱池" />
                 <EndpointRow method="GET" path="/mail-pool/entries" desc="邮箱池列表" />
                 <EndpointRow method="POST" path="/mail-pool/claim" desc="领取邮箱" />
                 <EndpointRow method="POST" path="/mail-pool/entries/:id/release" desc="释放邮箱" />
 
-                <div className="text-[11px] font-semibold text-gh-accent uppercase tracking-wider px-3 py-1.5 mt-3">邮箱账户</div>
+                <div className="text-[11px] font-semibold text-gh-accent uppercase tracking-wider px-3 py-1.5 mt-3">
+                  邮箱账户
+                </div>
                 <EndpointRow method="POST" path="/email-accounts" desc="添加邮箱账户" />
                 <EndpointRow method="GET" path="/email-accounts" desc="账户列表" />
                 <EndpointRow method="POST" path="/email-accounts/:id/aliases" desc="添加别名" />
 
-                <div className="text-[11px] font-semibold text-gh-accent uppercase tracking-wider px-3 py-1.5 mt-3">临时邮箱</div>
+                <div className="text-[11px] font-semibold text-gh-accent uppercase tracking-wider px-3 py-1.5 mt-3">
+                  临时邮箱
+                </div>
                 <EndpointRow method="POST" path="/temp-mail/cf/mailboxes" desc="创建临时邮箱" />
                 <EndpointRow method="GET" path="/temp-mail/:id/messages" desc="查看消息" />
                 <EndpointRow method="GET" path="/temp-mail/:id/codes" desc="提取验证码" />
-                <EndpointRow method="GET" path="/temp-mail/:id/verification-links" desc="提取验证链接" />
+                <EndpointRow
+                  method="GET"
+                  path="/temp-mail/:id/verification-links"
+                  desc="提取验证链接"
+                />
               </div>
             </div>
           )}
 
-          {tab === 'examples' && (
+          {tab === "examples" && (
             <div className="space-y-5">
               <div>
                 <h3 className="text-sm font-semibold text-gh-text mb-2">Python (requests)</h3>
@@ -301,5 +358,5 @@ curl -X POST ${baseUrl}/usable-emails/1/platform-bindings \\
         </div>
       </div>
     </div>
-  )
-}
+  );
+};

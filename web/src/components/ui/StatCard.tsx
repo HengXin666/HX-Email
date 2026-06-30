@@ -1,13 +1,13 @@
-import React from 'react'
-import { motion } from 'framer-motion'
+import { motion } from "framer-motion";
+import React from "react";
 
 interface StatCardProps {
-  label: string
-  value: number | string
-  icon: React.FC<{ size?: number }>
-  color: string
-  trend?: string
-  onClick?: () => void
+  label: string;
+  value: number | string;
+  icon: React.FC<{ size?: number }>;
+  color: string;
+  trend?: string;
+  onClick?: () => void;
 }
 
 export const StatCard: React.FC<StatCardProps> = ({
@@ -16,7 +16,7 @@ export const StatCard: React.FC<StatCardProps> = ({
   icon: IconComp,
   color,
   trend,
-  onClick
+  onClick,
 }) => (
   <motion.div
     initial={{ opacity: 0, y: 10 }}
@@ -24,7 +24,7 @@ export const StatCard: React.FC<StatCardProps> = ({
     whileHover={onClick ? { y: -2 } : undefined}
     onClick={onClick}
     className={`relative overflow-hidden rounded-xl border border-gh-border bg-gh-canvas-subtle p-4 ${
-      onClick ? 'cursor-pointer hover:border-gh-text-muted' : ''
+      onClick ? "cursor-pointer hover:border-gh-text-muted" : ""
     } transition-all`}
   >
     <div
@@ -39,10 +39,10 @@ export const StatCard: React.FC<StatCardProps> = ({
       </div>
       <div
         className="w-9 h-9 rounded-lg flex items-center justify-center"
-        style={{ background: color + '20', color }}
+        style={{ background: color + "20", color }}
       >
         <IconComp size={18} />
       </div>
     </div>
   </motion.div>
-)
+);

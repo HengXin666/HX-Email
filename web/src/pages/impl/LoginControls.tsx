@@ -1,25 +1,25 @@
-import React from 'react'
+import React from "react";
 
 interface FloatingInputProps {
-  label: string
-  ariaLabel?: string
-  type?: string
-  value: string
-  disabled: boolean
-  autoFocus?: boolean
-  error?: string
-  onChange: (value: string) => void
+  label: string;
+  ariaLabel?: string;
+  type?: string;
+  value: string;
+  disabled: boolean;
+  autoFocus?: boolean;
+  error?: string;
+  onChange: (value: string) => void;
 }
 
 export const FloatingInput: React.FC<FloatingInputProps> = ({
   label,
   ariaLabel,
-  type = 'text',
+  type = "text",
   value,
   disabled,
   autoFocus,
-  error = '',
-  onChange
+  error = "",
+  onChange,
 }) => (
   <div className="relative mb-9 w-full">
     <input
@@ -42,18 +42,18 @@ export const FloatingInput: React.FC<FloatingInputProps> = ({
       </div>
     )}
   </div>
-)
+);
 
 export const AuthButton: React.FC<{
-  children: React.ReactNode
-  disabled: boolean
-  loading: boolean
+  children: React.ReactNode;
+  disabled: boolean;
+  loading: boolean;
 }> = ({ children, disabled, loading }) => (
   <button
     type="submit"
     disabled={disabled || loading}
     className="h-9 w-full cursor-pointer border border-[#1cff5c87] bg-[#2dcd3a32] text-lg text-[#c1ff18ce] transition duration-300 hover:border-[#da0aff87] hover:bg-[#19fc7f73] hover:text-[#edff29] disabled:cursor-not-allowed disabled:border-[#fffb1c87] disabled:bg-[#bb323273] disabled:text-[#ecff18a4]"
   >
-    {loading ? '处理中...' : children}
+    {loading ? "处理中..." : children}
   </button>
-)
+);

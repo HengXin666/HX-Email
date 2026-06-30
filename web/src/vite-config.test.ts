@@ -9,9 +9,6 @@ describe("vite dev server proxy", () => {
     const proxy = config.server?.proxy;
 
     expect(proxy).toBeDefined();
-    expect(proxy?.["/auth"]).toBe("http://127.0.0.1:8000");
-    expect(proxy?.["/groups"]).toBe("http://127.0.0.1:8000");
-    expect(proxy?.["/platforms"]).toBe("http://127.0.0.1:8000");
-    expect(proxy?.["/workbench"]).toBe("http://127.0.0.1:8000");
+    expect(proxy?.["/api/v1"]).toBe("http://127.0.0.1:8000");
   });
 });

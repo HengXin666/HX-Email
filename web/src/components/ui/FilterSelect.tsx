@@ -1,22 +1,22 @@
-import React from 'react'
-import { IconFilter, IconChevronDown } from '../icons'
+import React from "react";
+import { IconChevronDown, IconFilter } from "../icons";
 
 interface FilterSelectProps {
-  value: string
-  onChange: (value: string) => void
-  options: Array<{ value: string; label: string }>
-  placeholder?: string
-  icon?: React.FC<{ size?: number; className?: string }>
-  className?: string
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{ value: string; label: string }>;
+  placeholder?: string;
+  icon?: React.FC<{ size?: number; className?: string }>;
+  className?: string;
 }
 
 export const FilterSelect: React.FC<FilterSelectProps> = ({
   value,
   onChange,
   options,
-  placeholder = '全部',
+  placeholder = "全部",
   icon: IconComp = IconFilter,
-  className = ''
+  className = "",
 }) => (
   <div className={`relative ${className}`}>
     <select
@@ -40,4 +40,4 @@ export const FilterSelect: React.FC<FilterSelectProps> = ({
       className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gh-text-muted pointer-events-none"
     />
   </div>
-)
+);

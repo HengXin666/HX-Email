@@ -1,77 +1,76 @@
-import React, { useState, useMemo } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Topbar } from '../components/layout'
-import { useApp } from '../store/AppContext'
-import { useToast } from '../components/ui/Toast'
-import { Button, Modal, Input, Badge, Card } from '../components/ui/Primitives'
+import { AnimatePresence, motion } from "framer-motion";
+import React, { useMemo, useState } from "react";
+import { api } from "../api/client";
 import {
-  IconPlus,
   IconEdit,
-  IconTrash,
+  IconLink,
+  IconPlus,
+  IconSearch,
   IconServer,
   IconShield,
-  IconSearch,
-  IconLink
-} from '../components/icons'
-import { api } from '../api/client'
+  IconTrash,
+} from "../components/icons";
+import { Topbar } from "../components/layout";
+import { Badge, Button, Card, Input, Modal } from "../components/ui/Primitives";
+import { useToast } from "../components/ui/Toast";
+import { useApp } from "../store/AppContext";
 
 export const Platforms: React.FC = () => {
-  const { platforms, emails, createPlatform, updatePlatform, deletePlatform, refreshPlatforms } = useApp()
-  const { toast } = useToast()
-  const [query, setQuery] = useState('')
-  const [showCreate, setShowCreate] = useState(false)
-  const [editingId, setEditingId] = useState<number | null>(null)
-  const [selectedPlatformId, setSelectedPlatformId] = useState<number | null>(null)
-  const [newName, setNewName] = useState('')
+  const { platforms, emails, createPlatform, updatePlatform, deletePlatform, refreshPlatforms } =
+    useApp();
+  const { toast } = useToast();
+  const [query, setQuery] = useState("");
+  const [showCreate, setShowCreate] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [selectedPlatformId, setSelectedPlatformId] = useState<number | null>(null);
+  const [newName, setNewName] = useState("");
 
   const filtered = useMemo(
     () =>
-      platforms.filter((p) =>
-        !query ? true : p.name.toLowerCase().includes(query.toLowerCase())
-      ),
-    [platforms, query]
-  )
+      platforms.filter((p) => (!query ? true : p.name.toLowerCase().includes(query.toLowerCase()))),
+    [platforms, query],
+  );
 
-  const selected = platforms.find((p) => p.id === selectedPlatformId)
+  const selected = platforms.find((p) => p.id === selectedPlatformId);
   const selectedBindings = useMemo(
     () => (selected ? emails.filter((e) => (e.platform_binding_count || 0) > 0) : []),
-    [selected, emails]
-  )
+    [selected, emails],
+  );
 
   const handleCreate = async () => {
-    if (!newName.trim()) return
+    if (!newName.trim()) return;
     try {
-      await createPlatform(newName.trim())
-      toast('平台已创建', 'success')
-      setNewName('')
-      setShowCreate(false)
+      await createPlatform(newName.trim());
+      toast("平台已创建", "success");
+      setNewName("");
+      setShowCreate(false);
     } catch (err: any) {
-      toast(err.message, 'error')
+      toast(err.message, "error");
     }
-  }
+  };
 
   const handleUpdate = async () => {
-    if (!editingId || !newName.trim()) return
+    if (!editingId || !newName.trim()) return;
     try {
-      await updatePlatform(editingId, newName.trim())
-      toast('平台已更新', 'success')
-      setEditingId(null)
-      setNewName('')
+      await updatePlatform(editingId, newName.trim());
+      toast("平台已更新", "success");
+      setEditingId(null);
+      setNewName("");
     } catch (err: any) {
-      toast(err.message, 'error')
+      toast(err.message, "error");
     }
-  }
+  };
 
   const handleDelete = async (id: number) => {
-    if (!confirm('确定删除该平台？')) return
+    if (!confirm("确定删除该平台？")) return;
     try {
-      await deletePlatform(id)
-      toast('平台已删除', 'success')
-      if (selectedPlatformId === id) setSelectedPlatformId(null)
+      await deletePlatform(id);
+      toast("平台已删除", "success");
+      if (selectedPlatformId === id) setSelectedPlatformId(null);
     } catch (err: any) {
-      toast(err.message, 'error')
+      toast(err.message, "error");
     }
-  }
+  };
 
   return (
     <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
@@ -96,7 +95,10 @@ export const Platforms: React.FC = () => {
                 placeholder="搜索平台..."
                 className="w-full bg-gh-canvas-inset border border-gh-border rounded-md pl-8 pr-3 py-1.5 text-sm text-gh-text placeholder-gh-text-secondary focus:outline-none focus:border-gh-accent"
               />
-              <IconSearch size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gh-text-secondary" />
+              <IconSearch
+                size={14}
+                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gh-text-secondary"
+              />
             </div>
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
@@ -124,13 +126,16 @@ export const Platforms: React.FC = () => {
                         </div>
                       </div>
                     </div>
-                    <div className="flex gap-1 mt-2 pt-2 border-t border-gh-border/60" onClick={(e) => e.stopPropagation()}>
+                    <div
+                      className="flex gap-1 mt-2 pt-2 border-t border-gh-border/60"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <Button
                         size="sm"
                         variant="ghost"
                         onClick={() => {
-                          setEditingId(p.id)
-                          setNewName(p.name)
+                          setEditingId(p.id);
+                          setNewName(p.name);
                         }}
                       >
                         <IconEdit size={12} /> 编辑
@@ -144,9 +149,7 @@ export const Platforms: React.FC = () => {
               ))}
             </AnimatePresence>
             {filtered.length === 0 && (
-              <div className="text-center py-12 text-sm text-gh-text-secondary">
-                暂无平台
-              </div>
+              <div className="text-center py-12 text-sm text-gh-text-secondary">暂无平台</div>
             )}
           </div>
         </div>
@@ -189,9 +192,7 @@ export const Platforms: React.FC = () => {
                   {selectedBindings.length === 0 ? (
                     <div className="text-center py-12 text-sm text-gh-text-secondary">
                       暂无邮箱绑定到此平台
-                      <div className="mt-2 text-xs">
-                        前往 "账号管理" 页面为邮箱绑定此平台
-                      </div>
+                      <div className="mt-2 text-xs">前往 "账号管理" 页面为邮箱绑定此平台</div>
                     </div>
                   ) : (
                     selectedBindings.map((e) => (
@@ -203,7 +204,9 @@ export const Platforms: React.FC = () => {
                           <IconLink size={14} />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium text-gh-text truncate">{e.address}</div>
+                          <div className="text-sm font-medium text-gh-text truncate">
+                            {e.address}
+                          </div>
                           {e.label && (
                             <div className="text-xs text-gh-text-secondary truncate">{e.label}</div>
                           )}
@@ -226,12 +229,22 @@ export const Platforms: React.FC = () => {
         title="新建平台"
         footer={
           <>
-            <Button variant="ghost" onClick={() => setShowCreate(false)}>取消</Button>
-            <Button variant="primary" onClick={handleCreate}>创建</Button>
+            <Button variant="ghost" onClick={() => setShowCreate(false)}>
+              取消
+            </Button>
+            <Button variant="primary" onClick={handleCreate}>
+              创建
+            </Button>
           </>
         }
       >
-        <Input label="平台名称" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="例如：GitHub" autoFocus />
+        <Input
+          label="平台名称"
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          placeholder="例如：GitHub"
+          autoFocus
+        />
       </Modal>
 
       {/* Edit */}
@@ -241,13 +254,17 @@ export const Platforms: React.FC = () => {
         title="编辑平台"
         footer={
           <>
-            <Button variant="ghost" onClick={() => setEditingId(null)}>取消</Button>
-            <Button variant="primary" onClick={handleUpdate}>保存</Button>
+            <Button variant="ghost" onClick={() => setEditingId(null)}>
+              取消
+            </Button>
+            <Button variant="primary" onClick={handleUpdate}>
+              保存
+            </Button>
           </>
         }
       >
         <Input label="平台名称" value={newName} onChange={(e) => setNewName(e.target.value)} />
       </Modal>
     </div>
-  )
-}
+  );
+};

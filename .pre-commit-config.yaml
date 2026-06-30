@@ -20,3 +20,13 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+      - id: react-biome
+        name: react-biome
+        entry: bash -c 'cd web && files=("${@/#web\//}") && node_modules/.bin/biome check --write --no-errors-on-unmatched "${files[@]}"' --
+        language: system
+        files: ^web/.*\.(ts|tsx|js|jsx|json)$
+      - id: react-prettier
+        name: react-prettier
+        entry: bash -c 'cd web && files=("${@/#web\//}") && node_modules/.bin/prettier --write --ignore-unknown "${files[@]}"' --
+        language: system
+        files: ^web/.*\.(md|yml|yaml)$

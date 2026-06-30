@@ -1,106 +1,114 @@
-import React, { useState, useEffect, useMemo } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Topbar } from '../components/layout'
+import { AnimatePresence, motion } from "framer-motion";
+import React, { useEffect, useMemo, useState } from "react";
+import { Topbar } from "../components/layout";
 
 // Email body HTML rendering styles
 const EMAIL_BODY_STYLE = {
-  wordBreak: 'break-word' as const,
-  overflowWrap: 'break-word' as const,
-  maxWidth: '100%',
-} as React.CSSProperties
-const OUTLOOK_ALIAS_MANAGE_URL = 'https://account.live.com/names/manage'
-import { useApp } from '../store/AppContext'
-import { useToast } from '../components/ui/Toast'
-import { Button, Modal, Input, Badge, Card, Checkbox, Select } from '../components/ui/Primitives'
-import { ConfirmModal } from '../components/ui/ConfirmModal'
-import { CopyButton } from '../components/ui/CopyButton'
-import { LoadingState, EmptyState } from '../components/ui/StateDisplay'
+  wordBreak: "break-word" as const,
+  overflowWrap: "break-word" as const,
+  maxWidth: "100%",
+} as React.CSSProperties;
+const OUTLOOK_ALIAS_MANAGE_URL = "https://account.live.com/names/manage";
+
+import { api, streamRefresh } from "../api/client";
 import {
-  IconFolderPlus,
-  IconEdit,
-  IconTrash,
-  IconPlus,
-  IconCopy,
-  IconCheck,
-  IconMail,
-  IconKey,
-  IconStar,
-  IconRefresh,
-  IconTag,
-  IconSettings,
-  IconLink,
-  IconClock,
-  IconShield,
-  IconCode,
-  IconAt,
-  IconUser,
   IconAlertTriangle,
-  IconX
-} from '../components/icons'
-import { api, streamRefresh } from '../api/client'
-import type { UsableEmail, VerificationMatch, SSERefreshEvent, AccountImportResult } from '../types'
+  IconCheck,
+  IconClock,
+  IconCode,
+  IconCopy,
+  IconEdit,
+  IconFolderPlus,
+  IconKey,
+  IconLink,
+  IconMail,
+  IconPlus,
+  IconRefresh,
+  IconSettings,
+  IconShield,
+  IconStar,
+  IconTag,
+  IconTrash,
+  IconUser,
+  IconX,
+} from "../components/icons";
+import { ConfirmModal } from "../components/ui/ConfirmModal";
+import { CopyButton } from "../components/ui/CopyButton";
+import { Badge, Button, Card, Checkbox, Input, Modal, Select } from "../components/ui/Primitives";
+import { EmptyState, LoadingState } from "../components/ui/StateDisplay";
+import { useToast } from "../components/ui/Toast";
+import { useApp } from "../store/AppContext";
+import type {
+  AccountImportResult,
+  EmailAccount,
+  SSERefreshEvent,
+  Tag,
+  UsableEmail,
+  VerificationMatch,
+} from "../types";
 
 const COLORS = [
-  '#58a6ff',
-  '#3fb950',
-  '#a371f7',
-  '#f0883e',
-  '#f85149',
-  '#d29922',
-  '#db61a2',
-  '#6e7681'
-]
+  "#58a6ff",
+  "#3fb950",
+  "#a371f7",
+  "#f0883e",
+  "#f85149",
+  "#d29922",
+  "#db61a2",
+  "#6e7681",
+];
 
 // ========== 左侧：分组栏 ==========
 const GroupSidebar: React.FC<{
-  selectedGroupId: number | null
-  onSelect: (id: number | null) => void
+  selectedGroupId: number | null;
+  onSelect: (id: number | null) => void;
 }> = ({ selectedGroupId, onSelect }) => {
-  const { groups, emails, createGroup, updateGroup, deleteGroup } = useApp()
-  const { toast } = useToast()
-  const [editingGroup, setEditingGroup] = useState<number | null>(null)
-  const [showNew, setShowNew] = useState(false)
-  const [newName, setNewName] = useState('')
-  const [newColor, setNewColor] = useState(COLORS[0])
-  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
+  const { groups, emails, createGroup, updateGroup, deleteGroup } = useApp();
+  const { toast } = useToast();
+  const [editingGroup, setEditingGroup] = useState<number | null>(null);
+  const [showNew, setShowNew] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newColor, setNewColor] = useState(COLORS[0]);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
 
   const counts = useMemo(() => {
-    const map: Record<number | 'all', number> = { all: emails.length }
+    const cardEmails: UsableEmail[] = emails.filter((email: UsableEmail) => email.kind !== "alias");
+    const map: Record<number | "all", number> = { all: cardEmails.length };
     groups.forEach((g) => {
-      map[g.id] = emails.filter((e) => e.group?.id === g.id).length
-    })
-    return map
-  }, [groups, emails])
+      map[g.id] = cardEmails.filter((e: UsableEmail) => e.group?.id === g.id).length;
+    });
+    return map;
+  }, [groups, emails]);
 
   const handleCreate = async () => {
-    if (!newName.trim()) return
+    if (!newName.trim()) return;
     try {
-      await createGroup(newName.trim(), newColor)
-      toast('分组已创建', 'success')
-      setNewName('')
-      setShowNew(false)
+      await createGroup(newName.trim(), newColor);
+      toast("分组已创建", "success");
+      setNewName("");
+      setShowNew(false);
     } catch (err: any) {
-      toast(err.message, 'error')
+      toast(err.message, "error");
     }
-  }
+  };
 
   const handleDelete = async (id: number) => {
-    setDeleteConfirmId(id)
-  }
+    setDeleteConfirmId(id);
+  };
 
   const confirmDelete = async () => {
-    const id = deleteConfirmId
-    if (!id) return
+    const id = deleteConfirmId;
+    if (!id) return;
     try {
-      await deleteGroup(id)
-      if (selectedGroupId === id) onSelect(null)
-      toast('分组已删除', 'success')
+      await deleteGroup(id);
+      if (selectedGroupId === id) onSelect(null);
+      toast("分组已删除", "success");
     } catch (err: any) {
-      toast(err.message, 'error')
+      toast(err.message, "error");
     } finally {
-      setDeleteConfirmId(null)
+      setDeleteConfirmId(null);
     }
-  }
+  };
 
   return (
     <div className="w-44 shrink-0 min-h-0 border-r border-gh-border bg-gh-canvas-subtle/50 flex flex-col overflow-hidden">
@@ -121,8 +129,8 @@ const GroupSidebar: React.FC<{
           onClick={() => onSelect(null)}
           className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-colors ${
             selectedGroupId === null
-              ? 'bg-gh-accent/10 text-gh-accent'
-              : 'text-gh-text-muted hover:text-gh-text hover:bg-gh-border/40'
+              ? "bg-gh-accent/10 text-gh-accent"
+              : "text-gh-text-muted hover:text-gh-text hover:bg-gh-border/40"
           }`}
         >
           <IconMail size={14} />
@@ -144,16 +152,28 @@ const GroupSidebar: React.FC<{
       </div>
 
       {/* 创建分组 */}
-      <Modal open={showNew} onClose={() => setShowNew(false)} title="创建分组"
+      <Modal
+        open={showNew}
+        onClose={() => setShowNew(false)}
+        title="创建分组"
         footer={
           <>
-            <Button variant="ghost" onClick={() => setShowNew(false)}>取消</Button>
-            <Button variant="primary" onClick={handleCreate}>创建</Button>
+            <Button variant="ghost" onClick={() => setShowNew(false)}>
+              取消
+            </Button>
+            <Button variant="primary" onClick={handleCreate}>
+              创建
+            </Button>
           </>
         }
       >
         <div className="space-y-3">
-          <Input label="分组名称" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="例如：工作" />
+          <Input
+            label="分组名称"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="例如：工作"
+          />
           <div>
             <label className="text-xs font-medium text-gh-text-muted block mb-1.5">颜色</label>
             <div className="flex gap-2 flex-wrap">
@@ -162,7 +182,9 @@ const GroupSidebar: React.FC<{
                   key={c}
                   onClick={() => setNewColor(c)}
                   className={`w-7 h-7 rounded-full transition-all ${
-                    newColor === c ? 'ring-2 ring-gh-text ring-offset-2 ring-offset-gh-canvas-subtle scale-110' : ''
+                    newColor === c
+                      ? "ring-2 ring-gh-text ring-offset-2 ring-offset-gh-canvas-subtle scale-110"
+                      : ""
                   }`}
                   style={{ background: c }}
                 />
@@ -174,7 +196,7 @@ const GroupSidebar: React.FC<{
 
       {/* 编辑分组 — key 确保切换分组时状态完全重置 */}
       <EditGroupModal
-        key={editingGroup ?? 'new'}
+        key={editingGroup ?? "new"}
         groupId={editingGroup}
         onClose={() => setEditingGroup(null)}
         onUpdate={updateGroup}
@@ -190,16 +212,16 @@ const GroupSidebar: React.FC<{
         onCancel={() => setDeleteConfirmId(null)}
       />
     </div>
-  )
-}
+  );
+};
 
 const GroupItem: React.FC<{
-  group: any
-  count: number
-  selected: boolean
-  onClick: () => void
-  onEdit: () => void
-  onDelete: () => void
+  group: any;
+  count: number;
+  selected: boolean;
+  onClick: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
 }> = ({ group, count, selected, onClick, onEdit, onDelete }) => {
   return (
     <div className="relative group">
@@ -207,13 +229,16 @@ const GroupItem: React.FC<{
         onClick={onClick}
         className={`w-full flex items-center gap-2.5 px-2.5 py-2 pr-14 rounded-md text-sm transition-colors ${
           selected
-            ? 'bg-gh-accent/10 text-gh-accent'
-            : 'text-gh-text-muted hover:text-gh-text hover:bg-gh-border/40'
+            ? "bg-gh-accent/10 text-gh-accent"
+            : "text-gh-text-muted hover:text-gh-text hover:bg-gh-border/40"
         }`}
       >
         <div
           className="w-2.5 h-2.5 rounded-sm shrink-0"
-          style={{ background: group.color, boxShadow: selected ? `0 0 6px ${group.color}` : 'none' }}
+          style={{
+            background: group.color,
+            boxShadow: selected ? `0 0 6px ${group.color}` : "none",
+          }}
         />
         <span className="flex-1 text-left truncate">{group.name}</span>
         <span className="text-xs tabular-nums opacity-70">{count}</span>
@@ -221,14 +246,20 @@ const GroupItem: React.FC<{
       {/* 编辑 / 删除 — hover 时直接显示，无需二次点击下拉菜单 */}
       <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
         <button
-          onClick={(e) => { e.stopPropagation(); onEdit() }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit();
+          }}
           className="p-1 rounded-md text-gh-text-muted hover:text-gh-accent hover:bg-gh-accent/10 transition-colors"
           title="编辑分组"
         >
           <IconEdit size={13} />
         </button>
         <button
-          onClick={(e) => { e.stopPropagation(); onDelete() }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
           className="p-1 rounded-md text-gh-text-muted hover:text-red-400 hover:bg-red-400/10 transition-colors"
           title="删除分组"
         >
@@ -236,77 +267,77 @@ const GroupItem: React.FC<{
         </button>
       </div>
     </div>
-  )
-}
+  );
+};
 
 const EditGroupModal: React.FC<{
-  groupId: number | null
-  onClose: () => void
-  onUpdate: (id: number, name: string, color: string, proxy_url?: string) => Promise<any>
-  onDelete: (id: number) => Promise<any>
+  groupId: number | null;
+  onClose: () => void;
+  onUpdate: (id: number, name: string, color: string, proxy_url?: string) => Promise<any>;
+  onDelete: (id: number) => Promise<any>;
 }> = ({ groupId, onClose, onUpdate, onDelete }) => {
-  const { groups } = useApp()
-  const { toast } = useToast()
-  const g = groups.find((x) => x.id === groupId)
-  const [name, setName] = useState(g?.name || '')
-  const [color, setColor] = useState(g?.color || COLORS[0])
-  const [proxyUrl, setProxyUrl] = useState(g?.proxy_url || '')
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-  const [testLoading, setTestLoading] = useState(false)
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
+  const { groups } = useApp();
+  const { toast } = useToast();
+  const g = groups.find((x) => x.id === groupId);
+  const [name, setName] = useState(g?.name || "");
+  const [color, setColor] = useState(g?.color || COLORS[0]);
+  const [proxyUrl, setProxyUrl] = useState(g?.proxy_url || "");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [testLoading, setTestLoading] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   // 仅在 groupId 变化（切换编辑目标）时同步表单；依赖原始值而非对象引用，
   // 避免因 context 中 groups 数组引用更新而不断重置用户正在编辑的内容。
   useEffect(() => {
-    const current = groups.find((x) => x.id === groupId)
+    const current = groups.find((x) => x.id === groupId);
     if (current) {
-      setName(current.name)
-      setColor(current.color)
-      setProxyUrl(current.proxy_url || '')
+      setName(current.name);
+      setColor(current.color);
+      setProxyUrl(current.proxy_url || "");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupId])
+  }, [groupId]);
 
   const handleSave = async () => {
-    if (!g || !name.trim()) return
+    if (!g || !name.trim()) return;
     try {
-      await onUpdate(g.id, name.trim(), color, proxyUrl)
-      toast('分组已更新', 'success')
-      onClose()
+      await onUpdate(g.id, name.trim(), color, proxyUrl);
+      toast("分组已更新", "success");
+      onClose();
     } catch (err: any) {
-      toast(err.message, 'error')
+      toast(err.message, "error");
     }
-  }
+  };
 
   const handleDelete = async () => {
-    if (!g) return
-    setDeleting(true)
+    if (!g) return;
+    setDeleting(true);
     try {
-      await onDelete(g.id)
-      toast('分组已删除', 'success')
-      onClose()
+      await onDelete(g.id);
+      toast("分组已删除", "success");
+      onClose();
     } catch (err: any) {
-      toast(err.message, 'error')
+      toast(err.message, "error");
     } finally {
-      setDeleting(false)
-      setShowDeleteConfirm(false)
+      setDeleting(false);
+      setShowDeleteConfirm(false);
     }
-  }
+  };
 
   const handleTestProxy = async () => {
-    if (!proxyUrl.trim()) return
-    setTestLoading(true)
-    setTestResult(null)
+    if (!proxyUrl.trim()) return;
+    setTestLoading(true);
+    setTestResult(null);
     try {
-      const res = await api.testProxy(proxyUrl.trim())
-      setTestResult({ success: res.success, message: res.message })
+      const res = await api.testProxy(proxyUrl.trim());
+      setTestResult({ success: res.success, message: res.message });
     } catch (err: any) {
-      setTestResult({ success: false, message: err.message })
+      setTestResult({ success: false, message: err.message });
     } finally {
-      setTestLoading(false)
+      setTestLoading(false);
     }
-  }
+  };
 
   return (
     <>
@@ -319,8 +350,12 @@ const EditGroupModal: React.FC<{
             <Button variant="danger" onClick={() => setShowDeleteConfirm(true)}>
               删除
             </Button>
-            <Button variant="ghost" onClick={onClose}>取消</Button>
-            <Button variant="primary" onClick={handleSave}>保存</Button>
+            <Button variant="ghost" onClick={onClose}>
+              取消
+            </Button>
+            <Button variant="primary" onClick={handleSave}>
+              保存
+            </Button>
           </>
         }
       >
@@ -334,7 +369,9 @@ const EditGroupModal: React.FC<{
                   key={c}
                   onClick={() => setColor(c)}
                   className={`w-7 h-7 rounded-full transition-all ${
-                    color === c ? 'ring-2 ring-gh-text ring-offset-2 ring-offset-gh-canvas-subtle scale-110' : ''
+                    color === c
+                      ? "ring-2 ring-gh-text ring-offset-2 ring-offset-gh-canvas-subtle scale-110"
+                      : ""
                   }`}
                   style={{ background: c }}
                 />
@@ -342,12 +379,17 @@ const EditGroupModal: React.FC<{
             </div>
           </div>
           <div>
-            <label className="text-xs font-medium text-gh-text-muted block mb-1.5">代理地址（可选）</label>
+            <label className="text-xs font-medium text-gh-text-muted block mb-1.5">
+              代理地址（可选）
+            </label>
             <div className="flex gap-2">
               <div className="flex-1">
                 <Input
                   value={proxyUrl}
-                  onChange={(e) => { setProxyUrl(e.target.value); setTestResult(null) }}
+                  onChange={(e) => {
+                    setProxyUrl(e.target.value);
+                    setTestResult(null);
+                  }}
                   placeholder="例如: 127.0.0.1:7890 或 http://host:port"
                 />
               </div>
@@ -362,7 +404,9 @@ const EditGroupModal: React.FC<{
               </Button>
             </div>
             {testResult && (
-              <div className={`mt-1 text-xs ${testResult.success ? 'text-green-400' : 'text-red-400'}`}>
+              <div
+                className={`mt-1 text-xs ${testResult.success ? "text-green-400" : "text-red-400"}`}
+              >
                 {testResult.message}
               </div>
             )}
@@ -373,65 +417,103 @@ const EditGroupModal: React.FC<{
       <ConfirmModal
         open={showDeleteConfirm}
         title="删除分组"
-        message={`确定删除分组「${g?.name || ''}」吗？此操作不可撤销。`}
+        message={`确定删除分组「${g?.name || ""}」吗？此操作不可撤销。`}
         confirmLabel="删除"
         loading={deleting}
         onConfirm={handleDelete}
         onCancel={() => setShowDeleteConfirm(false)}
       />
     </>
-  )
-}
+  );
+};
 
 // ========== 中间：邮箱卡片列表 ==========
+const getAccountAliases = (account: EmailAccount | undefined): UsableEmail[] => {
+  return account?.usable_emails.filter((email: UsableEmail) => email.kind === "alias") || [];
+};
+
+const copyText = (text: string, onCopied: () => void): void => {
+  navigator.clipboard.writeText(text);
+  onCopied();
+};
+
 const EmailList: React.FC<{
-  groupId: number | null
-  selectedEmailId: number | null
-  onSelect: (e: UsableEmail) => void
-  selectedEmailIds: Set<number>
-  poolEmailIds: Set<number>
-  onToggleEmailSelect: (emailId: number) => void
-  onRefreshAccount: () => void
-  onPoolChanged: () => void | Promise<void>
-}> = ({ groupId, selectedEmailId, onSelect, selectedEmailIds, poolEmailIds, onToggleEmailSelect, onRefreshAccount, onPoolChanged }) => {
-  const { emails, groups, accounts, refreshEmails, refreshAccounts } = useApp()
-  const [showAdd, setShowAdd] = useState(false)
-  const [showSettings, setShowSettings] = useState<number | null>(null)
-  const [query, setQuery] = useState('')
+  groupId: number | null;
+  selectedEmailId: number | null;
+  onSelect: (e: UsableEmail) => void;
+  selectedEmailIds: Set<number>;
+  poolEmailIds: Set<number>;
+  onToggleEmailSelect: (emailId: number) => void;
+  onRefreshAccount: () => void;
+  onPoolChanged: () => void | Promise<void>;
+}> = ({
+  groupId,
+  selectedEmailId,
+  onSelect,
+  selectedEmailIds,
+  poolEmailIds,
+  onToggleEmailSelect,
+  onRefreshAccount,
+  onPoolChanged,
+}) => {
+  const { emails, groups, accounts, refreshEmails, refreshAccounts } = useApp();
+  const [showAdd, setShowAdd] = useState(false);
+  const [showSettings, setShowSettings] = useState<number | null>(null);
+  const [query, setQuery] = useState("");
 
   const filtered = useMemo(() => {
-    let list = emails
-    if (groupId !== null) list = list.filter((e) => e.group?.id === groupId)
-    if (query) list = list.filter((e) => e.address.toLowerCase().includes(query.toLowerCase()) || (e.label || '').toLowerCase().includes(query.toLowerCase()))
-    return list
-  }, [emails, groupId, query])
+    let list: UsableEmail[] = emails.filter((email: UsableEmail) => email.kind !== "alias");
+    const normalizedQuery: string = query.trim().toLowerCase();
+    if (groupId !== null) list = list.filter((e) => e.group?.id === groupId);
+    if (normalizedQuery) {
+      list = list.filter((e: UsableEmail) => {
+        const account: EmailAccount | undefined = accounts.find(
+          (a: EmailAccount) => a.id === e.email_account_id,
+        );
+        const aliases: UsableEmail[] = getAccountAliases(account);
+        return (
+          e.address.toLowerCase().includes(normalizedQuery) ||
+          (e.label || "").toLowerCase().includes(normalizedQuery) ||
+          (account?.display_name || "").toLowerCase().includes(normalizedQuery) ||
+          aliases.some(
+            (aliasEmail: UsableEmail) =>
+              aliasEmail.address.toLowerCase().includes(normalizedQuery) ||
+              (aliasEmail.label || "").toLowerCase().includes(normalizedQuery),
+          )
+        );
+      });
+    }
+    return list;
+  }, [accounts, emails, groupId, query]);
 
-  const group = groups.find((g) => g.id === groupId)
+  const group = groups.find((g) => g.id === groupId);
 
   // Compute latest refresh time across accounts in this filtered view
   const latestRefreshAt = useMemo(() => {
-    const accountIds = new Set(filtered.map((e) => e.email_account_id).filter(Boolean) as number[])
-    let latest: string | null = null
+    const accountIds = new Set(filtered.map((e) => e.email_account_id).filter(Boolean) as number[]);
+    let latest: string | null = null;
     for (const a of accounts || []) {
       if (accountIds.has(a.id) && a.last_refresh_at) {
-        if (!latest || a.last_refresh_at > latest) latest = a.last_refresh_at
+        if (!latest || a.last_refresh_at > latest) latest = a.last_refresh_at;
       }
     }
-    return latest
-  }, [accounts, filtered])
+    return latest;
+  }, [accounts, filtered]);
 
   const refreshTimeLabel = useMemo(() => {
-    if (!latestRefreshAt) return ''
+    if (!latestRefreshAt) return "";
     try {
-      const d = new Date(latestRefreshAt)
-      if (isNaN(d.getTime())) return ''
-      const diff = Math.floor((Date.now() - d.getTime()) / 1000)
-      if (diff < 60) return '刚刚刷新'
-      if (diff < 3600) return `${Math.floor(diff / 60)}分钟前刷新`
-      if (diff < 86400) return `${Math.floor(diff / 3600)}小时前刷新`
-      return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }) + ' 刷新'
-    } catch { return '' }
-  }, [latestRefreshAt])
+      const d = new Date(latestRefreshAt);
+      if (isNaN(d.getTime())) return "";
+      const diff = Math.floor((Date.now() - d.getTime()) / 1000);
+      if (diff < 60) return "刚刚刷新";
+      if (diff < 3600) return `${Math.floor(diff / 60)}分钟前刷新`;
+      if (diff < 86400) return `${Math.floor(diff / 3600)}小时前刷新`;
+      return d.toLocaleDateString("zh-CN", { month: "short", day: "numeric" }) + " 刷新";
+    } catch {
+      return "";
+    }
+  }, [latestRefreshAt]);
 
   return (
     <div className="w-80 shrink-0 min-h-0 border-r border-gh-border bg-gh-canvas flex flex-col overflow-hidden">
@@ -442,12 +524,15 @@ const EmailList: React.FC<{
               <div className="w-2 h-2 rounded-full shrink-0" style={{ background: group.color }} />
             )}
             <span className="text-sm font-semibold text-gh-text truncate">
-              {group ? group.name : '全部邮箱'}
+              {group ? group.name : "全部邮箱"}
             </span>
             <span className="text-xs text-gh-text-secondary tabular-nums">{filtered.length}</span>
           </div>
           <button
-            onClick={() => { refreshAccounts(); refreshEmails() }}
+            onClick={() => {
+              refreshAccounts();
+              refreshEmails();
+            }}
             className="p-1.5 rounded-md text-gh-text-muted hover:text-gh-text hover:bg-gh-border/40 transition-colors"
             title="刷新"
           >
@@ -477,8 +562,19 @@ const EmailList: React.FC<{
             placeholder="搜索邮箱..."
             className="w-full bg-gh-canvas-inset border border-gh-border rounded-md pl-8 pr-3 py-1.5 text-sm text-gh-text placeholder-gh-text-secondary focus:outline-none focus:border-gh-accent"
           />
-          <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gh-text-secondary" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+          <svg
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gh-text-secondary"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
         </div>
       </div>
@@ -522,177 +618,211 @@ const EmailList: React.FC<{
         onPoolChanged={onPoolChanged}
       />
     </div>
-  )
-}
+  );
+};
 
 const EmailCard: React.FC<{
-  email: UsableEmail
-  selected: boolean
-  onClick: () => void
-  onSettings: () => void
-  selectedForBulk?: boolean
-  onToggleBulkSelect?: () => void
-  onRefreshAccount?: () => void
-}> = ({ email, selected, onClick, onSettings, selectedForBulk, onToggleBulkSelect, onRefreshAccount }) => {
-  const { toast } = useToast()
-  const { accounts, refreshAccounts, refreshEmails } = useApp()
-  const [copied, setCopied] = useState(false)
+  email: UsableEmail;
+  selected: boolean;
+  onClick: () => void;
+  onSettings: () => void;
+  selectedForBulk?: boolean;
+  onToggleBulkSelect?: () => void;
+  onRefreshAccount?: () => void;
+}> = ({
+  email,
+  selected,
+  onClick,
+  onSettings,
+  selectedForBulk,
+  onToggleBulkSelect,
+  onRefreshAccount,
+}) => {
+  const { toast } = useToast();
+  const { accounts, refreshAccounts, refreshEmails } = useApp();
+  const [copied, setCopied] = useState(false);
+  const [aliasesExpanded, setAliasesExpanded] = useState(false);
 
-  const account = (accounts || []).find((a) => a.id === email.email_account_id)
+  const account = (accounts || []).find((a) => a.id === email.email_account_id);
+  const aliases: UsableEmail[] = getAccountAliases(account);
+  const cardName: string = email.label || account?.display_name || email.address;
+  const kindLabel: string =
+    email.kind === "primary" ? "主邮箱" : email.kind === "temp" ? "临时邮箱" : "自定义邮箱";
   const refreshTimeLabel = account?.last_refresh_at
     ? formatRelativeTime(account.last_refresh_at)
-    : ''
-  const [loadingCode, setLoadingCode] = useState(false)
-  const [refreshing, setRefreshing] = useState(false)
-  const lastCodeFetchRef = React.useRef<{ time: number; codes: Set<string> }>({ time: 0, codes: new Set() })
+    : "";
+  const [loadingCode, setLoadingCode] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const lastCodeFetchRef = React.useRef<{ time: number; codes: Set<string> }>({
+    time: 0,
+    codes: new Set(),
+  });
 
   // 三种操作的确认弹窗状态
-  type ActionMode = 'activate' | 'deactivate' | 'delete' | null
-  const [actionMode, setActionMode] = useState<ActionMode>(null)
-  const [actionLoading, setActionLoading] = useState(false)
+  type ActionMode = "activate" | "deactivate" | "delete" | null;
+  const [actionMode, setActionMode] = useState<ActionMode>(null);
+  const [actionLoading, setActionLoading] = useState(false);
 
-  const isInactive = email.status === 'inactive'
-  const hasAccount = !!email.email_account_id
+  const isInactive = email.status === "inactive";
+  const hasAccount = !!email.email_account_id;
 
   const handleRefresh = async (e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (!hasAccount) return
-    setRefreshing(true)
+    e.stopPropagation();
+    if (!hasAccount) return;
+    setRefreshing(true);
     try {
-      const res = await api.refreshAccount(email.email_account_id!)
-      toast(`刷新完成: ${res.email} - ${res.status}`, res.status === 'success' ? 'success' : 'error')
-      onRefreshAccount?.()
+      const res = await api.refreshAccount(email.email_account_id!);
+      toast(
+        `刷新完成: ${res.email} - ${res.status}`,
+        res.status === "success" ? "success" : "error",
+      );
+      onRefreshAccount?.();
     } catch (err: any) {
-      toast(err.message, 'error')
+      toast(err.message, "error");
     } finally {
-      setRefreshing(false)
+      setRefreshing(false);
     }
-  }
+  };
 
   const handleCopy = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    navigator.clipboard.writeText(email.address)
-    setCopied(true)
-    toast('已复制邮箱地址', 'success')
-    setTimeout(() => setCopied(false), 1500)
-  }
+    e.stopPropagation();
+    copyText(email.address, () => {
+      setCopied(true);
+      toast("已复制邮箱地址", "success");
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
+
+  const handleCopyAlias = (e: React.MouseEvent, address: string): void => {
+    e.stopPropagation();
+    copyText(address, () => toast("已复制别名邮箱", "success"));
+  };
 
   const handleGetCode = async (e: React.MouseEvent) => {
-    e.stopPropagation()
-    setLoadingCode(true)
+    e.stopPropagation();
+    setLoadingCode(true);
     try {
-      const res = await api.readVerification(email.id)
-      const now = Date.now()
-      const prev = lastCodeFetchRef.current
-      const isReFetch = prev.time > 0
-      const secondsSinceLast = isReFetch ? (now - prev.time) / 1000 : 0
+      const res = await api.readVerification(email.id);
+      const now = Date.now();
+      const prev = lastCodeFetchRef.current;
+      const isReFetch = prev.time > 0;
+      const secondsSinceLast = isReFetch ? (now - prev.time) / 1000 : 0;
 
       if (isReFetch && secondsSinceLast > 30) {
         // User is probably waiting for a NEW verification email — find fresh codes
-        const freshMatches = res.matches.filter((m: any) => m.code && !prev.codes.has(m.code))
+        const freshMatches = res.matches.filter((m: any) => m.code && !prev.codes.has(m.code));
         if (freshMatches.length > 0) {
-          const code = freshMatches[0].code || ''
-          navigator.clipboard.writeText(code)
-          toast(`新验证码 ${code} 已复制 (距上次 ${Math.floor(secondsSinceLast)}秒)`, 'success')
+          const code = freshMatches[0].code || "";
+          navigator.clipboard.writeText(code);
+          toast(`新验证码 ${code} 已复制 (距上次 ${Math.floor(secondsSinceLast)}秒)`, "success");
           // Update seen codes
-          freshMatches.forEach((m: any) => prev.codes.add(m.code))
-          lastCodeFetchRef.current = { time: now, codes: prev.codes }
+          freshMatches.forEach((m: any) => prev.codes.add(m.code));
+          lastCodeFetchRef.current = { time: now, codes: prev.codes };
         } else {
           // No new codes — fall back to first available
-          const match = res.matches[0]
+          const match = res.matches[0];
           if (match?.code) {
-            navigator.clipboard.writeText(match.code)
-            toast(`验证码 ${match.code} 已复制 (暂无新验证码)`, 'info')
+            navigator.clipboard.writeText(match.code);
+            toast(`验证码 ${match.code} 已复制 (暂无新验证码)`, "info");
           } else {
-            toast('未找到验证码 (可能邮件尚未到达)', 'info')
+            toast("未找到验证码 (可能邮件尚未到达)", "info");
           }
-          lastCodeFetchRef.current = { time: now, codes: prev.codes }
+          lastCodeFetchRef.current = { time: now, codes: prev.codes };
         }
       } else {
         // First fetch or quick re-fetch (<30s): return first available code
-        const match = res.matches[0]
+        const match = res.matches[0];
         if (match?.code) {
-          navigator.clipboard.writeText(match.code)
-          toast(`验证码 ${match.code} 已复制`, 'success')
+          navigator.clipboard.writeText(match.code);
+          toast(`验证码 ${match.code} 已复制`, "success");
           // Track this code
-          prev.codes.add(match.code)
-          lastCodeFetchRef.current = { time: now, codes: prev.codes }
+          prev.codes.add(match.code);
+          lastCodeFetchRef.current = { time: now, codes: prev.codes };
         } else {
-          toast('未找到验证码', 'info')
-          lastCodeFetchRef.current = { time: now, codes: prev.codes }
+          toast("未找到验证码", "info");
+          lastCodeFetchRef.current = { time: now, codes: prev.codes };
         }
       }
     } catch (err: any) {
-      toast(err.message, 'error')
+      toast(err.message, "error");
     } finally {
-      setLoadingCode(false)
+      setLoadingCode(false);
     }
-  }
+  };
 
   // ===== 启用 =====
   const handleActivate = async () => {
-    setActionLoading(true)
+    setActionLoading(true);
     try {
       if (hasAccount) {
-        await api.updateEmailAccount(email.email_account_id!, { status: 'active' })
+        await api.updateEmailAccount(email.email_account_id!, { status: "active" });
       } else {
-        await api.activateUsableEmail(email.id)
+        await api.activateUsableEmail(email.id);
       }
-      toast(`「${email.address}」已启用`, 'success')
-      refreshAccounts()
-      refreshEmails()
+      toast(`「${email.address}」已启用`, "success");
+      refreshAccounts();
+      refreshEmails();
     } catch (err: any) {
-      toast(err.message, 'error')
+      toast(err.message, "error");
     } finally {
-      setActionLoading(false)
-      setActionMode(null)
+      setActionLoading(false);
+      setActionMode(null);
     }
-  }
+  };
 
   // ===== 停用（软删除，保留数据） =====
   const handleDeactivate = async () => {
-    setActionLoading(true)
+    setActionLoading(true);
     try {
       if (hasAccount) {
-        await api.deactivateEmailAccount(email.email_account_id!)
+        await api.deactivateEmailAccount(email.email_account_id!);
       } else {
-        await api.deactivateUsableEmail(email.id)
+        await api.deactivateUsableEmail(email.id);
       }
-      toast(`「${email.address}」已停用（数据保留）`, 'success')
-      refreshAccounts()
-      refreshEmails()
+      toast(`「${email.address}」已停用（数据保留）`, "success");
+      refreshAccounts();
+      refreshEmails();
     } catch (err: any) {
-      toast(err.message, 'error')
+      toast(err.message, "error");
     } finally {
-      setActionLoading(false)
-      setActionMode(null)
+      setActionLoading(false);
+      setActionMode(null);
     }
-  }
+  };
 
   // ===== 删除（硬删除，清空所有关联数据） =====
   const handleDelete = async () => {
-    setActionLoading(true)
+    setActionLoading(true);
     try {
       if (hasAccount) {
-        await api.deleteEmailAccount(email.email_account_id!)
-        toast(`「${email.address}」已彻底删除（含关联别名、绑定、日志等）`, 'success')
+        await api.deleteEmailAccount(email.email_account_id!);
+        toast(`「${email.address}」已彻底删除（含关联别名、绑定、日志等）`, "success");
       } else {
-        await api.deleteUsableEmail(email.id)
-        toast(`「${email.address}」已彻底删除`, 'success')
+        await api.deleteUsableEmail(email.id);
+        toast(`「${email.address}」已彻底删除`, "success");
       }
-      refreshAccounts()
-      refreshEmails()
+      refreshAccounts();
+      refreshEmails();
     } catch (err: any) {
-      toast(err.message, 'error')
+      toast(err.message, "error");
     } finally {
-      setActionLoading(false)
-      setActionMode(null)
+      setActionLoading(false);
+      setActionMode(null);
     }
-  }
+  };
 
   return (
-    <motion.div layout initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-      <Card selected={selected} onClick={onClick} className={`p-3 ${isInactive ? 'opacity-60' : ''}`}>
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 5 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }}
+    >
+      <Card
+        selected={selected}
+        onClick={onClick}
+        className={`p-3 ${isInactive ? "opacity-60" : ""}`}
+      >
         <div className="flex items-start gap-2">
           {onToggleBulkSelect ? (
             <div className="shrink-0 pt-1" onClick={(e) => e.stopPropagation()}>
@@ -708,46 +838,81 @@ const EmailCard: React.FC<{
           <div
             className="w-9 h-9 rounded-lg flex items-center justify-center text-sm font-semibold shrink-0"
             style={{
-              background: (email.group?.color || '#58a6ff') + '20',
-              color: email.group?.color || '#58a6ff'
+              background: (email.group?.color || "#58a6ff") + "20",
+              color: email.group?.color || "#58a6ff",
             }}
           >
             {email.address.slice(0, 1).toUpperCase()}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5 mb-0.5">
-              {email.label && (
-                <span className="text-xs text-gh-text-secondary truncate">{email.label}</span>
+            <div className="flex items-center gap-1.5 mb-1 min-w-0">
+              <span className="text-sm text-gh-text font-medium truncate">{cardName}</span>
+              {email.status !== "active" && (
+                <span className="text-[10px] text-gh-text-secondary shrink-0">{email.status}</span>
               )}
             </div>
             <button
               onClick={handleCopy}
-              className="text-sm text-gh-text font-medium truncate max-w-full hover:text-gh-accent transition-colors group inline-flex items-center gap-1"
+              className="text-xs text-gh-text-muted truncate max-w-full hover:text-gh-accent transition-colors group inline-flex items-center gap-1"
             >
-              {email.kind === 'primary' && (
-                <span className="text-[11px] text-gh-accent shrink-0">主</span>
-              )}
+              <span className="text-[11px] text-gh-accent shrink-0">{kindLabel}</span>
               <span className="truncate">{email.address}</span>
               {copied ? (
                 <IconCheck size={12} className="shrink-0 text-gh-success" />
               ) : (
-                <IconCopy size={12} className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                <IconCopy
+                  size={12}
+                  className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                />
               )}
             </button>
           </div>
         </div>
 
+        {aliases.length > 0 && (
+          <div className="mt-2 pl-11">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setAliasesExpanded((value: boolean) => !value);
+              }}
+              className="text-[11px] text-gh-text-secondary hover:text-gh-accent transition-colors"
+            >
+              {aliasesExpanded ? "收起别名邮箱" : `展开 ${aliases.length} 个别名邮箱`}
+            </button>
+            {aliasesExpanded && (
+              <div className="mt-1.5 space-y-1">
+                {aliases.map((aliasEmail: UsableEmail) => (
+                  <button
+                    type="button"
+                    key={aliasEmail.id}
+                    onClick={(e) => handleCopyAlias(e, aliasEmail.address)}
+                    className="flex items-center gap-1.5 text-xs text-gh-text-muted hover:text-gh-accent transition-colors min-w-0"
+                    title="点击复制别名邮箱"
+                  >
+                    <span className="shrink-0 text-gh-text-secondary">#</span>
+                    <span className="font-mono truncate">{aliasEmail.address}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {email.tags && email.tags.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-2">
             {email.tags.map((t) => (
-              <Badge key={t.id} color={t.color}>{t.name}</Badge>
+              <Badge key={t.id} color={t.color}>
+                {t.name}
+              </Badge>
             ))}
           </div>
         )}
 
         <div className="flex items-center justify-between mt-3 pt-2 border-t border-gh-border/60">
           <span className="text-[11px] text-gh-text-secondary flex items-center gap-1">
-            <IconClock size={10} /> {refreshTimeLabel || '—'}
+            <IconClock size={10} /> {refreshTimeLabel || "—"}
           </span>
           <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
             <button
@@ -758,7 +923,14 @@ const EmailCard: React.FC<{
             >
               {loadingCode ? (
                 <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
-                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
+                  <circle
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    className="opacity-25"
+                  />
                   <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" fill="currentColor" />
                 </svg>
               ) : (
@@ -774,7 +946,14 @@ const EmailCard: React.FC<{
               >
                 {refreshing ? (
                   <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
-                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
+                    <circle
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="3"
+                      className="opacity-25"
+                    />
                     <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" fill="currentColor" />
                   </svg>
                 ) : (
@@ -792,27 +971,55 @@ const EmailCard: React.FC<{
             {/* 根据状态显示不同操作按钮 */}
             {isInactive ? (
               <button
-                onClick={(e) => { e.stopPropagation(); setActionMode('activate') }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActionMode("activate");
+                }}
                 className="p-1 rounded-md text-gh-text-muted hover:text-green-400 hover:bg-green-400/10 transition-colors"
                 title="启用 — 恢复为活跃状态"
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
               </button>
             ) : (
               <>
                 <button
-                  onClick={(e) => { e.stopPropagation(); setActionMode('deactivate') }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActionMode("deactivate");
+                  }}
                   className="p-1 rounded-md text-gh-text-muted hover:text-gh-warning hover:bg-gh-warning/10 transition-colors"
                   title="停用 — 保留数据，可重新启用"
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="10" /><line x1="8" y1="12" x2="16" y2="12" />
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="8" y1="12" x2="16" y2="12" />
                   </svg>
                 </button>
                 <button
-                  onClick={(e) => { e.stopPropagation(); setActionMode('delete') }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActionMode("delete");
+                  }}
                   className="p-1 rounded-md text-gh-text-muted hover:text-red-400 hover:bg-red-400/10 transition-colors"
                   title="删除 — 彻底清除所有关联数据，不可恢复"
                 >
@@ -826,7 +1033,7 @@ const EmailCard: React.FC<{
 
       {/* 启用确认 */}
       <ConfirmModal
-        open={actionMode === 'activate'}
+        open={actionMode === "activate"}
         title="启用邮箱"
         message={`确定启用邮箱「${email.address}」吗？将恢复为活跃状态。`}
         confirmLabel="启用"
@@ -838,7 +1045,7 @@ const EmailCard: React.FC<{
 
       {/* 停用确认 */}
       <ConfirmModal
-        open={actionMode === 'deactivate'}
+        open={actionMode === "deactivate"}
         title="停用邮箱"
         message={`确定停用邮箱「${email.address}」吗？\n\n数据将保留在数据库中，可随时重新启用。关联别名、绑定等不会丢失。`}
         confirmLabel="停用"
@@ -850,9 +1057,9 @@ const EmailCard: React.FC<{
 
       {/* 删除确认 — 强调不可逆 */}
       <ConfirmModal
-        open={actionMode === 'delete'}
+        open={actionMode === "delete"}
         title="彻底删除邮箱"
-        message={`确定要彻底删除「${email.address}」吗？\n\n⚠️ 此操作不可撤销！将强制删除以下所有关联数据：\n• 邮箱账户及所有别名\n• 平台绑定记录\n• 邮箱池条目\n• 验证码读取记录\n• 刷新日志\n• 标签关联`}
+        message={`确定要彻底删除「${email.address}」吗？\n\n警告：此操作不可撤销！将强制删除以下所有关联数据：\n邮箱账户及所有别名\n平台绑定记录\n邮箱池条目\n验证码读取记录\n刷新日志\n标签关联`}
         confirmLabel="彻底删除"
         danger={true}
         loading={actionLoading}
@@ -860,161 +1067,181 @@ const EmailCard: React.FC<{
         onCancel={() => setActionMode(null)}
       />
     </motion.div>
-  )
-}
+  );
+};
 
 // ========== 右侧：邮件详情 ==========
 const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
-  const { accounts } = useApp()
-  const { toast } = useToast()
-  const [messages, setMessages] = React.useState<any[]>([])
-  const [codes, setCodes] = React.useState<any[]>([])
-  const [links, setLinks] = React.useState<any[]>([])
-  const [bindings, setBindings] = React.useState<any[]>([])
-  const [loading, setLoading] = React.useState(false)
-  const [syncing, setSyncing] = React.useState(false)  // subtle indicator for background fetch
-  const [lastRefreshed, setLastRefreshed] = React.useState<Date | null>(null)
-  const [elapsed, setElapsed] = React.useState('')
-  const [tab, setTab] = React.useState<'messages' | 'verify' | 'bindings'>('messages')
-  const [fetching, setFetching] = React.useState(false)
-  const [fetchResult, setFetchResult] = React.useState<string | null>(null)
+  const { accounts } = useApp();
+  const { toast } = useToast();
+  const [messages, setMessages] = React.useState<any[]>([]);
+  const [codes, setCodes] = React.useState<any[]>([]);
+  const [links, setLinks] = React.useState<any[]>([]);
+  const [bindings, setBindings] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(false);
+  const [syncing, setSyncing] = React.useState(false); // subtle indicator for background fetch
+  const [lastRefreshed, setLastRefreshed] = React.useState<Date | null>(null);
+  const [elapsed, setElapsed] = React.useState("");
+  const [tab, setTab] = React.useState<"messages" | "verify" | "bindings">("messages");
+  const [fetching, setFetching] = React.useState(false);
+  const [fetchResult, setFetchResult] = React.useState<string | null>(null);
   // Guard against race conditions when rapidly switching emails
-  const activeLoadIdRef = React.useRef<number | null>(null)
+  const activeLoadIdRef = React.useRef<number | null>(null);
 
-  const account = (accounts || []).find((a) => a.id === email?.email_account_id)
-  const aliases = account?.usable_emails.filter((u) => u.kind === 'alias') || []
-  const hasIMAP = !!email?.email_account_id
+  const account = (accounts || []).find((a) => a.id === email?.email_account_id);
+  const aliases = account?.usable_emails.filter((u) => u.kind === "alias") || [];
+  const hasIMAP = !!email?.email_account_id;
 
-  const loadData = React.useCallback(async (showSpinner = true) => {
-    if (!email) return
-    const emailId: number = email.id
-    activeLoadIdRef.current = emailId
-    if (showSpinner) setLoading(true)
-    else setSyncing(true)
-    try {
-      if (email.kind === 'temp') {
-        const [m, c, l] = await Promise.all([
-          api.tempMessages(email.id),
-          api.tempCodes(email.id),
-          api.tempLinks(email.id)
-        ])
-        if (activeLoadIdRef.current !== emailId) return
-        setMessages(m)
-        setCodes(c)
-        setLinks(l)
-      } else if (hasIMAP) {
-        // Cache-first: load stored messages first, verification from history
-        const [storedMsgs, verifyRes] = await Promise.all([
-          api.getMessages(email.id).catch(() => []),
-          api.readVerification(email.id).catch(() => ({ matches: [] }))
-        ])
-        if (activeLoadIdRef.current !== emailId) return
-        setMessages(storedMsgs.map((m: any) => ({
-          id: m.id,
-          from_address: m.from_address || '—',
-          subject: m.subject || '(无主题)',
-          text: m.body || '',
-          received_at: m.received_at || m.created_at || ''
-        })))
-        setCodes(verifyRes.matches.filter((x: any) => x.code).map((x: any, i: number) => ({
-          message_id: `v_${i}`,
-          code: x.code
-        })))
-        setLinks(verifyRes.matches.filter((x: any) => x.link).map((x: any, i: number) => ({
-          message_id: `v_${i}`,
-          url: x.link
-        })))
-      } else {
-        if (activeLoadIdRef.current !== emailId) return
-        setMessages([])
-        setCodes([])
-        setLinks([])
+  const handleCopyAlias = (address: string): void => {
+    copyText(address, () => toast("已复制别名邮箱", "success"));
+  };
+
+  const loadData = React.useCallback(
+    async (showSpinner = true) => {
+      if (!email) return;
+      const emailId: number = email.id;
+      activeLoadIdRef.current = emailId;
+      if (showSpinner) setLoading(true);
+      else setSyncing(true);
+      try {
+        if (email.kind === "temp") {
+          const [m, c, l] = await Promise.all([
+            api.tempMessages(email.id),
+            api.tempCodes(email.id),
+            api.tempLinks(email.id),
+          ]);
+          if (activeLoadIdRef.current !== emailId) return;
+          setMessages(m);
+          setCodes(c);
+          setLinks(l);
+        } else if (hasIMAP) {
+          // Cache-first: load stored messages first, verification from history
+          const [storedMsgs, verifyRes] = await Promise.all([
+            api.getMessages(email.id).catch(() => []),
+            api.readVerification(email.id).catch(() => ({ matches: [] })),
+          ]);
+          if (activeLoadIdRef.current !== emailId) return;
+          setMessages(
+            storedMsgs.map((m: any) => ({
+              id: m.id,
+              from_address: m.from_address || "—",
+              subject: m.subject || "(无主题)",
+              text: m.body || "",
+              received_at: m.received_at || m.created_at || "",
+            })),
+          );
+          setCodes(
+            verifyRes.matches
+              .filter((x: any) => x.code)
+              .map((x: any, i: number) => ({
+                message_id: `v_${i}`,
+                code: x.code,
+              })),
+          );
+          setLinks(
+            verifyRes.matches
+              .filter((x: any) => x.link)
+              .map((x: any, i: number) => ({
+                message_id: `v_${i}`,
+                url: x.link,
+              })),
+          );
+        } else {
+          if (activeLoadIdRef.current !== emailId) return;
+          setMessages([]);
+          setCodes([]);
+          setLinks([]);
+        }
+        const b = await api.listBindings(email.id);
+        if (activeLoadIdRef.current !== emailId) return;
+        setBindings(b);
+        setLastRefreshed(new Date());
+      } catch (err: any) {
+        if (activeLoadIdRef.current !== emailId) return;
+        console.error(err);
+        toast(err?.message || "加载失败", "error");
+      } finally {
+        if (activeLoadIdRef.current === emailId) {
+          setLoading(false);
+          setSyncing(false);
+        }
       }
-      const b = await api.listBindings(email.id)
-      if (activeLoadIdRef.current !== emailId) return
-      setBindings(b)
-      setLastRefreshed(new Date())
-    } catch (err: any) {
-      if (activeLoadIdRef.current !== emailId) return
-      console.error(err)
-      toast(err?.message || '加载失败', 'error')
-    } finally {
-      if (activeLoadIdRef.current === emailId) {
-        setLoading(false)
-        setSyncing(false)
-      }
-    }
-  }, [email, toast, hasIMAP])
+    },
+    [email, toast, hasIMAP],
+  );
 
   // 手动触发 IMAP 拉取
   const handleFetchEmails = async () => {
-    if (!email || !hasIMAP) return
-    const emailId: number = email.id
-    activeLoadIdRef.current = emailId
-    setFetching(true)
-    setFetchResult(null)
-    setSyncing(true)
+    if (!email || !hasIMAP) return;
+    const emailId: number = email.id;
+    activeLoadIdRef.current = emailId;
+    setFetching(true);
+    setFetchResult(null);
+    setSyncing(true);
     try {
-      const res = await api.fetchEmails(email.id)
-      if (activeLoadIdRef.current !== emailId) return
-      const error = res.error || ''
+      const res = await api.fetchEmails(email.id);
+      if (activeLoadIdRef.current !== emailId) return;
+      const error = res.error || "";
       if (error) {
-        toast(`拉取失败: ${error}`, 'error')
-        setFetchResult(`❌ ${error}`)
+        toast(`拉取失败: ${error}`, "error");
+        setFetchResult(`失败: ${error}`);
       } else if (res.messages_stored === 0) {
-        setFetchResult('已是最新')
+        setFetchResult("已是最新");
       } else {
-        toast(`拉取完成: ${res.messages_stored} 封新邮件, ${res.codes_found} 个验证码`, 'success')
-        setFetchResult(`${res.messages_stored} 封新邮件, ${res.codes_found} 个验证码`)
+        toast(`拉取完成: ${res.messages_stored} 封新邮件, ${res.codes_found} 个验证码`, "success");
+        setFetchResult(`${res.messages_stored} 封新邮件, ${res.codes_found} 个验证码`);
         // Reload data without spinner to merge new messages into display
-        setTimeout(() => loadData(false), 300)
+        setTimeout(() => loadData(false), 300);
       }
     } catch (err: any) {
-      if (activeLoadIdRef.current !== emailId) return
-      toast(`网络错误: ${err.message}`, 'error')
-      setFetchResult(`❌ ${err.message}`)
+      if (activeLoadIdRef.current !== emailId) return;
+      toast(`网络错误: ${err.message}`, "error");
+      setFetchResult(`失败: ${err.message}`);
     } finally {
       if (activeLoadIdRef.current === emailId) {
-        setFetching(false)
-        setSyncing(false)
+        setFetching(false);
+        setSyncing(false);
       }
     }
-  }
+  };
 
-  const fetchTriggeredRef = React.useRef<number | null>(null)
+  const fetchTriggeredRef = React.useRef<number | null>(null);
 
   useEffect(() => {
-    if (!email) return
+    if (!email) return;
     // Clear previous email's data immediately to avoid showing stale content
-    setMessages([])
-    setCodes([])
-    setLinks([])
-    setBindings([])
-    setFetchResult(null)
+    setMessages([]);
+    setCodes([]);
+    setLinks([]);
+    setBindings([]);
+    setFetchResult(null);
     // Cache-first: load immediately with spinner (first load), then background sync
-    loadData(true)
+    loadData(true);
     // Auto-trigger IMAP fetch to get latest emails (each email only once per selection)
     if (hasIMAP && fetchTriggeredRef.current !== email.id) {
-      fetchTriggeredRef.current = email.id
-      setTimeout(() => handleFetchEmails(), 300)
+      fetchTriggeredRef.current = email.id;
+      setTimeout(() => handleFetchEmails(), 300);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [email])
+  }, [email]);
 
   // 更新 "X 秒前" 显示
   useEffect(() => {
-    if (!lastRefreshed) { setElapsed(''); return }
-    const update = () => {
-      const diff = Math.floor((Date.now() - lastRefreshed.getTime()) / 1000)
-      if (diff < 5) setElapsed('刚刚')
-      else if (diff < 60) setElapsed(`${diff}秒前`)
-      else if (diff < 3600) setElapsed(`${Math.floor(diff / 60)}分钟前`)
-      else setElapsed(`${Math.floor(diff / 3600)}小时前`)
+    if (!lastRefreshed) {
+      setElapsed("");
+      return;
     }
-    update()
-    const timer = setInterval(update, 10000)
-    return () => clearInterval(timer)
-  }, [lastRefreshed])
+    const update = () => {
+      const diff = Math.floor((Date.now() - lastRefreshed.getTime()) / 1000);
+      if (diff < 5) setElapsed("刚刚");
+      else if (diff < 60) setElapsed(`${diff}秒前`);
+      else if (diff < 3600) setElapsed(`${Math.floor(diff / 60)}分钟前`);
+      else setElapsed(`${Math.floor(diff / 3600)}小时前`);
+    };
+    update();
+    const timer = setInterval(update, 10000);
+    return () => clearInterval(timer);
+  }, [lastRefreshed]);
 
   if (!email) {
     return (
@@ -1024,7 +1251,7 @@ const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
           <div>选择一个邮箱查看详情</div>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -1040,8 +1267,8 @@ const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
           <div
             className="w-12 h-12 rounded-xl flex items-center justify-center text-lg font-bold shrink-0"
             style={{
-              background: (email.group?.color || '#58a6ff') + '20',
-              color: email.group?.color || '#58a6ff'
+              background: (email.group?.color || "#58a6ff") + "20",
+              color: email.group?.color || "#58a6ff",
             }}
           >
             {email.address.slice(0, 1).toUpperCase()}
@@ -1051,14 +1278,26 @@ const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
               <h2 className="text-lg font-semibold text-gh-text truncate">
                 {email.label || email.address}
               </h2>
-              <Badge color={
-                email.kind === 'primary' ? '#58a6ff' :
-                email.kind === 'alias' ? '#a371f7' :
-                email.kind === 'temp' ? '#f0883e' : '#6e7681'
-              }>
-                {email.kind === 'primary' ? '主邮箱' : email.kind === 'alias' ? '别名' : email.kind === 'temp' ? '临时' : '自定义'}
+              <Badge
+                color={
+                  email.kind === "primary"
+                    ? "#58a6ff"
+                    : email.kind === "alias"
+                      ? "#a371f7"
+                      : email.kind === "temp"
+                        ? "#f0883e"
+                        : "#6e7681"
+                }
+              >
+                {email.kind === "primary"
+                  ? "主邮箱"
+                  : email.kind === "alias"
+                    ? "别名"
+                    : email.kind === "temp"
+                      ? "临时"
+                      : "自定义"}
               </Badge>
-              {email.status === 'active' ? (
+              {email.status === "active" ? (
                 <Badge color="#3fb950">活跃</Badge>
               ) : (
                 <Badge color="#6e7681">{email.status}</Badge>
@@ -1077,7 +1316,9 @@ const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
         {account && (
           <div className="mt-3 pt-3 border-t border-gh-border/60 flex items-center gap-2 text-xs text-gh-text-secondary flex-wrap">
             <IconUser size={12} />
-            <span>关联账户：<span className="text-gh-text">{account.display_name}</span></span>
+            <span>
+              关联账户：<span className="text-gh-text">{account.display_name}</span>
+            </span>
             <span>·</span>
             <span>{account.provider}</span>
             {aliases.length > 0 && (
@@ -1093,9 +1334,7 @@ const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
                 {elapsed}
               </span>
             )}
-            {fetchResult && (
-              <span className="text-xs text-gh-text-muted">{fetchResult}</span>
-            )}
+            {fetchResult && <span className="text-xs text-gh-text-muted">{fetchResult}</span>}
           </div>
         )}
 
@@ -1103,13 +1342,16 @@ const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
         {aliases.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-1.5">
             {aliases.map((a) => (
-              <div
+              <button
+                type="button"
                 key={a.id}
-                className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-gh-canvas-inset border border-gh-border text-xs text-gh-text-muted"
+                onClick={() => handleCopyAlias(a.address)}
+                className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-gh-canvas-inset border border-gh-border text-xs text-gh-text-muted hover:text-gh-accent hover:border-gh-accent/40 transition-colors"
+                title="点击复制别名邮箱"
               >
-                <IconAt size={10} />
+                <span className="text-gh-text-secondary">#</span>
                 <span className="font-mono">{a.address}</span>
-              </div>
+              </button>
             ))}
           </div>
         )}
@@ -1118,17 +1360,17 @@ const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
       {/* Tabs */}
       <div className="sticky top-0 z-10 flex items-center gap-1 px-6 border-b border-gh-border bg-gh-canvas-subtle/40 backdrop-blur-sm">
         {[
-          { k: 'messages', label: '邮件', icon: IconMail, count: messages.length },
-          { k: 'verify', label: '验证码/链接', icon: IconKey, count: codes.length + links.length },
-          { k: 'bindings', label: '平台绑定', icon: IconLink, count: bindings.length }
+          { k: "messages", label: "邮件", icon: IconMail, count: messages.length },
+          { k: "verify", label: "验证码/链接", icon: IconKey, count: codes.length + links.length },
+          { k: "bindings", label: "平台绑定", icon: IconLink, count: bindings.length },
         ].map((t) => (
           <button
             key={t.k}
             onClick={() => setTab(t.k as any)}
             className={`px-3 py-2.5 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${
               tab === t.k
-                ? 'border-gh-accent text-gh-accent'
-                : 'border-transparent text-gh-text-muted hover:text-gh-text'
+                ? "border-gh-accent text-gh-accent"
+                : "border-transparent text-gh-text-muted hover:text-gh-text"
             }`}
           >
             <t.icon size={13} />
@@ -1144,20 +1386,30 @@ const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
         <div className="flex-1" />
         <div className="flex items-center gap-2 pr-2">
           <button
-            onClick={() => { if (hasIMAP) handleFetchEmails(); else loadData() }}
+            onClick={() => {
+              if (hasIMAP) handleFetchEmails();
+              else loadData();
+            }}
             disabled={loading || fetching}
             className="px-2 py-1 rounded text-xs text-gh-accent bg-gh-accent/10 border border-gh-accent/20 hover:bg-gh-accent/20 transition-colors disabled:opacity-50 flex items-center gap-1"
-            title={hasIMAP ? '从 IMAP 拉取最新邮件并存入数据库' : '刷新视图'}
+            title={hasIMAP ? "从 IMAP 拉取最新邮件并存入数据库" : "刷新视图"}
           >
             {loading || fetching ? (
               <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  className="opacity-25"
+                />
                 <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" fill="currentColor" />
               </svg>
             ) : (
               <IconRefresh size={12} />
             )}
-            {hasIMAP ? '拉取' : '刷新'}
+            {hasIMAP ? "拉取" : "刷新"}
           </button>
         </div>
       </div>
@@ -1178,7 +1430,14 @@ const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
         {syncing && (
           <div className="mb-3 flex items-center gap-2 text-xs text-gh-accent/70">
             <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
+              <circle
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="3"
+                className="opacity-25"
+              />
               <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" fill="currentColor" />
             </svg>
             正在同步最新邮件…
@@ -1187,15 +1446,26 @@ const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
         <AnimatePresence mode="wait">
           {loading && messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-gh-text-secondary">
-              <svg className="animate-spin h-8 w-8 mb-3 text-gh-accent" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
+              <svg
+                className="animate-spin h-8 w-8 mb-3 text-gh-accent"
+                viewBox="0 0 24 24"
+                fill="none"
+              >
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  className="opacity-25"
+                />
                 <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" fill="currentColor" />
               </svg>
               <span className="text-sm">正在加载邮件数据…</span>
             </div>
-          ) : tab === 'messages' ? (
+          ) : tab === "messages" ? (
             <MessagesTab messages={messages} />
-          ) : tab === 'verify' ? (
+          ) : tab === "verify" ? (
             <VerifyTab codes={codes} links={links} />
           ) : (
             <BindingsTab bindings={bindings} emailId={email.id} />
@@ -1203,14 +1473,14 @@ const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
         </AnimatePresence>
       </div>
     </div>
-  )
-}
+  );
+};
 
 const MessagesTab: React.FC<{ messages: any[] }> = ({ messages }) => {
-  const [expandedId, setExpandedId] = React.useState<string | number | null>(null)
-  const [darkMode, setDarkMode] = React.useState(true)
+  const [expandedId, setExpandedId] = React.useState<string | number | null>(null);
+  const [darkMode, setDarkMode] = React.useState(true);
   if (messages.length === 0) {
-    return <div className="text-center py-12 text-gh-text-secondary text-sm">暂无邮件</div>
+    return <div className="text-center py-12 text-gh-text-secondary text-sm">暂无邮件</div>;
   }
   return (
     <>
@@ -1235,197 +1505,229 @@ const MessagesTab: React.FC<{ messages: any[] }> = ({ messages }) => {
         .email-body-dark input, .email-body-dark textarea, .email-body-dark button, .email-body-dark select { background-color: #161b22 !important; color: #c9d1d9 !important; border-color: #30363d !important; }
       `}</style>
       )}
-    <div className="space-y-1.5">
-      {/* Dark mode toggle */}
-      <div className="flex items-center justify-end mb-1">
-        <button
-          onClick={() => setDarkMode(!darkMode)}
-          className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
-            darkMode
-              ? 'bg-gh-accent/10 text-gh-accent border border-gh-accent/20'
-              : 'bg-gh-canvas-inset text-gh-text-muted border border-gh-border hover:text-gh-text'
-          }`}
-          title={darkMode ? '关闭邮件暗色模式' : '开启邮件暗色模式'}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            {darkMode ? (
-              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-            ) : (
-              <>
-                <circle cx="12" cy="12" r="5" />
-                <line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" />
-                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-                <line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" />
-                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-              </>
-            )}
-          </svg>
-          暗色模式
-        </button>
-      </div>
-      {messages.map((m, i) => {
-        const isExpanded = expandedId === m.id
-        const avatarColor = stringToColor(m.from_address || m.subject || '?')
-        const timeLabel = formatRelativeTime(m.received_at || m.created_at)
-        return (
-          <motion.div
-            key={m.id}
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.02 }}
-            onClick={() => setExpandedId(isExpanded ? null : m.id)}
-            className={`rounded-lg border transition-all cursor-pointer ${
-              isExpanded
-                ? 'border-gh-accent/40 bg-gh-canvas shadow-sm'
-                : 'border-gh-border/60 bg-gh-canvas-subtle hover:border-gh-text-muted hover:bg-gh-canvas'
+      <div className="space-y-1.5">
+        {/* Dark mode toggle */}
+        <div className="flex items-center justify-end mb-1">
+          <button
+            onClick={() => setDarkMode(!darkMode)}
+            className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
+              darkMode
+                ? "bg-gh-accent/10 text-gh-accent border border-gh-accent/20"
+                : "bg-gh-canvas-inset text-gh-text-muted border border-gh-border hover:text-gh-text"
             }`}
+            title={darkMode ? "关闭邮件暗色模式" : "开启邮件暗色模式"}
           >
-            {/* Compact card header — always visible */}
-            <div className="flex items-center gap-3 px-3 py-2.5">
-              <div
-                className="w-9 h-9 rounded-lg flex items-center justify-center text-xs font-bold shrink-0"
-                style={{ background: avatarColor + '20', color: avatarColor }}
-              >
-                {(m.from_address || '?').slice(0, 1).toUpperCase()}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-2">
-                  <div className={`font-medium truncate ${isExpanded ? 'text-gh-accent' : 'text-gh-text'}`}>
-                    {m.subject || '(无主题)'}
-                  </div>
-                  {timeLabel && (
-                    <span className="text-[10px] text-gh-text-secondary whitespace-nowrap shrink-0">
-                      {timeLabel}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-xs text-gh-text-muted truncate">{m.from_address || '—'}</span>
-                  {m.text && !isExpanded && (
-                    <span className="text-xs text-gh-text-secondary truncate hidden sm:inline">
-                      — {m.text.slice(0, 60)}{m.text.length > 60 ? '...' : ''}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <svg
-                className={`w-4 h-4 text-gh-text-muted shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-              >
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </div>
-            {/* Expanded body */}
-            <AnimatePresence>
-              {isExpanded && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="overflow-hidden"
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              {darkMode ? (
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+              ) : (
+                <>
+                  <circle cx="12" cy="12" r="5" />
+                  <line x1="12" y1="1" x2="12" y2="3" />
+                  <line x1="12" y1="21" x2="12" y2="23" />
+                  <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+                  <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                  <line x1="1" y1="12" x2="3" y2="12" />
+                  <line x1="21" y1="12" x2="23" y2="12" />
+                  <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+                  <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+                </>
+              )}
+            </svg>
+            暗色模式
+          </button>
+        </div>
+        {messages.map((m, i) => {
+          const isExpanded = expandedId === m.id;
+          const avatarColor = stringToColor(m.from_address || m.subject || "?");
+          const timeLabel = formatRelativeTime(m.received_at || m.created_at);
+          return (
+            <motion.div
+              key={m.id}
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.02 }}
+              onClick={() => setExpandedId(isExpanded ? null : m.id)}
+              className={`rounded-lg border transition-all cursor-pointer ${
+                isExpanded
+                  ? "border-gh-accent/40 bg-gh-canvas shadow-sm"
+                  : "border-gh-border/60 bg-gh-canvas-subtle hover:border-gh-text-muted hover:bg-gh-canvas"
+              }`}
+            >
+              {/* Compact card header — always visible */}
+              <div className="flex items-center gap-3 px-3 py-2.5">
+                <div
+                  className="w-9 h-9 rounded-lg flex items-center justify-center text-xs font-bold shrink-0"
+                  style={{ background: avatarColor + "20", color: avatarColor }}
                 >
-                  <div
-                    className="px-3 pb-3 pt-0 border-t border-gh-border/40 mx-3"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="mt-3 text-sm text-gh-text leading-relaxed break-words font-sans bg-gh-canvas-inset rounded-lg p-3 max-h-96 overflow-y-auto">
-                      {m.html ? (
-                        <div
-                          className={darkMode ? 'email-body-dark' : ''}
-                          style={EMAIL_BODY_STYLE}
-                          dangerouslySetInnerHTML={{ __html: sanitizeHtml(m.html) }}
-                        />
-                      ) : looksLikeHtml(m.text) ? (
-                        <div
-                          className={darkMode ? 'email-body-dark' : ''}
-                          style={EMAIL_BODY_STYLE}
-                          dangerouslySetInnerHTML={{ __html: sanitizeHtml(m.text) }}
-                        />
-                      ) : (
-                        <div className="whitespace-pre-wrap">{m.text || '(无正文)'}</div>
-                      )}
+                  {(m.from_address || "?").slice(0, 1).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <div
+                      className={`font-medium truncate ${isExpanded ? "text-gh-accent" : "text-gh-text"}`}
+                    >
+                      {m.subject || "(无主题)"}
                     </div>
-                    {m.received_at && (
-                      <div className="mt-2 text-[11px] text-gh-text-secondary flex items-center gap-1">
-                        <IconClock size={10} />
-                        收到时间: {m.received_at}
-                      </div>
+                    {timeLabel && (
+                      <span className="text-[10px] text-gh-text-secondary whitespace-nowrap shrink-0">
+                        {timeLabel}
+                      </span>
                     )}
                   </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.div>
-        )
-      })}
-    </div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-xs text-gh-text-muted truncate">
+                      {m.from_address || "—"}
+                    </span>
+                    {m.text && !isExpanded && (
+                      <span className="text-xs text-gh-text-secondary truncate hidden sm:inline">
+                        — {m.text.slice(0, 60)}
+                        {m.text.length > 60 ? "..." : ""}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <svg
+                  className={`w-4 h-4 text-gh-text-muted shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </div>
+              {/* Expanded body */}
+              <AnimatePresence>
+                {isExpanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden"
+                  >
+                    <div
+                      className="px-3 pb-3 pt-0 border-t border-gh-border/40 mx-3"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="mt-3 text-sm text-gh-text leading-relaxed break-words font-sans bg-gh-canvas-inset rounded-lg p-3 max-h-96 overflow-y-auto">
+                        {m.html ? (
+                          <div
+                            className={darkMode ? "email-body-dark" : ""}
+                            style={EMAIL_BODY_STYLE}
+                            dangerouslySetInnerHTML={{ __html: sanitizeHtml(m.html) }}
+                          />
+                        ) : looksLikeHtml(m.text) ? (
+                          <div
+                            className={darkMode ? "email-body-dark" : ""}
+                            style={EMAIL_BODY_STYLE}
+                            dangerouslySetInnerHTML={{ __html: sanitizeHtml(m.text) }}
+                          />
+                        ) : (
+                          <div className="whitespace-pre-wrap">{m.text || "(无正文)"}</div>
+                        )}
+                      </div>
+                      {m.received_at && (
+                        <div className="mt-2 text-[11px] text-gh-text-secondary flex items-center gap-1">
+                          <IconClock size={10} />
+                          收到时间: {m.received_at}
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+          );
+        })}
+      </div>
     </>
-  )
-}
+  );
+};
 
 /** Deterministic color from string for avatar backgrounds */
 function stringToColor(s: string): string {
-  const colors = ['#58a6ff', '#a371f7', '#f0883e', '#3fb950', '#f85149', '#d29922', '#79c0ff', '#bc8cff']
-  let hash = 0
-  for (let i = 0; i < s.length; i++) hash = ((hash << 5) - hash + s.charCodeAt(i)) | 0
-  return colors[Math.abs(hash) % colors.length]
+  const colors = [
+    "#58a6ff",
+    "#a371f7",
+    "#f0883e",
+    "#3fb950",
+    "#f85149",
+    "#d29922",
+    "#79c0ff",
+    "#bc8cff",
+  ];
+  let hash = 0;
+  for (let i = 0; i < s.length; i++) hash = ((hash << 5) - hash + s.charCodeAt(i)) | 0;
+  return colors[Math.abs(hash) % colors.length];
 }
 
 /** Format ISO timestamps as relative time strings */
 function formatRelativeTime(iso: string): string {
-  if (!iso) return ''
+  if (!iso) return "";
   try {
-    const d = new Date(iso)
-    if (isNaN(d.getTime())) return iso
-    const now = Date.now()
-    const diff = Math.floor((now - d.getTime()) / 1000)
-    if (diff < 60) return '刚刚'
-    if (diff < 3600) return `${Math.floor(diff / 60)}分钟前`
-    if (diff < 86400) return `${Math.floor(diff / 3600)}小时前`
-    if (diff < 604800) return `${Math.floor(diff / 86400)}天前`
-    return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
-  } catch { return iso }
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    const now = Date.now();
+    const diff = Math.floor((now - d.getTime()) / 1000);
+    if (diff < 60) return "刚刚";
+    if (diff < 3600) return `${Math.floor(diff / 60)}分钟前`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}小时前`;
+    if (diff < 604800) return `${Math.floor(diff / 86400)}天前`;
+    return d.toLocaleDateString("zh-CN", { month: "short", day: "numeric" });
+  } catch {
+    return iso;
+  }
 }
 
 /** Detect if text content looks like HTML */
 function looksLikeHtml(text: string | undefined): boolean {
-  if (!text) return false
-  return /<\s*(html|body|div|table|p|a|img|br|span|style|head)\b/i.test(text)
+  if (!text) return false;
+  return /<\s*(html|body|div|table|p|a|img|br|span|style|head)\b/i.test(text);
 }
 
 /** Basic HTML sanitizer: strip script/style tags, keep structural tags */
 function sanitizeHtml(raw: string): string {
   return raw
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
-    .replace(/\bon\w+\s*=\s*"[^"]*"/gi, '')
-    .replace(/\bon\w+\s*=\s*'[^']*'/gi, '')
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, "")
+    .replace(/\bon\w+\s*=\s*"[^"]*"/gi, "")
+    .replace(/\bon\w+\s*=\s*'[^']*'/gi, "");
 }
 
 function normalizePoolEntries(response: any): any[] {
-  if (Array.isArray(response)) return response
-  if (Array.isArray(response?.entries)) return response.entries
-  return []
+  if (Array.isArray(response)) return response;
+  if (Array.isArray(response?.entries)) return response.entries;
+  return [];
 }
 
 function getPoolEntryUsableEmailId(entry: any): number | null {
-  const raw = entry?.usable_email?.id ?? entry?.usable_email_id
-  const id = typeof raw === 'number' ? raw : Number(raw)
-  return Number.isFinite(id) ? id : null
+  const raw = entry?.usable_email?.id ?? entry?.usable_email_id;
+  const id = typeof raw === "number" ? raw : Number(raw);
+  return Number.isFinite(id) ? id : null;
 }
 
 function getPoolEmailIdSet(response: any): Set<number> {
   const ids = normalizePoolEntries(response)
     .map(getPoolEntryUsableEmailId)
-    .filter((id): id is number => id !== null)
-  return new Set(ids)
+    .filter((id): id is number => id !== null);
+  return new Set(ids);
 }
 
 const VerifyTab: React.FC<{ codes: any[]; links: any[] }> = ({ codes, links }) => {
-  const { toast } = useToast()
+  const { toast } = useToast();
   if (codes.length === 0 && links.length === 0) {
-    return <div className="text-center py-12 text-gh-text-secondary text-sm">暂无验证码或链接</div>
+    return <div className="text-center py-12 text-gh-text-secondary text-sm">暂无验证码或链接</div>;
   }
   return (
     <div className="space-y-4">
@@ -1439,8 +1741,8 @@ const VerifyTab: React.FC<{ codes: any[]; links: any[] }> = ({ codes, links }) =
               <button
                 key={c.message_id}
                 onClick={() => {
-                  navigator.clipboard.writeText(c.code)
-                  toast('验证码已复制', 'success')
+                  navigator.clipboard.writeText(c.code);
+                  toast("验证码已复制", "success");
                 }}
                 className="px-3 py-2.5 rounded-lg border border-gh-border bg-gh-canvas-subtle hover:border-gh-accent hover:bg-gh-accent/5 transition-colors text-left"
               >
@@ -1475,35 +1777,35 @@ const VerifyTab: React.FC<{ codes: any[]; links: any[] }> = ({ codes, links }) =
         </div>
       )}
     </div>
-  )
-}
+  );
+};
 
 const BindingsTab: React.FC<{ bindings: any[]; emailId: number }> = ({ bindings, emailId }) => {
-  const { platforms, refreshEmails } = useApp()
-  const { toast } = useToast()
-  const [showBind, setShowBind] = useState(false)
-  const [selPlatform, setSelPlatform] = useState<number | ''>('')
+  const { platforms, refreshEmails } = useApp();
+  const { toast } = useToast();
+  const [showBind, setShowBind] = useState(false);
+  const [selPlatform, setSelPlatform] = useState<number | "">("");
 
   const handleBind = async () => {
-    if (!selPlatform) return
+    if (!selPlatform) return;
     try {
-      await api.createBinding(emailId, selPlatform as number)
-      toast('已绑定平台', 'success')
-      setShowBind(false)
-      setSelPlatform('')
-      refreshEmails()
+      await api.createBinding(emailId, selPlatform as number);
+      toast("已绑定平台", "success");
+      setShowBind(false);
+      setSelPlatform("");
+      refreshEmails();
     } catch (err: any) {
-      toast(err.message, 'error')
+      toast(err.message, "error");
     }
-  }
+  };
 
   const statusColors: Record<string, string> = {
-    active: '#3fb950',
-    pending_verification: '#d29922',
-    risk: '#f85149',
-    disabled: '#6e7681',
-    archived: '#6e7681'
-  }
+    active: "#3fb950",
+    pending_verification: "#d29922",
+    risk: "#f85149",
+    disabled: "#6e7681",
+    archived: "#6e7681",
+  };
 
   return (
     <div>
@@ -1535,10 +1837,16 @@ const BindingsTab: React.FC<{ bindings: any[]; emailId: number }> = ({ bindings,
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-gh-text">{b.platform.name}</div>
-                {b.notes && <div className="text-xs text-gh-text-secondary truncate">{b.notes}</div>}
+                {b.notes && (
+                  <div className="text-xs text-gh-text-secondary truncate">{b.notes}</div>
+                )}
               </div>
               <Badge color={statusColors[b.status]}>
-                {b.status === 'active' ? '活跃' : b.status === 'pending_verification' ? '待验证' : b.status}
+                {b.status === "active"
+                  ? "活跃"
+                  : b.status === "pending_verification"
+                    ? "待验证"
+                    : b.status}
               </Badge>
             </div>
           ))}
@@ -1551,8 +1859,12 @@ const BindingsTab: React.FC<{ bindings: any[]; emailId: number }> = ({ bindings,
         title="绑定平台"
         footer={
           <>
-            <Button variant="ghost" onClick={() => setShowBind(false)}>取消</Button>
-            <Button variant="primary" onClick={handleBind} disabled={!selPlatform}>绑定</Button>
+            <Button variant="ghost" onClick={() => setShowBind(false)}>
+              取消
+            </Button>
+            <Button variant="primary" onClick={handleBind} disabled={!selPlatform}>
+              绑定
+            </Button>
           </>
         }
       >
@@ -1566,78 +1878,84 @@ const BindingsTab: React.FC<{ bindings: any[]; emailId: number }> = ({ bindings,
             >
               <option value="">请选择...</option>
               {platforms.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
               ))}
             </select>
           </div>
         </div>
       </Modal>
     </div>
-  )
-}
+  );
+};
 
 // ========== 凭证导入 Modal ==========
 const AddEmailModal: React.FC<{
-  open: boolean
-  onClose: () => void
-  defaultGroupId: number | null
-  onPoolChanged?: () => void | Promise<void>
+  open: boolean;
+  onClose: () => void;
+  defaultGroupId: number | null;
+  onPoolChanged?: () => void | Promise<void>;
 }> = ({ open, onClose, defaultGroupId, onPoolChanged }) => {
-  const { refreshAccounts, refreshEmails, groups } = useApp()
-  const { toast } = useToast()
-  const [groupId, setGroupId] = useState<number | ''>('')
-  const [provider, setProvider] = useState('outlook')
-  const [credentialText, setCredentialText] = useState('')
-  const [addToPool, setAddToPool] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<AccountImportResult | null>(null)
+  const { refreshAccounts, refreshEmails, groups } = useApp();
+  const { toast } = useToast();
+  const [groupId, setGroupId] = useState<number | "">("");
+  const [provider, setProvider] = useState("outlook");
+  const [credentialText, setCredentialText] = useState("");
+  const [addToPool, setAddToPool] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<AccountImportResult | null>(null);
 
   useEffect(() => {
     if (open) {
-      setGroupId(defaultGroupId ?? '')
-      setResult(null)
+      setGroupId(defaultGroupId ?? "");
+      setResult(null);
     }
-  }, [open, defaultGroupId])
+  }, [open, defaultGroupId]);
 
   const reset = () => {
-    setGroupId('')
-    setProvider('outlook')
-    setCredentialText('')
-    setAddToPool(false)
-    setResult(null)
-  }
+    setGroupId("");
+    setProvider("outlook");
+    setCredentialText("");
+    setAddToPool(false);
+    setResult(null);
+  };
 
   const handleSave = async () => {
-    if (!credentialText.trim()) return
-    setLoading(true)
-    setResult(null)
+    if (!credentialText.trim()) return;
+    setLoading(true);
+    setResult(null);
     try {
       const res = await api.importEmailAccounts(credentialText, {
         provider,
         group_id: groupId || null,
         add_to_pool: addToPool,
-      })
-      await Promise.all([refreshAccounts(), refreshEmails(), addToPool ? onPoolChanged?.() : Promise.resolve()])
-      setResult(res)
-      if (res.imported > 0) toast(`成功导入 ${res.imported} 个账户`, 'success')
-      if (res.skipped > 0) toast(`跳过 ${res.skipped} 个重复账户`, 'info')
-      if (res.failed > 0) toast(`${res.failed} 个账户导入失败`, 'error')
+      });
+      await Promise.all([
+        refreshAccounts(),
+        refreshEmails(),
+        addToPool ? onPoolChanged?.() : Promise.resolve(),
+      ]);
+      setResult(res);
+      if (res.imported > 0) toast(`成功导入 ${res.imported} 个账户`, "success");
+      if (res.skipped > 0) toast(`跳过 ${res.skipped} 个重复账户`, "info");
+      if (res.failed > 0) toast(`${res.failed} 个账户导入失败`, "error");
       // 不清空表单，让用户可以查看结果后继续导入或关闭
     } catch (err: any) {
-      toast(err.message, 'error')
+      toast(err.message, "error");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const handleClose = () => {
-    reset()
-    onClose()
-  }
+    reset();
+    onClose();
+  };
 
-  const isOutlook = provider === 'outlook'
-  const hasResult = result !== null
-  const totalProcessed = (result?.imported ?? 0) + (result?.skipped ?? 0) + (result?.failed ?? 0)
+  const isOutlook = provider === "outlook";
+  const hasResult = result !== null;
+  const totalProcessed = (result?.imported ?? 0) + (result?.skipped ?? 0) + (result?.failed ?? 0);
 
   return (
     <Modal
@@ -1647,9 +1965,11 @@ const AddEmailModal: React.FC<{
       size="lg"
       footer={
         <>
-          <Button variant="ghost" onClick={handleClose}>{hasResult ? '关闭' : '取消'}</Button>
+          <Button variant="ghost" onClick={handleClose}>
+            {hasResult ? "关闭" : "取消"}
+          </Button>
           <Button variant="primary" onClick={handleSave} loading={loading} disabled={loading}>
-            {hasResult ? '继续导入' : '导入'}
+            {hasResult ? "继续导入" : "导入"}
           </Button>
         </>
       }
@@ -1660,20 +1980,28 @@ const AddEmailModal: React.FC<{
           <div className="rounded-lg border border-gh-border bg-gh-canvas-inset overflow-hidden">
             <div className="px-4 py-3 border-b border-gh-border bg-gh-canvas-subtle">
               <span className="text-sm font-semibold text-gh-text">导入结果</span>
-              <span className="text-xs text-gh-text-secondary ml-2">共处理 {totalProcessed} 个账户</span>
+              <span className="text-xs text-gh-text-secondary ml-2">
+                共处理 {totalProcessed} 个账户
+              </span>
             </div>
             <div className="px-4 py-3">
               <div className="grid grid-cols-3 gap-3 mb-3">
                 <div className="text-center p-2 rounded-md bg-gh-success/10 border border-gh-success/20">
-                  <div className="text-lg font-bold text-gh-success tabular-nums">{result.imported}</div>
+                  <div className="text-lg font-bold text-gh-success tabular-nums">
+                    {result.imported}
+                  </div>
                   <div className="text-[11px] text-gh-text-secondary">成功导入</div>
                 </div>
                 <div className="text-center p-2 rounded-md bg-gh-warning/10 border border-gh-warning/20">
-                  <div className="text-lg font-bold text-gh-warning tabular-nums">{result.skipped}</div>
+                  <div className="text-lg font-bold text-gh-warning tabular-nums">
+                    {result.skipped}
+                  </div>
                   <div className="text-[11px] text-gh-text-secondary">跳过（重复）</div>
                 </div>
                 <div className="text-center p-2 rounded-md bg-gh-danger/10 border border-gh-danger/20">
-                  <div className="text-lg font-bold text-gh-danger tabular-nums">{result.failed}</div>
+                  <div className="text-lg font-bold text-gh-danger tabular-nums">
+                    {result.failed}
+                  </div>
                   <div className="text-[11px] text-gh-text-secondary">失败</div>
                 </div>
               </div>
@@ -1681,11 +2009,15 @@ const AddEmailModal: React.FC<{
               {(result.errors?.length ?? 0) > 0 && (
                 <details className="mt-2">
                   <summary className="text-xs text-gh-text-muted cursor-pointer hover:text-gh-text">
-                    查看 {result.errors.length} 条错误详情（含 {result.errors_total ?? result.errors.length} 条）
+                    查看 {result.errors.length} 条错误详情（含{" "}
+                    {result.errors_total ?? result.errors.length} 条）
                   </summary>
                   <div className="mt-2 max-h-40 overflow-y-auto space-y-1">
                     {result.errors.map((err, i) => (
-                      <div key={i} className="text-xs font-mono px-2 py-1 rounded bg-gh-danger/5 border border-gh-danger/10">
+                      <div
+                        key={i}
+                        className="text-xs font-mono px-2 py-1 rounded bg-gh-danger/5 border border-gh-danger/10"
+                      >
                         <span className="text-gh-text-secondary">#{err.line}</span>
                         {err.email && <span className="text-gh-text-muted ml-2">{err.email}</span>}
                         <span className="text-gh-danger ml-2">{err.error}</span>
@@ -1708,12 +2040,14 @@ const AddEmailModal: React.FC<{
           <label className="text-xs font-medium text-gh-text-muted block mb-1.5">分组</label>
           <select
             value={groupId}
-            onChange={(e) => setGroupId(e.target.value ? Number(e.target.value) : '')}
+            onChange={(e) => setGroupId(e.target.value ? Number(e.target.value) : "")}
             className="w-full bg-gh-canvas-inset border border-gh-border rounded-md px-3 py-1.5 text-sm text-gh-text focus:outline-none focus:border-gh-accent"
           >
             <option value="">无分组</option>
             {groups.map((g) => (
-              <option key={g.id} value={g.id}>{g.name}</option>
+              <option key={g.id} value={g.id}>
+                {g.name}
+              </option>
             ))}
           </select>
         </div>
@@ -1748,14 +2082,14 @@ const AddEmailModal: React.FC<{
             className="w-full min-h-40 bg-gh-canvas-inset border border-gh-border rounded-md px-3 py-2 text-sm text-gh-text font-mono focus:outline-none focus:border-gh-accent"
             placeholder={
               isOutlook
-                ? '邮箱----密码----client_id----refresh_token'
-                : '邮箱----IMAP授权码/应用密码'
+                ? "邮箱----密码----client_id----refresh_token"
+                : "邮箱----IMAP授权码/应用密码"
             }
           />
           <p className="text-xs text-gh-text-secondary mt-1.5">
             {isOutlook
-              ? 'Outlook 格式：邮箱----密码----client_id----refresh_token'
-              : '格式：邮箱----IMAP授权码/应用密码'}
+              ? "Outlook 格式：邮箱----密码----client_id----refresh_token"
+              : "格式：邮箱----IMAP授权码/应用密码"}
           </p>
         </div>
 
@@ -1771,102 +2105,128 @@ const AddEmailModal: React.FC<{
         </label>
       </div>
     </Modal>
-  )
-}
+  );
+};
 
 // ========== 邮箱设置 Modal ==========
 const EmailSettingsModal: React.FC<{
-  emailId: number | null
-  onClose: () => void
-  onPoolChanged?: () => void | Promise<void>
+  emailId: number | null;
+  onClose: () => void;
+  onPoolChanged?: () => void | Promise<void>;
 }> = ({ emailId, onClose, onPoolChanged }) => {
-  const { emails, groups, tags, organizeEmail, addAlias, accounts, refreshAccounts, refreshEmails } = useApp()
-  const { toast } = useToast()
-  const email = emails.find((e) => e.id === emailId)
-  const account = (accounts || []).find((a) => a.id === email?.email_account_id)
-  const [activeTab, setActiveTab] = useState<'info' | 'credentials'>('info')
-  const [label, setLabel] = useState('')
-  const [groupId, setGroupId] = useState<number | ''>('')
-  const [tagIds, setTagIds] = useState<number[]>([])
-  const [newAlias, setNewAlias] = useState('')
-  const [loading, setLoading] = useState(false)
+  const {
+    emails,
+    groups,
+    tags,
+    organizeEmail,
+    addAlias,
+    accounts,
+    refreshAccounts,
+    refreshEmails,
+  } = useApp();
+  const { toast } = useToast();
+  const email = emails.find((e) => e.id === emailId);
+  const account = (accounts || []).find((a) => a.id === email?.email_account_id);
+  const [activeTab, setActiveTab] = useState<"info" | "credentials">("info");
+  const [label, setLabel] = useState("");
+  const [groupId, setGroupId] = useState<number | "">("");
+  const [tagIds, setTagIds] = useState<number[]>([]);
+  const [newTagName, setNewTagName] = useState("");
+  const [createdTags, setCreatedTags] = useState<Tag[]>([]);
+  const [creatingTag, setCreatingTag] = useState(false);
+  const [newAlias, setNewAlias] = useState("");
+  const [loading, setLoading] = useState(false);
   // Credential fields
-  const [credPwd, setCredPwd] = useState('')
-  const [showPwd, setShowPwd] = useState(false)
-  const [credCid, setCredCid] = useState('')
-  const [credRtk, setCredRtk] = useState('')
-  const [credStatus, setCredStatus] = useState('active')
-  const [credLoaded, setCredLoaded] = useState(false)
+  const [credPwd, setCredPwd] = useState("");
+  const [showPwd, setShowPwd] = useState(false);
+  const [credCid, setCredCid] = useState("");
+  const [credRtk, setCredRtk] = useState("");
+  const [credStatus, setCredStatus] = useState("active");
+  const [credLoaded, setCredLoaded] = useState(false);
   // Account remark (多行备注)
-  const [remark, setRemark] = useState('')
+  const [remark, setRemark] = useState("");
   // 邮箱池
-  const [inPool, setInPool] = useState(false)
-  const [initialInPool, setInitialInPool] = useState(false)
-  const [poolLoaded, setPoolLoaded] = useState(false)
+  const [inPool, setInPool] = useState(false);
+  const [initialInPool, setInitialInPool] = useState(false);
+  const [poolLoaded, setPoolLoaded] = useState(false);
   // 已有别名列表
-  const aliases = (account?.usable_emails || []).filter((u) => u.kind === 'alias')
+  const aliases = (account?.usable_emails || []).filter((u) => u.kind === "alias");
+  const availableTags = useMemo(() => {
+    const existingIds: Set<number> = new Set(tags.map((tag: Tag) => tag.id));
+    return [...tags, ...createdTags.filter((tag: Tag) => !existingIds.has(tag.id))];
+  }, [createdTags, tags]);
 
   useEffect(() => {
     if (email) {
-      setLabel(email.label || '')
-      setGroupId(email.group?.id || '')
-      setTagIds(email.tags?.map((t) => t.id) || [])
-      setCredLoaded(false)
-      setInPool(false)
-      setInitialInPool(false)
-      setPoolLoaded(false)
-      setShowPwd(false)
-      setRemark('')
+      setLabel(email.label || "");
+      setGroupId(email.group?.id || "");
+      setTagIds(email.tags?.map((t) => t.id) || []);
+      setCredLoaded(false);
+      setInPool(false);
+      setInitialInPool(false);
+      setPoolLoaded(false);
+      setShowPwd(false);
+      setRemark("");
+      setNewTagName("");
     }
-  }, [email])
+  }, [email]);
 
   // 加载凭证信息
   useEffect(() => {
     if (email?.email_account_id && !credLoaded) {
-      api.getEmailAccount(email.email_account_id).then((acc: any) => {
-        setCredPwd(acc.imap_password || '')
-        setCredCid(acc.client_id || '')
-        setCredRtk(acc.refresh_token || '')
-        setCredStatus(acc.status || 'active')
-        setRemark(acc.remark || '')
-        setCredLoaded(true)
-      }).catch(() => setCredLoaded(true))
+      api
+        .getEmailAccount(email.email_account_id)
+        .then((acc: any) => {
+          setCredPwd(acc.imap_password || "");
+          setCredCid(acc.client_id || "");
+          setCredRtk(acc.refresh_token || "");
+          setCredStatus(acc.status || "active");
+          setRemark(acc.remark || "");
+          setCredLoaded(true);
+        })
+        .catch(() => setCredLoaded(true));
     }
-  }, [email?.email_account_id, credLoaded])
+  }, [email?.email_account_id, credLoaded]);
 
   // 加载邮箱池状态
   useEffect(() => {
-    if (!email) return
-    let cancelled = false
-    const emailId = email.id
-    setPoolLoaded(false)
-    setInPool(false)
-    setInitialInPool(false)
-    api.listPoolEntries().then((entries: any) => {
-      if (cancelled) return
-      const currentInPool = getPoolEmailIdSet(entries).has(emailId)
-      setInPool(currentInPool)
-      setInitialInPool(currentInPool)
-    }).catch(() => {
-      if (!cancelled) {
-        setInPool(false)
-        setInitialInPool(false)
-      }
-    }).finally(() => {
-      if (!cancelled) setPoolLoaded(true)
-    })
-    return () => { cancelled = true }
-  }, [email?.id])
+    if (!email) return;
+    let cancelled = false;
+    const emailId = email.id;
+    setPoolLoaded(false);
+    setInPool(false);
+    setInitialInPool(false);
+    api
+      .listPoolEntries()
+      .then((entries: any) => {
+        if (cancelled) return;
+        const currentInPool = getPoolEmailIdSet(entries).has(emailId);
+        setInPool(currentInPool);
+        setInitialInPool(currentInPool);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setInPool(false);
+          setInitialInPool(false);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setPoolLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [email?.id]);
 
   const handleSave = async () => {
-    if (!email) return
-    setLoading(true)
+    if (!email) return;
+    setLoading(true);
     try {
       await organizeEmail(email.id, {
         label,
         group_id: groupId || null,
-        tag_ids: tagIds
-      })
+        tag_ids: tagIds,
+      });
       if (email.email_account_id) {
         await api.updateEmailAccount(email.email_account_id, {
           password: credPwd || null,
@@ -1875,47 +2235,70 @@ const EmailSettingsModal: React.FC<{
           group_id: groupId || null,
           status: credStatus,
           remark: remark || null,
-        })
+        });
       }
       if (inPool && !initialInPool && email.email_account_id) {
-        await api.addPoolEntry(email.id)
-        await onPoolChanged?.()
-        setInitialInPool(true)
+        await api.addPoolEntry(email.id);
+        await onPoolChanged?.();
+        setInitialInPool(true);
       } else if (!inPool && initialInPool && email.email_account_id) {
-        await api.removePoolEntry(email.id)
-        await onPoolChanged?.()
-        setInitialInPool(false)
+        await api.removePoolEntry(email.id);
+        await onPoolChanged?.();
+        setInitialInPool(false);
       }
-      toast('已保存', 'success')
-      refreshAccounts()
-      refreshEmails()
-      onClose()
+      toast("已保存", "success");
+      refreshAccounts();
+      refreshEmails();
+      onClose();
     } catch (err: any) {
-      toast(err.message, 'error')
+      toast(err.message, "error");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const handleAddAlias = async () => {
-    if (!email || !newAlias) return
-    const acc = (accounts || []).find((a) => a.id === email.email_account_id)
+    if (!email || !newAlias) return;
+    const acc = (accounts || []).find((a) => a.id === email.email_account_id);
     if (!acc) {
-      toast('该邮箱没有关联的账户', 'error')
-      return
+      toast("该邮箱没有关联的账户", "error");
+      return;
     }
     try {
-      await addAlias(acc.id, newAlias)
-      toast('别名已添加', 'success')
-      setNewAlias('')
-      refreshAccounts()
-      refreshEmails()
+      await addAlias(acc.id, newAlias);
+      toast("别名已添加", "success");
+      setNewAlias("");
+      refreshAccounts();
+      refreshEmails();
     } catch (err: any) {
-      toast(err.message, 'error')
+      toast(err.message, "error");
     }
-  }
+  };
 
-  const isOutlook = account?.provider === 'outlook'
+  const handleCreateTag = async (): Promise<void> => {
+    const name: string = newTagName.trim();
+    if (!name) return;
+    setCreatingTag(true);
+    try {
+      const tag = await api.createTag(name);
+      setCreatedTags((current: Tag[]) =>
+        current.some((item: Tag) => item.id === tag.id) ? current : [...current, tag],
+      );
+      setTagIds((current: number[]) => (current.includes(tag.id) ? current : [...current, tag.id]));
+      setNewTagName("");
+      toast("标签已创建", "success");
+    } catch (err: any) {
+      toast(err.message, "error");
+    } finally {
+      setCreatingTag(false);
+    }
+  };
+
+  const handleCopyAlias = (address: string): void => {
+    copyText(address, () => toast("已复制别名邮箱", "success"));
+  };
+
+  const isOutlook = account?.provider === "outlook";
 
   return (
     <Modal
@@ -1925,8 +2308,12 @@ const EmailSettingsModal: React.FC<{
       size="lg"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>取消</Button>
-          <Button variant="primary" onClick={handleSave} loading={loading}>保存</Button>
+          <Button variant="ghost" onClick={onClose}>
+            取消
+          </Button>
+          <Button variant="primary" onClick={handleSave} loading={loading}>
+            保存
+          </Button>
         </>
       }
     >
@@ -1936,29 +2323,29 @@ const EmailSettingsModal: React.FC<{
           <div className="flex border-b border-gh-border -mx-5 -mt-4 px-5">
             <button
               type="button"
-              onClick={() => setActiveTab('info')}
+              onClick={() => setActiveTab("info")}
               className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'info'
-                  ? 'border-gh-accent text-gh-accent'
-                  : 'border-transparent text-gh-text-muted hover:text-gh-text'
+                activeTab === "info"
+                  ? "border-gh-accent text-gh-accent"
+                  : "border-transparent text-gh-text-muted hover:text-gh-text"
               }`}
             >
               信息
             </button>
             <button
               type="button"
-              onClick={() => setActiveTab('credentials')}
+              onClick={() => setActiveTab("credentials")}
               className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'credentials'
-                  ? 'border-gh-accent text-gh-accent'
-                  : 'border-transparent text-gh-text-muted hover:text-gh-text'
+                activeTab === "credentials"
+                  ? "border-gh-accent text-gh-accent"
+                  : "border-transparent text-gh-text-muted hover:text-gh-text"
               }`}
             >
               凭证
             </button>
           </div>
 
-          {activeTab === 'info' && (
+          {activeTab === "info" && (
             <>
               {/* 邮箱地址（只读展示） */}
               <div className="px-3 py-2 rounded-md bg-gh-canvas-inset border border-gh-border">
@@ -1967,7 +2354,12 @@ const EmailSettingsModal: React.FC<{
               </div>
 
               {/* 备注名称 */}
-              <Input label="备注名称" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="例如：主邮箱" />
+              <Input
+                label="备注名称"
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder="例如：主邮箱"
+              />
 
               {/* 账号备注（多行） */}
               <div>
@@ -1987,21 +2379,21 @@ const EmailSettingsModal: React.FC<{
               <Select
                 label="分组"
                 value={groupId}
-                onChange={(v) => setGroupId(v ? Number(v) : '')}
+                onChange={(v) => setGroupId(v ? Number(v) : "")}
                 options={[
-                  { value: '', label: '无分组' },
-                  ...groups.map((g) => ({ value: g.id, label: g.name }))
+                  { value: "", label: "无分组" },
+                  ...groups.map((g) => ({ value: g.id, label: g.name })),
                 ]}
               />
 
               {/* 邮箱池 */}
               {email.email_account_id ? (
                 <Checkbox
-                  label={inPool ? '已加入邮箱池' : '加入邮箱池'}
+                  label={inPool ? "已加入邮箱池" : "加入邮箱池"}
                   checked={inPool}
                   onChange={setInPool}
                   disabled={!poolLoaded}
-                  title={poolLoaded ? undefined : '正在检测邮箱池状态…'}
+                  title={poolLoaded ? undefined : "正在检测邮箱池状态…"}
                 />
               ) : (
                 <div className="text-sm text-gh-text-secondary">无关联账户，不能加入邮箱池</div>
@@ -2010,9 +2402,7 @@ const EmailSettingsModal: React.FC<{
               {/* 别名邮箱 */}
               <div className="pt-3 border-t border-gh-border">
                 <div className="mb-1.5 flex items-center justify-between gap-2">
-                  <label className="text-xs font-medium text-gh-text-muted">
-                    别名邮箱
-                  </label>
+                  <label className="text-xs font-medium text-gh-text-muted">别名邮箱</label>
                   {isOutlook && (
                     <a
                       href={OUTLOOK_ALIAS_MANAGE_URL}
@@ -2028,13 +2418,16 @@ const EmailSettingsModal: React.FC<{
                 {aliases.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mb-2">
                     {aliases.map((a) => (
-                      <div
+                      <button
+                        type="button"
                         key={a.id}
-                        className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-gh-canvas-inset border border-gh-border text-xs text-gh-text-muted"
+                        onClick={() => handleCopyAlias(a.address)}
+                        className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-gh-canvas-inset border border-gh-border text-xs text-gh-text-muted hover:text-gh-accent hover:border-gh-accent/40 transition-colors"
+                        title="点击复制别名邮箱"
                       >
-                        <IconAt size={10} />
+                        <span className="text-gh-text-secondary">#</span>
                         <span className="font-mono">{a.address}</span>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 )}
@@ -2054,40 +2447,67 @@ const EmailSettingsModal: React.FC<{
               {/* 标签 */}
               <div>
                 <label className="text-xs font-medium text-gh-text-muted block mb-1.5">标签</label>
+                <div className="flex gap-2 mb-2">
+                  <Input
+                    value={newTagName}
+                    onChange={(e) => setNewTagName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleCreateTag();
+                      }
+                    }}
+                    placeholder="输入新标签名称"
+                    className="flex-1"
+                  />
+                  <Button
+                    variant="secondary"
+                    onClick={handleCreateTag}
+                    loading={creatingTag}
+                    disabled={!newTagName.trim()}
+                  >
+                    <IconPlus size={12} /> 新建
+                  </Button>
+                </div>
                 <div className="flex flex-wrap gap-1.5">
-                  {tags.map((t) => {
-                    const active = tagIds.includes(t.id)
-                    return (
-                      <button
-                        key={t.id}
-                        onClick={() =>
-                          setTagIds(active ? tagIds.filter((x) => x !== t.id) : [...tagIds, t.id])
-                        }
-                        className={`px-2.5 py-1 text-xs font-medium rounded-full border transition-all ${
-                          active
-                            ? 'border-transparent'
-                            : 'border-gh-border text-gh-text-muted hover:border-gh-text-muted'
-                        }`}
-                        style={
-                          active
-                            ? {
-                                background: t.color + '20',
-                                borderColor: t.color + '50',
-                                color: t.color
-                              }
-                            : undefined
-                        }
-                      >
-                        {active && '✓ '}{t.name}
-                      </button>
-                    )
-                  })}
+                  {availableTags.length === 0 ? (
+                    <div className="text-xs text-gh-text-secondary">暂无标签，输入名称后新建。</div>
+                  ) : (
+                    availableTags.map((t) => {
+                      const active = tagIds.includes(t.id);
+                      return (
+                        <button
+                          key={t.id}
+                          onClick={() =>
+                            setTagIds(active ? tagIds.filter((x) => x !== t.id) : [...tagIds, t.id])
+                          }
+                          className={`px-2.5 py-1 text-xs font-medium rounded-full border transition-all ${
+                            active
+                              ? "border-transparent"
+                              : "border-gh-border text-gh-text-muted hover:border-gh-text-muted"
+                          }`}
+                          style={
+                            active
+                              ? {
+                                  background: t.color + "20",
+                                  borderColor: t.color + "50",
+                                  color: t.color,
+                                }
+                              : undefined
+                          }
+                        >
+                          {active && <IconCheck size={11} className="mr-1 inline-block" />}
+                          {t.name}
+                        </button>
+                      );
+                    })
+                  )}
                 </div>
               </div>
             </>
           )}
 
-          {activeTab === 'credentials' && (
+          {activeTab === "credentials" && (
             <>
               {email.email_account_id ? (
                 <>
@@ -2097,8 +2517,8 @@ const EmailSettingsModal: React.FC<{
                     value={credStatus}
                     onChange={setCredStatus}
                     options={[
-                      { value: 'active', label: '正常' },
-                      { value: 'inactive', label: '停用' }
+                      { value: "active", label: "正常" },
+                      { value: "inactive", label: "停用" },
                     ]}
                   />
 
@@ -2111,29 +2531,47 @@ const EmailSettingsModal: React.FC<{
                       {/* 密码 - 带显隐切换 */}
                       <div className="flex flex-col gap-1.5">
                         <label className="text-xs font-medium text-gh-text-muted">
-                          {isOutlook ? '密码' : 'IMAP 授权码 / 应用密码'}
+                          {isOutlook ? "密码" : "IMAP 授权码 / 应用密码"}
                         </label>
                         <div className="relative">
                           <input
-                            type={showPwd ? 'text' : 'password'}
+                            type={showPwd ? "text" : "password"}
                             value={credPwd}
                             onChange={(e) => setCredPwd(e.target.value)}
-                            placeholder={isOutlook ? 'Outlook 密码' : 'IMAP 授权码或应用密码'}
+                            placeholder={isOutlook ? "Outlook 密码" : "IMAP 授权码或应用密码"}
                             className="w-full bg-gh-canvas-inset border border-gh-border rounded-md pl-3 pr-10 py-1.5 text-sm text-gh-text font-mono placeholder-gh-text-secondary focus:outline-none focus:border-gh-accent focus:ring-1 focus:ring-gh-accent/50 transition-colors"
                           />
                           <button
                             type="button"
                             onClick={() => setShowPwd(!showPwd)}
                             className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-gh-text-muted hover:text-gh-text transition-colors"
-                            title={showPwd ? '隐藏密码' : '显示密码'}
+                            title={showPwd ? "隐藏密码" : "显示密码"}
                           >
                             {showPwd ? (
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <svg
+                                width="16"
+                                height="16"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
                                 <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
                                 <line x1="1" y1="1" x2="23" y2="23" />
                               </svg>
                             ) : (
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <svg
+                                width="16"
+                                height="16"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
                                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                                 <circle cx="12" cy="12" r="3" />
                               </svg>
@@ -2165,7 +2603,6 @@ const EmailSettingsModal: React.FC<{
                       )}
                     </div>
                   </div>
-
                 </>
               ) : (
                 <div className="text-center py-8 text-gh-text-muted text-sm">
@@ -2177,66 +2614,46 @@ const EmailSettingsModal: React.FC<{
         </div>
       )}
     </Modal>
-  )
-}
+  );
+};
 
 // ========== SSE 进度条（增强版：实时成功/失败计数 + 最近账号列表 + 完成摘要） ==========
 const SSEProgressBar: React.FC<{
-  progress: SSERefreshEvent | null
-  running: boolean
-  onClose: () => void
+  progress: SSERefreshEvent | null;
+  running: boolean;
+  onClose: () => void;
 }> = ({ progress, running, onClose }) => {
-  const [recentItems, setRecentItems] = useState<Array<{ email: string; success: boolean }>>([])
-  const [showComplete, setShowComplete] = useState(false)
-  const completeTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [recentItems, setRecentItems] = useState<Array<{ email: string; success: boolean }>>([]);
 
   // Track per-account results in real-time
   useEffect(() => {
-    if (progress?.type === 'progress' && progress.email) {
+    if (progress?.type === "progress" && progress.email) {
       setRecentItems((prev) => {
-        const next = [{ email: progress.email!, success: !!progress.success }, ...prev]
-        return next.slice(0, 5) // keep last 5
-      })
+        const next = [{ email: progress.email!, success: !!progress.success }, ...prev];
+        return next.slice(0, 5); // keep last 5
+      });
     }
-    if (progress?.type === 'complete') {
-      setShowComplete(true)
-      // Auto-dismiss after 4 seconds
-      completeTimerRef.current = setTimeout(() => {
-        setShowComplete(false)
-        onClose()
-      }, 4000)
-    }
-    return () => {
-      if (completeTimerRef.current) clearTimeout(completeTimerRef.current)
-    }
-  }, [progress, onClose])
+  }, [progress]);
 
   // Reset on new run
   useEffect(() => {
     if (running) {
-      setRecentItems([])
-      setShowComplete(false)
+      setRecentItems([]);
     }
-  }, [running])
+  }, [running]);
 
-  if (!running && !showComplete) return null
+  if (!running) return null;
 
-  const current = progress?.current ?? 0
-  const total = progress?.total ?? 1
-  const pct = total > 0 ? Math.round((current / total) * 100) : 0
-  // complete 事件的 success/failed 是总数，progress 事件从 recentItems 累计
-  const isComplete = progress?.type === 'complete' || showComplete
-  const successCount: number = isComplete
-    ? (typeof progress?.success === 'number' ? progress.success : recentItems.filter((x) => x.success).length)
-    : recentItems.filter((x) => x.success).length
-  const failCount: number = isComplete
-    ? (typeof progress?.failed === 'number' ? progress.failed : recentItems.filter((x) => !x.success).length)
-    : recentItems.filter((x) => !x.success).length
+  const current = progress?.current ?? 0;
+  const total = progress?.total ?? 1;
+  const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+  const successCount: number = recentItems.filter((x) => x.success).length;
+  const failCount: number = recentItems.filter((x) => !x.success).length;
 
   return (
     <motion.div
       initial={{ opacity: 0, height: 0 }}
-      animate={{ opacity: 1, height: 'auto' }}
+      animate={{ opacity: 1, height: "auto" }}
       exit={{ opacity: 0, height: 0 }}
       className="border-b border-gh-border bg-gh-canvas-subtle overflow-hidden"
     >
@@ -2244,19 +2661,18 @@ const SSEProgressBar: React.FC<{
         {/* 头部：标题 + 计数 */}
         <div className="flex items-center justify-between mb-2.5">
           <div className="flex items-center gap-2.5">
-            {isComplete ? (
-              <svg className="h-4 w-4 text-gh-success" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
-              </svg>
-            ) : (
-              <svg className="animate-spin h-4 w-4 text-gh-accent" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
-                <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" fill="currentColor" />
-              </svg>
-            )}
-            <span className="text-sm font-semibold text-gh-text">
-              {isComplete ? '刷新完成' : '正在刷新 Token...'}
-            </span>
+            <svg className="animate-spin h-4 w-4 text-gh-accent" viewBox="0 0 24 24" fill="none">
+              <circle
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="3"
+                className="opacity-25"
+              />
+              <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" fill="currentColor" />
+            </svg>
+            <span className="text-sm font-semibold text-gh-text">正在刷新 Token...</span>
             {/* 实时成功/失败计数 */}
             <div className="flex items-center gap-2 text-xs font-mono">
               <span className="flex items-center gap-1 text-gh-success">
@@ -2275,18 +2691,16 @@ const SSEProgressBar: React.FC<{
 
           <div className="flex items-center gap-3">
             {/* 当前处理的邮箱 */}
-            {!isComplete && progress?.email && (
-              <span className="text-xs text-gh-text-secondary font-mono truncate max-w-56" title={progress.email}>
+            {progress?.email && (
+              <span
+                className="text-xs text-gh-text-secondary font-mono truncate max-w-56"
+                title={progress.email}
+              >
                 {progress.email}
               </span>
             )}
-            {isComplete && (
-              <span className="text-xs text-gh-text-secondary">
-                {failCount === 0 ? '全部成功 ✓' : `${failCount} 个失败`}
-              </span>
-            )}
             <button
-              onClick={() => { setShowComplete(false); onClose() }}
+              onClick={onClose}
               className="p-1 rounded-md text-gh-text-muted hover:text-gh-text hover:bg-gh-border/50 transition-colors"
             >
               <IconX size={14} />
@@ -2297,14 +2711,10 @@ const SSEProgressBar: React.FC<{
         {/* 进度条 */}
         <div className="h-1.5 bg-gh-canvas-inset rounded-full overflow-hidden mb-2">
           <motion.div
-            className={`h-full rounded-full transition-colors duration-500 ${
-              isComplete
-                ? failCount > 0 ? 'bg-gradient-to-r from-gh-success via-gh-warning to-gh-danger' : 'bg-gh-success'
-                : 'bg-gradient-to-r from-gh-accent to-gh-purple'
-            }`}
+            className="h-full rounded-full transition-colors duration-500 bg-gradient-to-r from-gh-accent to-gh-purple"
             initial={{ width: 0 }}
             animate={{ width: `${pct}%` }}
-            transition={{ type: 'spring', stiffness: 80, damping: 18 }}
+            transition={{ type: "spring", stiffness: 80, damping: 18 }}
           />
         </div>
 
@@ -2316,43 +2726,46 @@ const SSEProgressBar: React.FC<{
                 key={`${item.email}-${i}`}
                 className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-mono ${
                   item.success
-                    ? 'bg-gh-success/10 text-gh-success border border-gh-success/20'
-                    : 'bg-gh-danger/10 text-gh-danger border border-gh-danger/20'
+                    ? "bg-gh-success/10 text-gh-success border border-gh-success/20"
+                    : "bg-gh-danger/10 text-gh-danger border border-gh-danger/20"
                 }`}
                 title={item.email}
               >
-                <span className={`inline-block w-1 h-1 rounded-full ${item.success ? 'bg-gh-success' : 'bg-gh-danger'}`} />
-                {item.email.length > 28 ? item.email.slice(0, 28) + '…' : item.email}
+                <span
+                  className={`inline-block w-1 h-1 rounded-full ${item.success ? "bg-gh-success" : "bg-gh-danger"}`}
+                />
+                {item.email.length > 28 ? item.email.slice(0, 28) + "…" : item.email}
               </span>
             ))}
           </div>
         )}
       </div>
     </motion.div>
-  )
-}
+  );
+};
 
 // ========== 刷新确认弹窗 ==========
 interface RefreshPreviewItem {
-  id: number
-  email: string
-  provider?: string
-  status?: string
-  last_error?: string
+  id: number;
+  email: string;
+  provider?: string;
+  status?: string;
+  last_error?: string;
 }
 
 const RefreshConfirmModal: React.FC<{
-  open: boolean
-  mode: 'all' | 'failed'
-  accounts: RefreshPreviewItem[]
-  loading: boolean
-  onConfirm: () => void
-  onCancel: () => void
+  open: boolean;
+  mode: "all" | "failed";
+  accounts: RefreshPreviewItem[];
+  loading: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
 }> = ({ open, mode, accounts, loading, onConfirm, onCancel }) => {
-  const title = mode === 'all' ? '刷新全部账户' : '刷新失败账户'
-  const description = mode === 'all'
-    ? '以下活跃账户将被刷新 Token，此操作可能需要较长时间。'
-    : '以下上次刷新失败的账户将被重新刷新。'
+  const title = mode === "all" ? "刷新全部账户" : "刷新失败账户";
+  const description =
+    mode === "all"
+      ? "以下活跃账户将被刷新 Token，此操作可能需要较长时间。"
+      : "以下上次刷新失败的账户将被重新刷新。";
 
   return (
     <Modal
@@ -2362,8 +2775,15 @@ const RefreshConfirmModal: React.FC<{
       size="lg"
       footer={
         <>
-          <Button variant="ghost" onClick={onCancel} disabled={loading}>取消</Button>
-          <Button variant="primary" onClick={onConfirm} loading={loading} disabled={loading || accounts.length === 0}>
+          <Button variant="ghost" onClick={onCancel} disabled={loading}>
+            取消
+          </Button>
+          <Button
+            variant="primary"
+            onClick={onConfirm}
+            loading={loading}
+            disabled={loading || accounts.length === 0}
+          >
             确认刷新 ({accounts.length})
           </Button>
         </>
@@ -2375,7 +2795,14 @@ const RefreshConfirmModal: React.FC<{
         {loading ? (
           <div className="flex items-center justify-center py-8">
             <svg className="animate-spin h-6 w-6 text-gh-accent" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
+              <circle
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="3"
+                className="opacity-25"
+              />
               <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" fill="currentColor" />
             </svg>
             <span className="ml-2 text-sm text-gh-text-secondary">正在获取账户列表…</span>
@@ -2383,12 +2810,15 @@ const RefreshConfirmModal: React.FC<{
         ) : accounts.length === 0 ? (
           <div className="text-center py-8 text-gh-text-secondary text-sm">
             <IconMail size={32} className="mx-auto mb-2 opacity-30" />
-            {mode === 'all' ? '没有需要刷新的账户' : '没有刷新失败的账户'}
+            {mode === "all" ? "没有需要刷新的账户" : "没有刷新失败的账户"}
           </div>
         ) : (
           <>
             <div className="flex items-center gap-3 text-xs text-gh-text-secondary px-1">
-              <span>共 <span className="text-gh-text font-semibold">{accounts.length}</span> 个账户待刷新</span>
+              <span>
+                共 <span className="text-gh-text font-semibold">{accounts.length}</span>{" "}
+                个账户待刷新
+              </span>
             </div>
             <div className="max-h-64 overflow-y-auto border border-gh-border rounded-lg">
               <table className="w-full text-sm">
@@ -2396,19 +2826,24 @@ const RefreshConfirmModal: React.FC<{
                   <tr className="border-b border-gh-border text-left text-xs text-gh-text-muted">
                     <th className="px-3 py-2 font-medium">邮箱</th>
                     <th className="px-3 py-2 font-medium w-16">服务商</th>
-                    {mode === 'failed' && (
-                      <th className="px-3 py-2 font-medium">上次错误</th>
-                    )}
+                    {mode === "failed" && <th className="px-3 py-2 font-medium">上次错误</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {accounts.map((a) => (
                     <tr key={a.id} className="border-b border-gh-border/50 hover:bg-gh-border/20">
-                      <td className="px-3 py-2 font-mono text-xs text-gh-text truncate max-w-56">{a.email}</td>
-                      <td className="px-3 py-2 text-xs text-gh-text-secondary">{a.provider || '—'}</td>
-                      {mode === 'failed' && (
-                        <td className="px-3 py-2 text-xs text-gh-danger truncate max-w-48" title={a.last_error}>
-                          {a.last_error || '—'}
+                      <td className="px-3 py-2 font-mono text-xs text-gh-text truncate max-w-56">
+                        {a.email}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-gh-text-secondary">
+                        {a.provider || "—"}
+                      </td>
+                      {mode === "failed" && (
+                        <td
+                          className="px-3 py-2 text-xs text-gh-danger truncate max-w-48"
+                          title={a.last_error}
+                        >
+                          {a.last_error || "—"}
                         </td>
                       )}
                     </tr>
@@ -2420,245 +2855,256 @@ const RefreshConfirmModal: React.FC<{
         )}
       </div>
     </Modal>
-  )
-}
+  );
+};
 
 // ========== 主页面 ==========
 export const Accounts: React.FC = () => {
-  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null)
-  const [selectedEmail, setSelectedEmail] = useState<UsableEmail | null>(null)
-  const [selectedEmailIds, setSelectedEmailIds] = useState<Set<number>>(new Set())
-  const [poolEmailIds, setPoolEmailIds] = useState<Set<number>>(new Set())
-  const [bulkGroupOpen, setBulkGroupOpen] = useState(false)
-  const [bulkGroupId, setBulkGroupId] = useState<number | ''>('')
-  const [bulkLoading, setBulkLoading] = useState(false)
-  const [refreshProgress, setRefreshProgress] = useState<SSERefreshEvent | null>(null)
-  const [refreshRunning, setRefreshRunning] = useState(false)
-  const [refreshConfirm, setRefreshConfirm] = useState<'all' | 'failed' | null>(null)
-  const [refreshPreviewAccounts, setRefreshPreviewAccounts] = useState<RefreshPreviewItem[]>([])
-  const [refreshPreviewLoading, setRefreshPreviewLoading] = useState(false)
-  const { emails, accounts, groups, refreshAccounts, refreshEmails } = useApp()
-  const { toast } = useToast()
-  const refreshTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
+  const [selectedEmail, setSelectedEmail] = useState<UsableEmail | null>(null);
+  const [selectedEmailIds, setSelectedEmailIds] = useState<Set<number>>(new Set());
+  const [poolEmailIds, setPoolEmailIds] = useState<Set<number>>(new Set());
+  const [bulkGroupOpen, setBulkGroupOpen] = useState(false);
+  const [bulkGroupId, setBulkGroupId] = useState<number | "">("");
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [refreshProgress, setRefreshProgress] = useState<SSERefreshEvent | null>(null);
+  const [refreshRunning, setRefreshRunning] = useState(false);
+  const [refreshConfirm, setRefreshConfirm] = useState<"all" | "failed" | null>(null);
+  const [refreshPreviewAccounts, setRefreshPreviewAccounts] = useState<RefreshPreviewItem[]>([]);
+  const [refreshPreviewLoading, setRefreshPreviewLoading] = useState(false);
+  const { emails, accounts, groups, refreshAccounts, refreshEmails } = useApp();
+  const { toast } = useToast();
+  const refreshTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const selectedEmails = useMemo(
     () => emails.filter((email) => selectedEmailIds.has(email.id)),
-    [emails, selectedEmailIds]
-  )
+    [emails, selectedEmailIds],
+  );
 
   const selectedAccountIds = useMemo(
-    () => Array.from(new Set(
-      selectedEmails
-        .map((email) => email.email_account_id)
-        .filter((id): id is number => typeof id === 'number')
-    )),
-    [selectedEmails]
-  )
+    () =>
+      Array.from(
+        new Set(
+          selectedEmails
+            .map((email) => email.email_account_id)
+            .filter((id): id is number => typeof id === "number"),
+        ),
+      ),
+    [selectedEmails],
+  );
 
   const refreshPoolEmailIds = React.useCallback(async () => {
-    const entries = await api.listPoolEntries()
-    setPoolEmailIds(getPoolEmailIdSet(entries))
-  }, [])
+    const entries = await api.listPoolEntries();
+    setPoolEmailIds(getPoolEmailIdSet(entries));
+  }, []);
 
   useEffect(() => {
-    refreshPoolEmailIds().catch(() => setPoolEmailIds(new Set()))
-  }, [refreshPoolEmailIds])
+    refreshPoolEmailIds().catch(() => setPoolEmailIds(new Set()));
+  }, [refreshPoolEmailIds]);
 
   // 安全超时：防止 SSE 流异常时进度条永久卡住（兜底机制，正常由 complete 事件关闭）
   useEffect(() => {
     if (refreshRunning) {
-      refreshTimeoutRef.current = setTimeout(() => {
-        setRefreshRunning(false)
-        toast('刷新超时（服务器可能已断开），请重试', 'error')
-      }, 10 * 60 * 1000) // 10 分钟超时
+      refreshTimeoutRef.current = setTimeout(
+        () => {
+          setRefreshRunning(false);
+          toast("刷新超时（服务器可能已断开），请重试", "error");
+        },
+        10 * 60 * 1000,
+      ); // 10 分钟超时
     }
     return () => {
       if (refreshTimeoutRef.current) {
-        clearTimeout(refreshTimeoutRef.current)
-        refreshTimeoutRef.current = null
+        clearTimeout(refreshTimeoutRef.current);
+        refreshTimeoutRef.current = null;
       }
-    }
-  }, [refreshRunning, toast])
+    };
+  }, [refreshRunning, toast]);
 
   // 当选中的邮箱被删除时清空
   useEffect(() => {
     if (selectedEmail && !emails.find((e) => e.id === selectedEmail.id)) {
-      setSelectedEmail(null)
+      setSelectedEmail(null);
     }
-    const validEmailIds = new Set(emails.map((e) => e.id))
+    const validEmailIds = new Set(emails.map((e) => e.id));
     setSelectedEmailIds((prev) => {
-      const next = new Set(Array.from(prev).filter((id) => validEmailIds.has(id)))
-      return next.size === prev.size ? prev : next
-    })
-  }, [emails, selectedEmail])
+      const next = new Set(Array.from(prev).filter((id) => validEmailIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [emails, selectedEmail]);
 
   const toggleSelectEmail = (emailId: number): void => {
     setSelectedEmailIds((prev) => {
-      const next = new Set(prev)
+      const next = new Set(prev);
       if (next.has(emailId)) {
-        next.delete(emailId)
+        next.delete(emailId);
       } else {
-        next.add(emailId)
+        next.add(emailId);
       }
-      return next
-    })
-  }
+      return next;
+    });
+  };
 
   // 打开刷新确认弹窗并加载待刷新账户列表
-  const openRefreshConfirm = async (mode: 'all' | 'failed'): Promise<void> => {
-    setRefreshConfirm(mode)
-    setRefreshPreviewLoading(true)
-    setRefreshPreviewAccounts([])
+  const openRefreshConfirm = async (mode: "all" | "failed"): Promise<void> => {
+    setRefreshConfirm(mode);
+    setRefreshPreviewLoading(true);
+    setRefreshPreviewAccounts([]);
     try {
-      if (mode === 'all') {
-        const accts = await api.listEmailAccounts()
+      if (mode === "all") {
+        const accts = await api.listEmailAccounts();
         setRefreshPreviewAccounts(
           accts
-            .filter((a: any) => a.status === 'active')
+            .filter((a: any) => a.status === "active")
             .map((a: any) => ({
               id: a.id,
-              email: a.primary_address || a.display_name || '—',
+              email: a.primary_address || a.display_name || "—",
               provider: a.provider,
               status: a.status,
-            }))
-        )
+            })),
+        );
       } else {
         // 获取刷新失败的账户
-        const failedLogs = await api.getFailedRefreshLogs()
+        const failedLogs = await api.getFailedRefreshLogs();
         // 从 accounts 中匹配失败账户信息
-        const currentAccounts = accounts.length > 0 ? accounts : await api.listEmailAccounts()
-        const failedMap = new Map<string, string>() // email -> error_detail
+        const currentAccounts = accounts.length > 0 ? accounts : await api.listEmailAccounts();
+        const failedMap = new Map<string, string>(); // email -> error_detail
         failedLogs.logs?.forEach((log: any) => {
           if (log.email && !failedMap.has(log.email)) {
-            failedMap.set(log.email, log.error_detail || log.message || '')
+            failedMap.set(log.email, log.error_detail || log.message || "");
           }
-        })
+        });
         setRefreshPreviewAccounts(
           Array.from(failedMap.entries()).map(([email, error]) => {
-            const matched = currentAccounts.find((a: any) => a.primary_address === email)
+            const matched = currentAccounts.find((a: any) => a.primary_address === email);
             return {
               id: matched?.id ?? 0,
               email,
               provider: matched?.provider,
               last_error: error,
-            }
-          })
-        )
+            };
+          }),
+        );
       }
     } catch (err: any) {
-      toast(err.message, 'error')
-      setRefreshConfirm(null)
+      toast(err.message, "error");
+      setRefreshConfirm(null);
     } finally {
-      setRefreshPreviewLoading(false)
+      setRefreshPreviewLoading(false);
     }
-  }
+  };
 
   const handleBulkGroup = async (): Promise<void> => {
-    const ids = Array.from(selectedEmailIds)
-    if (ids.length === 0) return
-    setBulkLoading(true)
+    const ids = Array.from(selectedEmailIds);
+    if (ids.length === 0) return;
+    setBulkLoading(true);
     try {
-      await Promise.all(ids.map((id) => api.organizeUsableEmail(id, { group_id: bulkGroupId || null })))
-      await refreshEmails()
-      toast(`已更新 ${ids.length} 个邮箱的分组`, 'success')
-      setSelectedEmailIds(new Set())
-      setBulkGroupOpen(false)
+      await Promise.all(
+        ids.map((id) => api.organizeUsableEmail(id, { group_id: bulkGroupId || null })),
+      );
+      await refreshEmails();
+      toast(`已更新 ${ids.length} 个邮箱的分组`, "success");
+      setSelectedEmailIds(new Set());
+      setBulkGroupOpen(false);
     } catch (err: any) {
-      toast(err.message, 'error')
+      toast(err.message, "error");
     } finally {
-      setBulkLoading(false)
+      setBulkLoading(false);
     }
-  }
+  };
 
   const handleBulkAddToPool = async (): Promise<void> => {
-    if (selectedEmails.length === 0) return
-    setBulkLoading(true)
+    if (selectedEmails.length === 0) return;
+    setBulkLoading(true);
     try {
-      const currentPoolIds = poolEmailIds.size > 0
-        ? poolEmailIds
-        : getPoolEmailIdSet(await api.listPoolEntries())
+      const currentPoolIds =
+        poolEmailIds.size > 0 ? poolEmailIds : getPoolEmailIdSet(await api.listPoolEntries());
       const candidates = selectedEmails.filter(
-        (email) => !!email.email_account_id && !currentPoolIds.has(email.id)
-      )
+        (email) => !!email.email_account_id && !currentPoolIds.has(email.id),
+      );
       if (candidates.length === 0) {
-        toast('选中的邮箱都已在邮箱池，或没有关联账户', 'info')
-        return
+        toast("选中的邮箱都已在邮箱池，或没有关联账户", "info");
+        return;
       }
-      const results = await Promise.allSettled(candidates.map((email) => api.addPoolEntry(email.id)))
-      const success = results.filter((r) => r.status === 'fulfilled').length
-      const failed = results.length - success
-      await refreshPoolEmailIds()
+      const results = await Promise.allSettled(
+        candidates.map((email) => api.addPoolEntry(email.id)),
+      );
+      const success = results.filter((r) => r.status === "fulfilled").length;
+      const failed = results.length - success;
+      await refreshPoolEmailIds();
       if (success > 0) {
-        toast(`已加入邮箱池 ${success} 个邮箱`, failed > 0 ? 'info' : 'success')
-        setSelectedEmailIds(new Set())
+        toast(`已加入邮箱池 ${success} 个邮箱`, failed > 0 ? "info" : "success");
+        setSelectedEmailIds(new Set());
       }
-      if (failed > 0) toast(`${failed} 个邮箱加入失败或已存在`, 'error')
+      if (failed > 0) toast(`${failed} 个邮箱加入失败或已存在`, "error");
     } catch (err: any) {
-      toast(err.message, 'error')
+      toast(err.message, "error");
     } finally {
-      setBulkLoading(false)
+      setBulkLoading(false);
     }
-  }
+  };
 
   const doRefresh = async (): Promise<void> => {
-    const mode = refreshConfirm
-    setRefreshConfirm(null)
-    if (!mode) return
-    setRefreshRunning(true)
-    setRefreshProgress(null)
-    const url = mode === 'all' ? '/email-accounts/refresh-all' : '/email-accounts/refresh-failed'
+    const mode = refreshConfirm;
+    setRefreshConfirm(null);
+    if (!mode) return;
+    setRefreshRunning(true);
+    setRefreshProgress(null);
+    const url = mode === "all" ? "/email-accounts/refresh-all" : "/email-accounts/refresh-failed";
     try {
       await streamRefresh(url, undefined, (e: SSERefreshEvent) => {
-        setRefreshProgress(e)
-        if (e.type === 'complete') {
-          setRefreshRunning(false)
+        setRefreshProgress(e);
+        if (e.type === "complete") {
+          setRefreshRunning(false);
+          setRefreshProgress(null);
           toast(
             `刷新完成: 成功 ${e.success ?? 0}, 失败 ${e.failed ?? 0}`,
-            (e.failed ?? 0) > 0 ? 'error' : 'success'
-          )
-          refreshAccounts()
-          refreshEmails()
+            (e.failed ?? 0) > 0 ? "error" : "success",
+          );
+          refreshAccounts();
+          refreshEmails();
         }
-      })
+      });
     } catch (err: any) {
-      toast(err.message, 'error')
-      setRefreshRunning(false)
+      toast(err.message, "error");
+      setRefreshRunning(false);
     }
-  }
+  };
 
   const handleRefreshSelected = async (): Promise<void> => {
-    const ids = selectedAccountIds
-    if (ids.length === 0) return
-    setRefreshRunning(true)
-    setRefreshProgress(null)
+    const ids = selectedAccountIds;
+    if (ids.length === 0) return;
+    setRefreshRunning(true);
+    setRefreshProgress(null);
     try {
       await streamRefresh(
-        '/email-accounts/refresh/selected',
+        "/email-accounts/refresh/selected",
         { account_ids: ids },
         (e: SSERefreshEvent) => {
-          setRefreshProgress(e)
-          if (e.type === 'complete') {
-            setRefreshRunning(false)
+          setRefreshProgress(e);
+          if (e.type === "complete") {
+            setRefreshRunning(false);
+            setRefreshProgress(null);
             toast(
               `刷新完成: 成功 ${e.success ?? 0}, 失败 ${e.failed ?? 0}`,
-              (e.failed ?? 0) > 0 ? 'error' : 'success'
-            )
-            setSelectedEmailIds(new Set())
-            refreshAccounts()
-            refreshEmails()
+              (e.failed ?? 0) > 0 ? "error" : "success",
+            );
+            setSelectedEmailIds(new Set());
+            refreshAccounts();
+            refreshEmails();
           }
-        }
-      )
+        },
+      );
     } catch (err: any) {
-      toast(err.message, 'error')
-      setRefreshRunning(false)
+      toast(err.message, "error");
+      setRefreshRunning(false);
     }
-  }
+  };
 
   const handleRefreshAccountDone = (): void => {
-    refreshAccounts()
-    refreshEmails()
-  }
+    refreshAccounts();
+    refreshEmails();
+  };
 
   return (
     <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
@@ -2670,7 +3116,7 @@ export const Accounts: React.FC = () => {
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => openRefreshConfirm('all')}
+              onClick={() => openRefreshConfirm("all")}
               disabled={refreshRunning}
               title="查看并确认刷新全部活跃账户的 Token"
             >
@@ -2679,7 +3125,7 @@ export const Accounts: React.FC = () => {
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => openRefreshConfirm('failed')}
+              onClick={() => openRefreshConfirm("failed")}
               disabled={refreshRunning}
               title="查看并确认刷新上次失败的账户"
             >
@@ -2691,8 +3137,8 @@ export const Accounts: React.FC = () => {
                   variant="secondary"
                   size="sm"
                   onClick={() => {
-                    setBulkGroupId(selectedGroupId ?? '')
-                    setBulkGroupOpen(true)
+                    setBulkGroupId(selectedGroupId ?? "");
+                    setBulkGroupOpen(true);
                   }}
                   disabled={bulkLoading}
                 >
@@ -2725,12 +3171,15 @@ export const Accounts: React.FC = () => {
       <SSEProgressBar
         progress={refreshProgress}
         running={refreshRunning}
-        onClose={() => setRefreshRunning(false)}
+        onClose={() => {
+          setRefreshRunning(false);
+          setRefreshProgress(null);
+        }}
       />
 
       <RefreshConfirmModal
         open={refreshConfirm !== null}
-        mode={refreshConfirm ?? 'all'}
+        mode={refreshConfirm ?? "all"}
         accounts={refreshPreviewAccounts}
         loading={refreshPreviewLoading}
         onConfirm={doRefresh}
@@ -2743,8 +3192,15 @@ export const Accounts: React.FC = () => {
         title="批量分组"
         footer={
           <>
-            <Button variant="ghost" onClick={() => setBulkGroupOpen(false)} disabled={bulkLoading}>取消</Button>
-            <Button variant="primary" onClick={handleBulkGroup} loading={bulkLoading} disabled={selectedEmailIds.size === 0}>
+            <Button variant="ghost" onClick={() => setBulkGroupOpen(false)} disabled={bulkLoading}>
+              取消
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleBulkGroup}
+              loading={bulkLoading}
+              disabled={selectedEmailIds.size === 0}
+            >
               更新分组 ({selectedEmailIds.size})
             </Button>
           </>
@@ -2757,10 +3213,10 @@ export const Accounts: React.FC = () => {
           <Select
             label="目标分组"
             value={bulkGroupId}
-            onChange={(v) => setBulkGroupId(v ? Number(v) : '')}
+            onChange={(v) => setBulkGroupId(v ? Number(v) : "")}
             options={[
-              { value: '', label: '无分组' },
-              ...groups.map((g) => ({ value: g.id, label: g.name }))
+              { value: "", label: "无分组" },
+              ...groups.map((g) => ({ value: g.id, label: g.name })),
             ]}
           />
         </div>
@@ -2770,8 +3226,8 @@ export const Accounts: React.FC = () => {
         <GroupSidebar
           selectedGroupId={selectedGroupId}
           onSelect={(id) => {
-            setSelectedGroupId(id)
-            setSelectedEmail(null)
+            setSelectedGroupId(id);
+            setSelectedEmail(null);
           }}
         />
         <EmailList
@@ -2787,5 +3243,5 @@ export const Accounts: React.FC = () => {
         <EmailDetail email={selectedEmail} />
       </div>
     </div>
-  )
-}
+  );
+};

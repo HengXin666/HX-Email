@@ -1,98 +1,98 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Topbar } from '../components/layout'
-import { Button, Modal, Badge } from '../components/ui/Primitives'
-import { StatCard } from '../components/ui/StatCard'
-import { Pagination } from '../components/ui/Pagination'
-import { LoadingState, EmptyState } from '../components/ui/StateDisplay'
-import { useToast } from '../components/ui/Toast'
-import { usePagination } from '../hooks/usePagination'
+import { AnimatePresence, motion } from "framer-motion";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { api } from "../api/client";
 import {
-  IconMail,
-  IconCheck,
-  IconX,
-  IconClock,
-  IconRefresh,
-  IconAlertTriangle,
   IconActivity,
-  IconKey
-} from '../components/icons'
-import { api } from '../api/client'
-import { formatRelativeTime } from '../utils/time'
-import type { RefreshLog, RefreshStats, InvalidTokenCandidate } from '../types'
+  IconAlertTriangle,
+  IconCheck,
+  IconClock,
+  IconKey,
+  IconMail,
+  IconRefresh,
+  IconX,
+} from "../components/icons";
+import { Topbar } from "../components/layout";
+import { Pagination } from "../components/ui/Pagination";
+import { Badge, Button, Modal } from "../components/ui/Primitives";
+import { StatCard } from "../components/ui/StatCard";
+import { EmptyState, LoadingState } from "../components/ui/StateDisplay";
+import { useToast } from "../components/ui/Toast";
+import { usePagination } from "../hooks/usePagination";
+import type { InvalidTokenCandidate, RefreshLog, RefreshStats } from "../types";
+import { formatRelativeTime } from "../utils/time";
 
-const PAGE_SIZE = 20
+const PAGE_SIZE = 20;
 
 const STATUS_COLORS: Record<string, string> = {
-  success: '#3fb950',
-  failed: '#f85149',
-  pending: '#d29922'
-}
+  success: "#3fb950",
+  failed: "#f85149",
+  pending: "#d29922",
+};
 
 const STATUS_LABELS: Record<string, string> = {
-  success: '成功',
-  failed: '失败',
-  pending: '进行中'
-}
+  success: "成功",
+  failed: "失败",
+  pending: "进行中",
+};
 
 const STATUS_ICONS: Record<string, React.FC<{ size?: number }>> = {
   success: IconCheck,
   failed: IconX,
-  pending: IconClock
-}
+  pending: IconClock,
+};
 
 export const RefreshLogPage: React.FC = () => {
-  const { toast } = useToast()
-  const [logs, setLogs] = useState<RefreshLog[]>([])
-  const [total, setTotal] = useState(0)
-  const [stats, setStats] = useState<RefreshStats | null>(null)
-  const [candidates, setCandidates] = useState<InvalidTokenCandidate[]>([])
-  const [statusFilter, setStatusFilter] = useState<'all' | 'success' | 'failed'>('all')
-  const [loading, setLoading] = useState(true)
-  const [selectedLog, setSelectedLog] = useState<RefreshLog | null>(null)
-  const [showCandidates, setShowCandidates] = useState(false)
-  const [candidatesLoading, setCandidatesLoading] = useState(false)
+  const { toast } = useToast();
+  const [logs, setLogs] = useState<RefreshLog[]>([]);
+  const [total, setTotal] = useState(0);
+  const [stats, setStats] = useState<RefreshStats | null>(null);
+  const [candidates, setCandidates] = useState<InvalidTokenCandidate[]>([]);
+  const [statusFilter, setStatusFilter] = useState<"all" | "success" | "failed">("all");
+  const [loading, setLoading] = useState(true);
+  const [selectedLog, setSelectedLog] = useState<RefreshLog | null>(null);
+  const [showCandidates, setShowCandidates] = useState(false);
+  const [candidatesLoading, setCandidatesLoading] = useState(false);
 
-  const pagination = usePagination({ pageSize: PAGE_SIZE, total })
+  const pagination = usePagination({ pageSize: PAGE_SIZE, total });
 
   const loadLogs = useCallback(async () => {
-    setLoading(true)
+    setLoading(true);
     try {
       const [logRes, statsRes] = await Promise.all([
         api.getRefreshLogs(PAGE_SIZE, pagination.offset),
-        api.getRefreshStats()
-      ])
-      setLogs(logRes.logs)
-      setTotal(logRes.total)
-      setStats(statsRes)
+        api.getRefreshStats(),
+      ]);
+      setLogs(logRes.logs);
+      setTotal(logRes.total);
+      setStats(statsRes);
     } catch (err: unknown) {
-      toast((err as { message?: string }).message || '加载失败', 'error')
+      toast((err as { message?: string }).message || "加载失败", "error");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [pagination.offset, toast])
+  }, [pagination.offset, toast]);
 
   useEffect(() => {
-    loadLogs()
-  }, [loadLogs])
+    loadLogs();
+  }, [loadLogs]);
 
   const handleLoadCandidates = async () => {
-    setShowCandidates(true)
-    setCandidatesLoading(true)
+    setShowCandidates(true);
+    setCandidatesLoading(true);
     try {
-      const res = await api.getInvalidTokenCandidates(200, 0)
-      setCandidates(res.candidates)
+      const res = await api.getInvalidTokenCandidates(200, 0);
+      setCandidates(res.candidates);
     } catch (err: unknown) {
-      toast((err as { message?: string }).message || '加载失败', 'error')
+      toast((err as { message?: string }).message || "加载失败", "error");
     } finally {
-      setCandidatesLoading(false)
+      setCandidatesLoading(false);
     }
-  }
+  };
 
   const filteredLogs = useMemo(() => {
-    if (statusFilter === 'all') return logs
-    return logs.filter((l) => l.status === statusFilter)
-  }, [logs, statusFilter])
+    if (statusFilter === "all") return logs;
+    return logs.filter((l) => l.status === statusFilter);
+  }, [logs, statusFilter]);
 
   return (
     <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
@@ -120,18 +120,8 @@ export const RefreshLogPage: React.FC = () => {
               icon={IconActivity}
               color="#58a6ff"
             />
-            <StatCard
-              label="成功"
-              value={stats?.success ?? 0}
-              icon={IconCheck}
-              color="#3fb950"
-            />
-            <StatCard
-              label="失败"
-              value={stats?.failed ?? 0}
-              icon={IconX}
-              color="#f85149"
-            />
+            <StatCard label="成功" value={stats?.success ?? 0} icon={IconCheck} color="#3fb950" />
+            <StatCard label="失败" value={stats?.failed ?? 0} icon={IconX} color="#f85149" />
             <StatCard
               label="疑似失效 Token"
               value={stats?.pending ?? 0}
@@ -143,20 +133,20 @@ export const RefreshLogPage: React.FC = () => {
           {/* Filter Bar */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5 bg-gh-canvas-subtle border border-gh-border rounded-lg p-1">
-              {(['all', 'success', 'failed'] as const).map((f) => (
+              {(["all", "success", "failed"] as const).map((f) => (
                 <button
                   key={f}
                   onClick={() => {
-                    setStatusFilter(f)
-                    pagination.reset()
+                    setStatusFilter(f);
+                    pagination.reset();
                   }}
                   className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
                     statusFilter === f
-                      ? 'bg-gh-canvas-inset text-gh-text shadow-sm'
-                      : 'text-gh-text-muted hover:text-gh-text'
+                      ? "bg-gh-canvas-inset text-gh-text shadow-sm"
+                      : "text-gh-text-muted hover:text-gh-text"
                   }`}
                 >
-                  {f === 'all' ? '全部' : f === 'success' ? '成功' : '失败'}
+                  {f === "all" ? "全部" : f === "success" ? "成功" : "失败"}
                 </button>
               ))}
             </div>
@@ -183,8 +173,8 @@ export const RefreshLogPage: React.FC = () => {
                   <EmptyState message="暂无刷新记录" />
                 ) : (
                   filteredLogs.map((log, i) => {
-                    const StatusIcon = STATUS_ICONS[log.status] || IconClock
-                    const color = STATUS_COLORS[log.status] || '#6e7681'
+                    const StatusIcon = STATUS_ICONS[log.status] || IconClock;
+                    const color = STATUS_COLORS[log.status] || "#6e7681";
                     return (
                       <motion.div
                         key={log.id}
@@ -192,12 +182,12 @@ export const RefreshLogPage: React.FC = () => {
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: i * 0.02 }}
                         onClick={() => {
-                          if (log.status === 'failed' && log.error_detail) {
-                            setSelectedLog(log)
+                          if (log.status === "failed" && log.error_detail) {
+                            setSelectedLog(log);
                           }
                         }}
                         className={`flex items-center px-4 py-3 text-sm hover:bg-gh-border/20 transition-colors ${
-                          log.status === 'failed' && log.error_detail ? 'cursor-pointer' : ''
+                          log.status === "failed" && log.error_detail ? "cursor-pointer" : ""
                         }`}
                       >
                         <div className="w-8 shrink-0 text-gh-text-secondary text-xs tabular-nums">
@@ -217,7 +207,7 @@ export const RefreshLogPage: React.FC = () => {
                         </div>
                         <div className="flex-1 min-w-0 hidden md:block">
                           <span className="text-gh-text-secondary text-xs truncate block">
-                            {log.message || '—'}
+                            {log.message || "—"}
                           </span>
                         </div>
                         <div className="w-32 shrink-0 text-right hidden sm:block">
@@ -227,7 +217,7 @@ export const RefreshLogPage: React.FC = () => {
                           </span>
                         </div>
                       </motion.div>
-                    )
+                    );
                   })
                 )}
               </AnimatePresence>
@@ -246,11 +236,7 @@ export const RefreshLogPage: React.FC = () => {
       </div>
 
       {/* Error Detail Modal */}
-      <Modal
-        open={!!selectedLog}
-        onClose={() => setSelectedLog(null)}
-        title="刷新失败详情"
-      >
+      <Modal open={!!selectedLog} onClose={() => setSelectedLog(null)} title="刷新失败详情">
         {selectedLog && (
           <div className="space-y-3">
             <div className="rounded-md border border-gh-border bg-gh-canvas-inset p-3">
@@ -259,7 +245,7 @@ export const RefreshLogPage: React.FC = () => {
             </div>
             <div className="rounded-md border border-gh-border bg-gh-canvas-inset p-3">
               <div className="text-xs text-gh-text-secondary mb-1">失败原因</div>
-              <div className="text-sm text-gh-text">{selectedLog.message || '未知错误'}</div>
+              <div className="text-sm text-gh-text">{selectedLog.message || "未知错误"}</div>
             </div>
             {selectedLog.error_detail && (
               <div className="rounded-md border border-gh-danger/30 bg-gh-danger/5 p-3">
@@ -305,9 +291,7 @@ export const RefreshLogPage: React.FC = () => {
                     <IconKey size={14} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-gh-text font-mono">
-                      {c.email}
-                    </div>
+                    <div className="text-sm font-medium text-gh-text font-mono">{c.email}</div>
                     <div className="text-xs text-gh-text-secondary mt-0.5">
                       Account ID: {c.account_id}
                     </div>
@@ -328,5 +312,5 @@ export const RefreshLogPage: React.FC = () => {
         </div>
       </Modal>
     </div>
-  )
-}
+  );
+};

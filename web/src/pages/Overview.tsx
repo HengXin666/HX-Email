@@ -1,64 +1,63 @@
-import React, { useEffect, useState, useCallback } from 'react'
-import { motion } from 'framer-motion'
-import { Topbar } from '../components/layout'
-import { useApp } from '../store/AppContext'
-import { Badge } from '../components/ui/Primitives'
-import { StatCard } from '../components/ui/StatCard'
-import { useToast } from '../components/ui/Toast'
+import { motion } from "framer-motion";
+import React, { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { api } from "../api/client";
 import {
-  IconMail,
-  IconUser,
-  IconServer,
+  IconActivity,
+  IconChevronRight,
   IconClock,
   IconDatabase,
-  IconActivity,
+  IconMail,
+  IconRefresh,
+  IconServer,
   IconShield,
+  IconUser,
   IconZap,
-  IconChevronRight,
-  IconRefresh
-} from '../components/icons'
-import { useNavigate } from 'react-router-dom'
-import { api } from '../api/client'
-import type { VerificationStats, PoolStats, ActivityStats } from '../types'
+} from "../components/icons";
+import { Topbar } from "../components/layout";
+import { Badge } from "../components/ui/Primitives";
+import { StatCard } from "../components/ui/StatCard";
+import { useToast } from "../components/ui/Toast";
+import { useApp } from "../store/AppContext";
+import type { ActivityStats, PoolStats, VerificationStats } from "../types";
 
 export const Overview: React.FC = () => {
-  const { overview, emails, groups, platforms, refreshOverview } = useApp()
-  const navigate = useNavigate()
-  const { toast } = useToast()
-  const [verificationStats, setVerificationStats] =
-    useState<VerificationStats | null>(null)
-  const [poolStats, setPoolStats] = useState<PoolStats | null>(null)
-  const [activityStats, setActivityStats] = useState<ActivityStats | null>(null)
-  const [statsLoading, setStatsLoading] = useState(false)
+  const { overview, emails, groups, platforms, refreshOverview } = useApp();
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const [verificationStats, setVerificationStats] = useState<VerificationStats | null>(null);
+  const [poolStats, setPoolStats] = useState<PoolStats | null>(null);
+  const [activityStats, setActivityStats] = useState<ActivityStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
 
   useEffect(() => {
-    refreshOverview()
-  }, [refreshOverview])
+    refreshOverview();
+  }, [refreshOverview]);
 
   const loadExtraStats = useCallback(async () => {
-    setStatsLoading(true)
+    setStatsLoading(true);
     try {
       const [vRes, pRes, aRes] = await Promise.all([
         api.getVerificationStats(),
         api.getPoolStats(),
-        api.getActivityStats()
-      ])
-      setVerificationStats(vRes)
-      setPoolStats(pRes)
-      setActivityStats(aRes)
+        api.getActivityStats(),
+      ]);
+      setVerificationStats(vRes);
+      setPoolStats(pRes);
+      setActivityStats(aRes);
     } catch (err: unknown) {
-      toast((err as { message?: string }).message || '加载失败', 'error')
+      toast((err as { message?: string }).message || "加载失败", "error");
     } finally {
-      setStatsLoading(false)
+      setStatsLoading(false);
     }
-  }, [toast])
+  }, [toast]);
 
   useEffect(() => {
-    loadExtraStats()
-  }, [loadExtraStats])
+    loadExtraStats();
+  }, [loadExtraStats]);
 
-  const recentEmails = emails.slice(0, 5)
-  const topPlatforms = platforms.slice(0, 5)
+  const recentEmails = emails.slice(0, 5);
+  const topPlatforms = platforms.slice(0, 5);
 
   return (
     <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
@@ -78,21 +77,21 @@ export const Overview: React.FC = () => {
               icon={IconMail}
               color="#58a6ff"
               trend="↑ 活跃"
-              onClick={() => navigate('/accounts')}
+              onClick={() => navigate("/accounts")}
             />
             <StatCard
               label="邮箱账户"
               value={overview?.account_count ?? 0}
               icon={IconUser}
               color="#a371f7"
-              onClick={() => navigate('/accounts')}
+              onClick={() => navigate("/accounts")}
             />
             <StatCard
               label="平台"
               value={overview?.platform_count ?? 0}
               icon={IconServer}
               color="#3fb950"
-              onClick={() => navigate('/platforms')}
+              onClick={() => navigate("/platforms")}
             />
             <StatCard
               label="绑定关系"
@@ -105,7 +104,7 @@ export const Overview: React.FC = () => {
               value={overview?.temp_email_count ?? 0}
               icon={IconClock}
               color="#f0883e"
-              onClick={() => navigate('/temp-mail')}
+              onClick={() => navigate("/temp-mail")}
             />
             <StatCard
               label="邮箱池·可用"
@@ -134,7 +133,7 @@ export const Overview: React.FC = () => {
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-gh-text">最近更新的邮箱</h3>
                 <button
-                  onClick={() => navigate('/accounts')}
+                  onClick={() => navigate("/accounts")}
                   className="text-xs text-gh-accent hover:underline inline-flex items-center gap-0.5"
                 >
                   查看全部 <IconChevronRight size={12} />
@@ -152,8 +151,8 @@ export const Overview: React.FC = () => {
                     <div
                       className="w-8 h-8 rounded-md flex items-center justify-center text-xs font-semibold shrink-0"
                       style={{
-                        background: (e.group?.color || '#58a6ff') + '20',
-                        color: e.group?.color || '#58a6ff'
+                        background: (e.group?.color || "#58a6ff") + "20",
+                        color: e.group?.color || "#58a6ff",
                       }}
                     >
                       {e.address.slice(0, 1).toUpperCase()}
@@ -161,7 +160,7 @@ export const Overview: React.FC = () => {
                     <div className="flex-1 min-w-0">
                       <div className="text-sm text-gh-text truncate">{e.address}</div>
                       <div className="text-xs text-gh-text-secondary truncate">
-                        {e.label || '—'} · {e.updated_at}
+                        {e.label || "—"} · {e.updated_at}
                       </div>
                     </div>
                   </motion.div>
@@ -174,7 +173,7 @@ export const Overview: React.FC = () => {
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-gh-text">平台分布</h3>
                 <button
-                  onClick={() => navigate('/platforms')}
+                  onClick={() => navigate("/platforms")}
                   className="text-xs text-gh-accent hover:underline inline-flex items-center gap-0.5"
                 >
                   管理 <IconChevronRight size={12} />
@@ -182,8 +181,8 @@ export const Overview: React.FC = () => {
               </div>
               <div className="space-y-2">
                 {topPlatforms.map((p, i) => {
-                  const max = Math.max(...topPlatforms.map((x) => x.binding_count || 0), 1)
-                  const pct = ((p.binding_count || 0) / max) * 100
+                  const max = Math.max(...topPlatforms.map((x) => x.binding_count || 0), 1);
+                  const pct = ((p.binding_count || 0) / max) * 100;
                   return (
                     <motion.div
                       key={p.id}
@@ -206,7 +205,7 @@ export const Overview: React.FC = () => {
                         />
                       </div>
                     </motion.div>
-                  )
+                  );
                 })}
               </div>
             </div>
@@ -223,7 +222,7 @@ export const Overview: React.FC = () => {
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: i * 0.05 }}
                   whileHover={{ y: -2 }}
-                  onClick={() => navigate('/accounts')}
+                  onClick={() => navigate("/accounts")}
                   className="cursor-pointer rounded-lg border border-gh-border bg-gh-canvas-inset p-3 hover:border-gh-text-muted transition-all"
                 >
                   <div className="flex items-center gap-2 mb-2">
@@ -231,16 +230,12 @@ export const Overview: React.FC = () => {
                       className="w-2.5 h-2.5 rounded-full"
                       style={{
                         background: g.color,
-                        boxShadow: `0 0 8px ${g.color}`
+                        boxShadow: `0 0 8px ${g.color}`,
                       }}
                     />
-                    <span className="text-sm text-gh-text truncate">
-                      {g.name}
-                    </span>
+                    <span className="text-sm text-gh-text truncate">{g.name}</span>
                   </div>
-                  <div className="text-2xl font-bold text-gh-text tabular-nums">
-                    {g.count || 0}
-                  </div>
+                  <div className="text-2xl font-bold text-gh-text tabular-nums">{g.count || 0}</div>
                   <div className="text-xs text-gh-text-secondary">个邮箱</div>
                 </motion.div>
               ))}
@@ -263,15 +258,11 @@ export const Overview: React.FC = () => {
               </button>
             </div>
             {statsLoading ? (
-              <div className="text-center py-6 text-gh-text-secondary text-sm">
-                加载中...
-              </div>
+              <div className="text-center py-6 text-gh-text-secondary text-sm">加载中...</div>
             ) : verificationStats ? (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="text-center p-3 rounded-lg bg-gh-canvas-inset border border-gh-border">
-                  <div className="text-xs text-gh-text-muted mb-1">
-                    总提取次数
-                  </div>
+                  <div className="text-xs text-gh-text-muted mb-1">总提取次数</div>
                   <div className="text-xl font-bold text-gh-text tabular-nums">
                     {verificationStats.total_extractions}
                   </div>
@@ -281,36 +272,27 @@ export const Overview: React.FC = () => {
                   <div
                     className="text-xl font-bold tabular-nums"
                     style={{
-                      color:
-                        verificationStats.success_rate >= 80
-                          ? '#3fb950'
-                          : '#d29922'
+                      color: verificationStats.success_rate >= 80 ? "#3fb950" : "#d29922",
                     }}
                   >
                     {verificationStats.success_rate}%
                   </div>
                 </div>
                 <div className="text-center p-3 rounded-lg bg-gh-canvas-inset border border-gh-border">
-                  <div className="text-xs text-gh-text-muted mb-1">
-                    AI 回退次数
-                  </div>
+                  <div className="text-xs text-gh-text-muted mb-1">AI 回退次数</div>
                   <div className="text-xl font-bold text-gh-text tabular-nums">
                     {verificationStats.ai_fallback_count}
                   </div>
                 </div>
                 <div className="text-center p-3 rounded-lg bg-gh-canvas-inset border border-gh-border">
-                  <div className="text-xs text-gh-text-muted mb-1">
-                    今日提取
-                  </div>
+                  <div className="text-xs text-gh-text-muted mb-1">今日提取</div>
                   <div className="text-xl font-bold text-gh-text tabular-nums">
                     {verificationStats.today_extractions}
                   </div>
                 </div>
               </div>
             ) : (
-              <div className="text-center py-6 text-gh-text-secondary text-sm">
-                暂无数据
-              </div>
+              <div className="text-center py-6 text-gh-text-secondary text-sm">暂无数据</div>
             )}
           </div>
 
@@ -321,45 +303,35 @@ export const Overview: React.FC = () => {
               号池分布
             </h3>
             {statsLoading ? (
-              <div className="text-center py-6 text-gh-text-secondary text-sm">
-                加载中...
-              </div>
+              <div className="text-center py-6 text-gh-text-secondary text-sm">加载中...</div>
             ) : poolStats ? (
               <div className="space-y-2">
                 {[
-                  { label: '可用', value: poolStats.available, color: '#3fb950' },
-                  { label: '已领取', value: poolStats.claimed, color: '#58a6ff' },
+                  { label: "可用", value: poolStats.available, color: "#3fb950" },
+                  { label: "已领取", value: poolStats.claimed, color: "#58a6ff" },
                   {
-                    label: '已完成',
+                    label: "已完成",
                     value: poolStats.completed,
-                    color: '#a371f7'
+                    color: "#a371f7",
                   },
-                  { label: '冷却中', value: poolStats.cooling, color: '#d29922' },
-                  { label: '已冻结', value: poolStats.frozen, color: '#f0883e' },
-                  { label: '已退役', value: poolStats.retired, color: '#6e7681' }
+                  { label: "冷却中", value: poolStats.cooling, color: "#d29922" },
+                  { label: "已冻结", value: poolStats.frozen, color: "#f0883e" },
+                  { label: "已退役", value: poolStats.retired, color: "#6e7681" },
                 ].map((item) => {
                   const maxVal: number = Math.max(
-                    ...Object.values(poolStats).filter(
-                      (v): v is number => typeof v === 'number'
-                    ),
-                    1
-                  )
-                  const pct: number = (item.value / maxVal) * 100
+                    ...Object.values(poolStats).filter((v): v is number => typeof v === "number"),
+                    1,
+                  );
+                  const pct: number = (item.value / maxVal) * 100;
                   return (
-                    <motion.div
-                      key={item.label}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                    >
+                    <motion.div key={item.label} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                       <div className="flex items-center justify-between mb-1">
                         <div className="flex items-center gap-1.5">
                           <div
                             className="w-2 h-2 rounded-full"
                             style={{ background: item.color }}
                           />
-                          <span className="text-sm text-gh-text">
-                            {item.label}
-                          </span>
+                          <span className="text-sm text-gh-text">{item.label}</span>
                         </div>
                         <span className="text-xs text-gh-text-muted tabular-nums">
                           {item.value}
@@ -375,7 +347,7 @@ export const Overview: React.FC = () => {
                         />
                       </div>
                     </motion.div>
-                  )
+                  );
                 })}
                 <div className="pt-2 mt-2 border-t border-gh-border flex justify-between">
                   <span className="text-xs text-gh-text-muted">总计</span>
@@ -385,9 +357,7 @@ export const Overview: React.FC = () => {
                 </div>
               </div>
             ) : (
-              <div className="text-center py-6 text-gh-text-secondary text-sm">
-                暂无数据
-              </div>
+              <div className="text-center py-6 text-gh-text-secondary text-sm">暂无数据</div>
             )}
           </div>
 
@@ -398,20 +368,18 @@ export const Overview: React.FC = () => {
               近期活动
             </h3>
             {statsLoading ? (
-              <div className="text-center py-6 text-gh-text-secondary text-sm">
-                加载中...
-              </div>
+              <div className="text-center py-6 text-gh-text-secondary text-sm">加载中...</div>
             ) : activityStats ? (
               <div>
                 <div className="flex items-center gap-4 mb-3 text-xs text-gh-text-secondary">
                   <span>
-                    今日操作:{' '}
+                    今日操作:{" "}
                     <span className="text-gh-text font-semibold">
                       {activityStats.today_actions}
                     </span>
                   </span>
                   <span>
-                    总计:{' '}
+                    总计:{" "}
                     <span className="text-gh-text font-semibold">
                       {activityStats.total_actions}
                     </span>
@@ -421,19 +389,18 @@ export const Overview: React.FC = () => {
                   <div className="space-y-1.5">
                     {activityStats.recent_actions.map((item) => {
                       const actionColors: Record<string, string> = {
-                        create: '#3fb950',
-                        update: '#58a6ff',
-                        delete: '#f85149',
-                        claim: '#58a6ff',
-                        release: '#d29922',
-                        complete: '#3fb950',
-                        freeze: '#f0883e',
-                        unfreeze: '#3fb950',
-                        retire: '#6e7681',
-                        login: '#a371f7'
-                      }
-                      const color: string =
-                        actionColors[item.action] || '#6e7681'
+                        create: "#3fb950",
+                        update: "#58a6ff",
+                        delete: "#f85149",
+                        claim: "#58a6ff",
+                        release: "#d29922",
+                        complete: "#3fb950",
+                        freeze: "#f0883e",
+                        unfreeze: "#3fb950",
+                        retire: "#6e7681",
+                        login: "#a371f7",
+                      };
+                      const color: string = actionColors[item.action] || "#6e7681";
                       return (
                         <div
                           key={item.action}
@@ -446,23 +413,19 @@ export const Overview: React.FC = () => {
                             {item.count} 次
                           </span>
                         </div>
-                      )
+                      );
                     })}
                   </div>
                 ) : (
-                  <div className="text-center py-6 text-gh-text-secondary text-sm">
-                    暂无活动
-                  </div>
+                  <div className="text-center py-6 text-gh-text-secondary text-sm">暂无活动</div>
                 )}
               </div>
             ) : (
-              <div className="text-center py-6 text-gh-text-secondary text-sm">
-                暂无数据
-              </div>
+              <div className="text-center py-6 text-gh-text-secondary text-sm">暂无数据</div>
             )}
           </div>
         </motion.div>
       </div>
     </div>
-  )
-}
+  );
+};

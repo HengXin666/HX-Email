@@ -1,2 +1,2 @@
-export { formatRelativeTime, formatDateTime, formatDateTimeFull } from './time'
-export { copyToClipboard } from './clipboard'
+export { copyToClipboard } from "./clipboard";
+export { formatDateTime, formatDateTimeFull, formatRelativeTime } from "./time";

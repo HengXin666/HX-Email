@@ -1,63 +1,63 @@
-import React, { useState, useMemo } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Topbar } from '../components/layout'
-import { useApp } from '../store/AppContext'
-import { useToast } from '../components/ui/Toast'
-import { Button, Modal, Input, Badge, Card } from '../components/ui/Primitives'
+import { AnimatePresence, motion } from "framer-motion";
+import React, { useMemo, useState } from "react";
+import { api } from "../api/client";
 import {
-  IconPlus,
-  IconClock,
-  IconMail,
-  IconCopy,
-  IconCheck,
   IconArchive,
-  IconRefresh,
+  IconCheck,
+  IconClock,
+  IconCopy,
   IconKey,
-  IconLink
-} from '../components/icons'
-import { api } from '../api/client'
-import type { TempMessage } from '../types'
+  IconLink,
+  IconMail,
+  IconPlus,
+  IconRefresh,
+} from "../components/icons";
+import { Topbar } from "../components/layout";
+import { Badge, Button, Card, Input, Modal } from "../components/ui/Primitives";
+import { useToast } from "../components/ui/Toast";
+import { useApp } from "../store/AppContext";
+import type { TempMessage } from "../types";
 
 export const TempMail: React.FC = () => {
-  const { emails, createTempMail, refreshEmails } = useApp()
-  const { toast } = useToast()
-  const [selectedId, setSelectedId] = useState<number | null>(null)
-  const [showCreate, setShowCreate] = useState(false)
-  const [newLabel, setNewLabel] = useState('')
-  const [loading, setLoading] = useState(false)
+  const { emails, createTempMail, refreshEmails } = useApp();
+  const { toast } = useToast();
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [newLabel, setNewLabel] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const temps = useMemo(
-    () => emails.filter((e) => e.kind === 'temp' && e.status !== 'archived'),
-    [emails]
-  )
-  const selected = temps.find((e) => e.id === selectedId)
+    () => emails.filter((e) => e.kind === "temp" && e.status !== "archived"),
+    [emails],
+  );
+  const selected = temps.find((e) => e.id === selectedId);
 
   const handleCreate = async () => {
-    setLoading(true)
+    setLoading(true);
     try {
-      const e = await createTempMail(newLabel || '临时邮箱')
-      toast('临时邮箱已创建', 'success')
-      setNewLabel('')
-      setShowCreate(false)
-      setSelectedId(e.id)
+      const e = await createTempMail(newLabel || "临时邮箱");
+      toast("临时邮箱已创建", "success");
+      setNewLabel("");
+      setShowCreate(false);
+      setSelectedId(e.id);
     } catch (err: any) {
-      toast(err.message, 'error')
+      toast(err.message, "error");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const handleArchive = async (id: number) => {
-    if (!confirm('确定归档该临时邮箱？')) return
+    if (!confirm("确定归档该临时邮箱？")) return;
     try {
-      await api.archiveTempMail(id)
-      await refreshEmails()
-      toast('已归档', 'success')
-      if (selectedId === id) setSelectedId(null)
+      await api.archiveTempMail(id);
+      await refreshEmails();
+      toast("已归档", "success");
+      if (selectedId === id) setSelectedId(null);
     } catch (err: any) {
-      toast(err.message, 'error')
+      toast(err.message, "error");
     }
-  }
+  };
 
   return (
     <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
@@ -82,7 +82,11 @@ export const TempMail: React.FC = () => {
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
             <AnimatePresence>
               {temps.map((e) => (
-                <motion.div key={e.id} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}>
+                <motion.div
+                  key={e.id}
+                  initial={{ opacity: 0, y: 5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                >
                   <Card
                     selected={selectedId === e.id}
                     onClick={() => setSelectedId(e.id)}
@@ -103,8 +107,8 @@ export const TempMail: React.FC = () => {
                       <span className="text-[11px] text-gh-text-secondary">{e.updated_at}</span>
                       <button
                         onClick={(ev) => {
-                          ev.stopPropagation()
-                          handleArchive(e.id)
+                          ev.stopPropagation();
+                          handleArchive(e.id);
                         }}
                         className="p-1 rounded-md text-gh-text-muted hover:text-gh-danger hover:bg-gh-danger/10 transition-colors"
                         title="归档"
@@ -117,9 +121,7 @@ export const TempMail: React.FC = () => {
               ))}
             </AnimatePresence>
             {temps.length === 0 && (
-              <div className="text-center py-12 text-sm text-gh-text-secondary">
-                暂无临时邮箱
-              </div>
+              <div className="text-center py-12 text-sm text-gh-text-secondary">暂无临时邮箱</div>
             )}
           </div>
         </div>
@@ -134,7 +136,12 @@ export const TempMail: React.FC = () => {
               </div>
             </div>
           ) : (
-            <TempDetail key={selected.id} emailId={selected.id} address={selected.address} label={selected.label} />
+            <TempDetail
+              key={selected.id}
+              emailId={selected.id}
+              address={selected.address}
+              label={selected.label}
+            />
           )}
         </div>
       </div>
@@ -145,8 +152,12 @@ export const TempMail: React.FC = () => {
         title="创建临时邮箱"
         footer={
           <>
-            <Button variant="ghost" onClick={() => setShowCreate(false)}>取消</Button>
-            <Button variant="primary" onClick={handleCreate} loading={loading}>创建</Button>
+            <Button variant="ghost" onClick={() => setShowCreate(false)}>
+              取消
+            </Button>
+            <Button variant="primary" onClick={handleCreate} loading={loading}>
+              创建
+            </Button>
           </>
         }
       >
@@ -164,52 +175,52 @@ export const TempMail: React.FC = () => {
         </div>
       </Modal>
     </div>
-  )
-}
+  );
+};
 
 const TempDetail: React.FC<{ emailId: number; address: string; label: string }> = ({
   emailId,
   address,
-  label
+  label,
 }) => {
-  const { toast } = useToast()
-  const [messages, setMessages] = useState<TempMessage[]>([])
-  const [codes, setCodes] = useState<Array<{ message_id: string; code: string }>>([])
-  const [links, setLinks] = useState<Array<{ message_id: string; url: string }>>([])
-  const [loading, setLoading] = useState(false)
-  const [copied, setCopied] = useState(false)
+  const { toast } = useToast();
+  const [messages, setMessages] = useState<TempMessage[]>([]);
+  const [codes, setCodes] = useState<Array<{ message_id: string; code: string }>>([]);
+  const [links, setLinks] = useState<Array<{ message_id: string; url: string }>>([]);
+  const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const load = async () => {
-    setLoading(true)
+    setLoading(true);
     try {
       const [m, c, l] = await Promise.all([
         api.tempMessages(emailId),
         api.tempCodes(emailId),
-        api.tempLinks(emailId)
-      ])
-      setMessages(m)
-      setCodes(c)
-      setLinks(l)
+        api.tempLinks(emailId),
+      ]);
+      setMessages(m);
+      setCodes(c);
+      setLinks(l);
     } catch (err: any) {
-      toast(err.message, 'error')
+      toast(err.message, "error");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   React.useEffect(() => {
-    load()
-    const interval = setInterval(load, 15000)
-    return () => clearInterval(interval)
+    load();
+    const interval = setInterval(load, 15000);
+    return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [emailId])
+  }, [emailId]);
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(address)
-    setCopied(true)
-    toast('已复制邮箱地址', 'success')
-    setTimeout(() => setCopied(false), 1500)
-  }
+    navigator.clipboard.writeText(address);
+    setCopied(true);
+    toast("已复制邮箱地址", "success");
+    setTimeout(() => setCopied(false), 1500);
+  };
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col h-full">
@@ -226,7 +237,11 @@ const TempDetail: React.FC<{ emailId: number; address: string; label: string }> 
                 onClick={handleCopy}
                 className="p-1 rounded text-gh-text-muted hover:text-gh-accent hover:bg-gh-accent/10 transition-colors"
               >
-                {copied ? <IconCheck size={13} className="text-gh-success" /> : <IconCopy size={13} />}
+                {copied ? (
+                  <IconCheck size={13} className="text-gh-success" />
+                ) : (
+                  <IconCopy size={13} />
+                )}
               </button>
             </div>
           </div>
@@ -269,8 +284,8 @@ const TempDetail: React.FC<{ emailId: number; address: string; label: string }> 
                 <button
                   key={c.message_id}
                   onClick={() => {
-                    navigator.clipboard.writeText(c.code)
-                    toast('已复制', 'success')
+                    navigator.clipboard.writeText(c.code);
+                    toast("已复制", "success");
                   }}
                   className="px-4 py-3 rounded-lg border border-gh-border bg-gradient-to-br from-gh-success/5 to-gh-canvas-subtle hover:border-gh-success/50 transition-all text-left pulse-ring"
                 >
@@ -331,5 +346,5 @@ const TempDetail: React.FC<{ emailId: number; address: string; label: string }> 
         </div>
       </div>
     </motion.div>
-  )
-}
+  );
+};

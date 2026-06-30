@@ -1,39 +1,40 @@
 // Re-export all types from domain-specific modules (backward-compatible barrel)
-export type { User, AuthResponse } from './types/auth'
-export type { Group, Tag } from './types/group'
+
 export type {
+  AccountImportResult,
+  EmailAccount,
+  TokenConfig,
+  TokenExchangeResult,
+  TokenPrepareResult,
+} from "./types/account";
+export type { AuditLogEntry } from "./types/audit";
+export type { AuthResponse, User } from "./types/auth";
+export type { Pagination } from "./types/common";
+export type {
+  PaginatedEmails,
+  UsableEmail,
   UsableEmailKind,
   UsableEmailStatus,
-  UsableEmail,
   WorkbenchEmail,
-  PaginatedEmails
-} from './types/email'
-export type { Platform, BindingStatus, PlatformBinding } from './types/platform'
+} from "./types/email";
+export type { Group, Tag } from "./types/group";
+export type { TempMessage, VerificationMatch } from "./types/message";
 export type {
-  EmailAccount,
-  AccountImportResult,
-  TokenConfig,
-  TokenPrepareResult,
-  TokenExchangeResult
-} from './types/account'
-export type {
-  MailPoolStatus,
-  MailPoolEntry,
-  PoolAdminAccount,
-  PoolStats
-} from './types/pool'
-export type { TempMessage, VerificationMatch } from './types/message'
-export type {
+  ActivityStats,
   Overview,
   OverviewSummary,
   VerificationStats,
-  ActivityStats
-} from './types/overview'
+} from "./types/overview";
+export type { BindingStatus, Platform, PlatformBinding } from "./types/platform";
 export type {
-  RefreshLog,
+  MailPoolEntry,
+  MailPoolStatus,
+  PoolAdminAccount,
+  PoolStats,
+} from "./types/pool";
+export type {
   InvalidTokenCandidate,
+  RefreshLog,
   RefreshStats,
-  SSERefreshEvent
-} from './types/refresh'
-export type { AuditLogEntry } from './types/audit'
-export type { Pagination } from './types/common'
+  SSERefreshEvent,
+} from "./types/refresh";

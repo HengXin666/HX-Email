@@ -1,12 +1,12 @@
-import React from 'react'
-import ReactDOM from 'react-dom/client'
-import { BrowserRouter } from 'react-router-dom'
-import App from './App'
-import { AppProvider } from './store/AppContext'
-import { ToastProvider } from './components/ui/Toast'
-import './index.css'
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { BrowserRouter } from "react-router-dom";
+import App from "./App";
+import { ToastProvider } from "./components/ui/Toast";
+import { AppProvider } from "./store/AppContext";
+import "./index.css";
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
+ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <BrowserRouter>
       <AppProvider>
@@ -15,5 +15,5 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         </ToastProvider>
       </AppProvider>
     </BrowserRouter>
-  </React.StrictMode>
-)
+  </React.StrictMode>,
+);

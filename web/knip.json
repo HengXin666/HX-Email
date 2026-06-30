@@ -1,0 +1,32 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": ["src/**/*.test.ts", "src/**/*.test.tsx"],
+  "project": ["src/**/*.{ts,tsx}"],
+  "ignoreFiles": [
+    "src/api/endpoints/index.ts",
+    "src/components/ui/index.ts",
+    "src/hooks/index.ts",
+    "src/hooks/useAsync.ts",
+    "src/hooks/useCopyToClipboard.ts",
+    "src/types/index.ts",
+    "src/utils/clipboard.ts",
+    "src/utils/index.ts"
+  ],
+  "ignoreDependencies": [
+    "@biomejs/biome",
+    "class-variance-authority",
+    "clsx",
+    "lucide-react",
+    "prettier",
+    "tailwind-merge"
+  ],
+  "ignoreIssues": {
+    "src/api/core.ts": ["exports"],
+    "src/components/icons.tsx": ["exports"],
+    "src/components/ui/StateDisplay.tsx": ["exports"],
+    "src/types.ts": ["types"],
+    "src/types/email.ts": ["types"],
+    "src/types/platform.ts": ["types"],
+    "src/types/pool.ts": ["types"]
+  }
+}

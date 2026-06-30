@@ -1,0 +1,22 @@
+# lefthook.yml - git hooks team gate
+
+pre-commit:
+  parallel: true
+  commands:
+    python:
+      glob: "*.{py,toml}"
+      run: uv run pre-commit run --files {staged_files}
+      stage_fixed: true
+    biome:
+      glob: "web/**/*.{ts,tsx,js,jsx,json}"
+      run: bash -c 'cd web && files=("${@/#web\//}") && node_modules/.bin/biome check --write --no-errors-on-unmatched "${files[@]}"' -- {staged_files}
+      stage_fixed: true
+    prettier:
+      glob: "*.{md,yml,yaml}"
+      run: web/node_modules/.bin/prettier --write --ignore-unknown {staged_files}
+      stage_fixed: true
+
+pre-push:
+  commands:
+    verify:
+      run: bash scripts/verify.sh

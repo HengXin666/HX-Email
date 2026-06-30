@@ -1,0 +1,12 @@
+{
+  "skill": "hx-init",
+  "languages": ["python", "react"],
+  "mode": "modify",
+  "pythonTypeChecker": "mypy",
+  "installed": {
+    "sharedHooks": ["strip_emoji.sh", "clean_chars.sh"],
+    "pythonHooks": ["format_py.sh", "verify_py.sh"],
+    "reactHooks": ["format_react.sh", "verify_react.sh"],
+    "reactConfig": ["web/biome.json", "web/knip.json", "lefthook.yml"]
+  }
+}
