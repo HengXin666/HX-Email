@@ -17,6 +17,7 @@ from hx_email.server.mail.graph.graph_helpers import (
     parse_graph_message,
     try_get_graph_token,
 )
+from hx_email.server.mail.imap.impl.proxy import load_group_proxy
 
 logger = logging.getLogger(__name__)
 
@@ -61,12 +62,13 @@ class GraphMailProvider:
         client_id, refresh_token = self._extract_credentials(row)
         if not client_id or not refresh_token:
             return GraphReadResult([], False)
+        proxy_url = load_group_proxy(self._settings, email_account.id)
         try:
-            access_token, _tenant = try_get_graph_token(client_id, refresh_token)
+            access_token, _tenant = try_get_graph_token(client_id, refresh_token, proxy_url)
         except RuntimeError as exc:
             logger.warning("Graph token failed for account %d: %s", email_account.id, exc)
             return GraphReadResult([], False)
-        return self._graph_list_messages(access_token, email_account, folder, top)
+        return self._graph_list_messages(access_token, email_account, folder, top, proxy_url)
 
     def read_message_detail(
         self,
@@ -80,12 +82,13 @@ class GraphMailProvider:
         client_id, refresh_token = self._extract_credentials(row)
         if not client_id or not refresh_token:
             return None
+        proxy_url = load_group_proxy(self._settings, email_account.id)
         try:
-            access_token, _tenant = try_get_graph_token(client_id, refresh_token)
+            access_token, _tenant = try_get_graph_token(client_id, refresh_token, proxy_url)
         except RuntimeError as exc:
             logger.warning("Graph token failed for account %d: %s", email_account.id, exc)
             return None
-        return self._graph_get_message(access_token, email_account, message_id)
+        return self._graph_get_message(access_token, email_account, message_id, proxy_url)
 
     # ── internal ────────────────────────────────────────────────────────
 
@@ -107,6 +110,7 @@ class GraphMailProvider:
         account: EmailAccountMailbox,
         folder: str,
         top: int,
+        proxy_url: str = "",
     ) -> GraphReadResult:
         """Call Graph API to list messages in a folder."""
         folder_path = resolve_graph_folder(folder)
@@ -120,7 +124,7 @@ class GraphMailProvider:
         )
         url: str = f"{_GRAPH_BASE_URL}/me/mailFolders/{folder_path}/messages?{query}"
         try:
-            data = graph_get(url, access_token)
+            data = graph_get(url, access_token, proxy_url=proxy_url)
         except Exception as exc:
             logger.warning("Graph list messages failed for account %d: %s", account.id, exc)
             return GraphReadResult([], False)
@@ -138,11 +142,12 @@ class GraphMailProvider:
         access_token: str,
         account: EmailAccountMailbox,
         message_id: str,
+        proxy_url: str = "",
     ) -> MailboxMessage | None:
         """Call Graph API to get a single message by ID."""
         url = f"{_GRAPH_BASE_URL}/me/messages/{message_id}"
         try:
-            data = graph_get(url, access_token)
+            data = graph_get(url, access_token, proxy_url=proxy_url)
         except Exception as exc:
             logger.warning(
                 "Graph get message %s failed for account %d: %s",
@@ -181,6 +186,7 @@ def graph_list_message_ids(
     account: EmailAccountMailbox,
     folder: str,
     top: int = 50,
+    proxy_url: str = "",
 ) -> list[str]:
     """List message IDs (lightweight — only fetches ids) via Graph API."""
     folder_path = resolve_graph_folder(folder)
@@ -194,7 +200,7 @@ def graph_list_message_ids(
     )
     url: str = f"{_GRAPH_BASE_URL}/me/mailFolders/{folder_path}/messages?{query}"
     try:
-        data = graph_get(url, access_token)
+        data = graph_get(url, access_token, proxy_url=proxy_url)
     except Exception:
         return []
 

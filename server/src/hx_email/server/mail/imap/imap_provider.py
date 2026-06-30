@@ -60,6 +60,16 @@ class IMAPMailboxProvider:
     ) -> list[MailboxMessage]:
         return self._fetch_messages(email_account, folder=folder, skip=skip, top=top)
 
+    def read_messages_folder(
+        self,
+        email_account: EmailAccountMailbox,
+        *,
+        folder: str,
+        top: int,
+        skip: int = 0,
+    ) -> list[MailboxMessage]:
+        return self.read_messages(email_account, folder=folder, skip=skip, top=top)
+
     def _fetch_messages(
         self, account: EmailAccountMailbox, *, folder: str = "inbox", skip: int = 0, top: int = 50
     ) -> list[MailboxMessage]:

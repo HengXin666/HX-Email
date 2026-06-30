@@ -76,9 +76,11 @@ def refresh_single_account(
     with connect(settings) as connection:
         row = connection.execute(
             """
-            SELECT id, primary_address, client_id, refresh_token, status
-            FROM email_accounts
-            WHERE id = ?
+            SELECT ea.id, ea.primary_address, ea.client_id, ea.refresh_token, ea.status,
+                   g.proxy_url
+            FROM email_accounts ea
+            LEFT JOIN groups g ON g.id = ea.group_id
+            WHERE ea.id = ?
             """,
             (account_id,),
         ).fetchone()
@@ -87,6 +89,7 @@ def refresh_single_account(
     email: str = row["primary_address"]
     client_id_v: str = row["client_id"] or ""
     refresh_token_val: str = row["refresh_token"] or ""
+    proxy_url: str = row["proxy_url"] or ""
     account_status: str = row["status"] or "inactive"
     if account_status != "active":
         _insert_refresh_log(
@@ -120,7 +123,7 @@ def refresh_single_account(
             "email": email,
             "message": "Missing OAuth credentials",
         }
-    result = try_refresh_oauth_token(client_id_v, refresh_token_val)
+    result = try_refresh_oauth_token(client_id_v, refresh_token_val, proxy_url=proxy_url)
     log_status = "success" if result["success"] else "failed"
     _insert_refresh_log(
         settings,
@@ -147,11 +150,11 @@ def _fetch_active_accounts(
     with connect(settings) as connection:
         rows = connection.execute(
             """
-            SELECT id, primary_address, client_id, refresh_token
-            FROM email_accounts
-            WHERE status = 'active'
-              AND refresh_token != ''
-            ORDER BY id
+            SELECT ea.id, ea.primary_address, ea.client_id, ea.refresh_token, g.proxy_url
+            FROM email_accounts ea
+            LEFT JOIN groups g ON g.id = ea.group_id
+            WHERE ea.status = 'active' AND ea.refresh_token != ''
+            ORDER BY ea.id
             """
         ).fetchall()
     return [
@@ -160,6 +163,7 @@ def _fetch_active_accounts(
             "email": row["primary_address"],
             "client_id": row["client_id"],
             "refresh_token": row["refresh_token"],
+            "proxy_url": row["proxy_url"] or "",
         }
         for row in rows
     ]
@@ -181,7 +185,8 @@ def _refresh_account_batch(
         started_at = _now_iso()
         cid: str = str(account.get("client_id", ""))
         rt: str = str(account.get("refresh_token", ""))
-        result = try_refresh_oauth_token(cid, rt)
+        proxy_url: str = str(account.get("proxy_url", ""))
+        result = try_refresh_oauth_token(cid, rt, proxy_url=proxy_url)
         log_status = "success" if result["success"] else "failed"
         _insert_refresh_log(
             settings,
@@ -231,12 +236,13 @@ def refresh_selected_accounts(
         placeholders = ",".join("?" for _ in account_ids)
         rows = connection.execute(
             f"""
-            SELECT id, primary_address, client_id, refresh_token
-            FROM email_accounts
-            WHERE id IN ({placeholders})
-              AND status = 'active'
-              AND refresh_token != ''
-            ORDER BY id
+            SELECT ea.id, ea.primary_address, ea.client_id, ea.refresh_token, g.proxy_url
+            FROM email_accounts ea
+            LEFT JOIN groups g ON g.id = ea.group_id
+            WHERE ea.id IN ({placeholders})
+              AND ea.status = 'active'
+              AND ea.refresh_token != ''
+            ORDER BY ea.id
             """,
             tuple(account_ids),
         ).fetchall()
@@ -246,6 +252,7 @@ def refresh_selected_accounts(
             "email": row["primary_address"],
             "client_id": row["client_id"],
             "refresh_token": row["refresh_token"],
+            "proxy_url": row["proxy_url"] or "",
         }
         for row in rows
     ]
@@ -260,8 +267,9 @@ def refresh_failed_accounts(
     with connect(settings) as connection:
         rows = connection.execute(
             """
-            SELECT ea.id, ea.primary_address, ea.client_id, ea.refresh_token
+            SELECT ea.id, ea.primary_address, ea.client_id, ea.refresh_token, g.proxy_url
             FROM email_accounts ea
+            LEFT JOIN groups g ON g.id = ea.group_id
             INNER JOIN (
                 SELECT account_id, MAX(id) AS max_id
                 FROM refresh_logs
@@ -280,6 +288,7 @@ def refresh_failed_accounts(
             "email": row["primary_address"],
             "client_id": row["client_id"],
             "refresh_token": row["refresh_token"],
+            "proxy_url": row["proxy_url"] or "",
         }
         for row in rows
     ]

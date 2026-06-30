@@ -8,6 +8,8 @@ from threading import Lock
 from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request, urlopen
 
+import requests
+
 
 @dataclass(frozen=True)
 class OAuthConfig:
@@ -176,15 +178,12 @@ def try_refresh_oauth_token(
     refresh_token: str,
     tenant: str = "consumers",
     timeout: int = 15,
+    proxy_url: str = "",
 ) -> dict[str, object]:
     """Attempt to refresh a Microsoft OAuth2 token.
 
     Returns a dict with keys: success (bool), message (str), error_detail (str).
     """
-    from urllib.error import HTTPError, URLError
-    from urllib.request import Request as UrlRequest
-    from urllib.request import urlopen as url_open
-
     if not client_id or not refresh_token:
         return {
             "success": False,
@@ -193,54 +192,43 @@ def try_refresh_oauth_token(
         }
 
     token_url = f"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token"
-    body = urlencode(
-        {
-            "client_id": client_id,
-            "grant_type": "refresh_token",
-            "refresh_token": refresh_token,
-        }
-    ).encode("utf-8")
-
-    req = UrlRequest(
-        token_url,
-        data=body,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-        method="POST",
-    )
+    proxies = {"http": proxy_url, "https": proxy_url} if proxy_url else None
     try:
-        with url_open(req, timeout=timeout) as resp:
-            response_data: dict[str, object] = json.loads(resp.read().decode("utf-8"))
-            if "access_token" in response_data:
-                return {
-                    "success": True,
-                    "message": "Token refreshed successfully",
-                    "error_detail": "",
-                    "access_token": str(response_data.get("access_token", "")),
-                    "refresh_token": str(response_data.get("refresh_token", "")),
-                }
+        response = requests.post(
+            token_url,
+            data={
+                "client_id": client_id,
+                "grant_type": "refresh_token",
+                "refresh_token": refresh_token,
+            },
+            timeout=timeout,
+            proxies=proxies,
+        )
+        if response.status_code != 200:
             return {
                 "success": False,
-                "message": "Token refresh returned unexpected response",
-                "error_detail": str(response_data),
+                "message": "Token refresh failed",
+                "error_detail": response.text,
             }
-    except HTTPError as exc:
-        error_body: str = exc.read().decode("utf-8", errors="replace")
-        error_detail = ""
-        try:
-            error_json = json.loads(error_body)
-            error_detail = error_json.get("error_description", error_body)
-        except (json.JSONDecodeError, AttributeError):
-            error_detail = error_body
+        response_data: dict[str, object] = response.json()
+        if "access_token" in response_data:
+            return {
+                "success": True,
+                "message": "Token refreshed successfully",
+                "error_detail": "",
+                "access_token": str(response_data.get("access_token", "")),
+                "refresh_token": str(response_data.get("refresh_token", "")),
+            }
         return {
             "success": False,
-            "message": "Token refresh failed",
-            "error_detail": error_detail or str(exc),
+            "message": "Token refresh returned unexpected response",
+            "error_detail": str(response_data),
         }
-    except URLError as exc:
+    except requests.RequestException as exc:
         return {
             "success": False,
             "message": "Network error during token refresh",
-            "error_detail": str(exc.reason),
+            "error_detail": str(exc),
         }
     except Exception as exc:
         return {

@@ -74,7 +74,7 @@ _FOLDER_CANDIDATES: dict[str, dict[str, list[str]]] = {
 def get_imap_folder_candidates(provider: str, folder: str) -> list[str]:
     """Return candidate IMAP folder names for the given provider and logical folder."""
     provider_key: str = (provider or "_default").strip().lower()
-    folder_key: str = (folder or "inbox").strip().lower()
+    folder_key: str = normalize_folder_key(folder)
     provider_map: dict[str, list[str]] | None = _FOLDER_CANDIDATES.get(provider_key)
     if provider_map is None:
         provider_map = _FOLDER_CANDIDATES.get("_default", {})
@@ -84,3 +84,18 @@ def get_imap_folder_candidates(provider: str, folder: str) -> list[str]:
     if raw_name and raw_name not in candidates:
         candidates.append(raw_name)
     return candidates
+
+
+def normalize_folder_key(folder: str) -> str:
+    value = (folder or "inbox").strip().lower()
+    aliases: dict[str, str] = {
+        "junkemail": "junk",
+        "junk email": "junk",
+        "spam": "junk",
+        "deleteditems": "deleted",
+        "deleted items": "deleted",
+        "trash": "deleted",
+        "sentitems": "sent",
+        "sent items": "sent",
+    }
+    return aliases.get(value, value)

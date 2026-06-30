@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
 import time
 from threading import Lock
 from typing import Any
-from urllib.error import HTTPError
-from urllib.parse import urlencode
-from urllib.request import Request, urlopen
+
+import requests
 
 from hx_email.server.mail import MailboxMessage
 
@@ -27,11 +25,22 @@ _GRAPH_TENANTS: tuple[str, ...] = ("consumers", "common")
 _GRAPH_BASE_URL: str = "https://graph.microsoft.com/v1.0"
 
 
-def get_graph_token(client_id: str, refresh_token: str, *, tenant: str = "consumers") -> str:
+def build_proxies(proxy_url: str = "") -> dict[str, str] | None:
+    if not proxy_url:
+        return None
+    return {"http": proxy_url, "https": proxy_url}
+
+
+def get_graph_token(
+    client_id: str,
+    refresh_token: str,
+    *,
+    tenant: str = "consumers",
+    proxy_url: str = "",
+) -> str:
     """Get a Microsoft Graph API access token with caching (60s TTL)."""
-    cache_key: str = (
-        f"{tenant}:{client_id}:{hashlib.sha256(refresh_token.encode()).hexdigest()[:16]}"
-    )
+    token_hash: str = hashlib.sha256(refresh_token.encode()).hexdigest()[:16]
+    cache_key: str = f"{tenant}:{proxy_url}:{client_id}:{token_hash}"
     with _GRAPH_TOKEN_LOCK:
         cached = _GRAPH_TOKEN_CACHE.get(cache_key)
         if cached:
@@ -39,60 +48,50 @@ def get_graph_token(client_id: str, refresh_token: str, *, tenant: str = "consum
             if time.monotonic() < expires:
                 return token
 
-    token_url: str = _GRAPH_TOKEN_URL.format(tenant=tenant)
-    body: bytes = urlencode(
-        {
-            "client_id": client_id,
-            "grant_type": "refresh_token",
-            "refresh_token": refresh_token,
-            "scope": _GRAPH_SCOPE,
-        }
-    ).encode()
-
     try:
-        req = Request(
-            token_url,
-            data=body,
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-            method="POST",
+        response = requests.post(
+            _GRAPH_TOKEN_URL.format(tenant=tenant),
+            data={
+                "client_id": client_id,
+                "grant_type": "refresh_token",
+                "refresh_token": refresh_token,
+                "scope": _GRAPH_SCOPE,
+            },
+            timeout=15,
+            proxies=build_proxies(proxy_url),
         )
-        with urlopen(req, timeout=15) as resp:
-            data: dict[str, object] = json.loads(resp.read().decode())
-            access_token = str(data.get("access_token", ""))
-            if not access_token:
-                error = str(data.get("error", "unknown"))
-                desc = str(data.get("error_description", str(data)))
-                raise RuntimeError(
-                    f"Graph OAuth token failed (tenant={tenant}): {error} — {desc[:200]}"
-                )
-            expires_in = int(str(data.get("expires_in", 3599)))
-            ttl = max(0, expires_in - 60)
-            with _GRAPH_TOKEN_LOCK:
-                _GRAPH_TOKEN_CACHE[cache_key] = (access_token, time.monotonic() + ttl)
-            return access_token
-    except HTTPError as exc:
-        try:
-            err_data: dict[str, object] = json.loads(exc.read().decode())
-            error = str(err_data.get("error", "unknown"))
-            desc = str(err_data.get("error_description", str(exc)))
-        except Exception:
-            error = str(exc.code)
-            desc = str(exc)
-        raise RuntimeError(
-            f"Graph OAuth token expired or invalid (tenant={tenant}): {error} — {desc[:200]}"
-        ) from exc
+        if response.status_code != 200:
+            raise RuntimeError(
+                "Graph OAuth token failed "
+                f"(tenant={tenant}, status={response.status_code}): {response.text[:200]}"
+            )
+        data: dict[str, object] = response.json()
+        access_token = str(data.get("access_token", ""))
+        if not access_token:
+            error = str(data.get("error", "unknown"))
+            desc = str(data.get("error_description", str(data)))
+            raise RuntimeError(
+                f"Graph OAuth token failed (tenant={tenant}): {error} — {desc[:200]}"
+            )
+        expires_in = int(str(data.get("expires_in", 3599)))
+        ttl = max(0, expires_in - 60)
+        with _GRAPH_TOKEN_LOCK:
+            _GRAPH_TOKEN_CACHE[cache_key] = (access_token, time.monotonic() + ttl)
+        return access_token
     except RuntimeError:
         raise
     except Exception as exc:
         raise RuntimeError(f"Graph token network error (tenant={tenant}): {exc}") from exc
 
 
-def try_get_graph_token(client_id: str, refresh_token: str) -> tuple[str, str]:
+def try_get_graph_token(client_id: str, refresh_token: str, proxy_url: str = "") -> tuple[str, str]:
     """Try to get a Graph API token, falling through tenants. Returns (token, tenant)."""
     last_error: RuntimeError | None = None
     for tenant in _GRAPH_TENANTS:
         try:
-            token: str = get_graph_token(client_id, refresh_token, tenant=tenant)
+            token: str = get_graph_token(
+                client_id, refresh_token, tenant=tenant, proxy_url=proxy_url
+            )
             return token, tenant
         except RuntimeError as exc:
             last_error = exc
@@ -105,11 +104,24 @@ def try_get_graph_token(client_id: str, refresh_token: str) -> tuple[str, str]:
 # ── HTTP helpers ────────────────────────────────────────────────────────────
 
 
-def graph_get(url: str, access_token: str, *, timeout: int = 30) -> dict[str, Any]:
+def graph_get(
+    url: str,
+    access_token: str,
+    *,
+    timeout: int = 30,
+    proxy_url: str = "",
+) -> dict[str, Any]:
     """Make an authenticated GET request to Microsoft Graph API."""
-    req = Request(url, headers={"Authorization": f"Bearer {access_token}"})
-    with urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read().decode())  # type: ignore[no-any-return]
+    response = requests.get(
+        url,
+        headers={"Authorization": f"Bearer {access_token}"},
+        timeout=timeout,
+        proxies=build_proxies(proxy_url),
+    )
+    if response.status_code != 200:
+        raise RuntimeError(f"Graph GET failed status={response.status_code}: {response.text[:200]}")
+    data: dict[str, Any] = response.json()
+    return data
 
 
 # ── Message parsing ─────────────────────────────────────────────────────────

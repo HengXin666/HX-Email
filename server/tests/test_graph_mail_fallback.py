@@ -61,7 +61,14 @@ def test_outlook_graph_failure_still_falls_back_to_imap(tmp_path) -> None:
             raise RuntimeError("graph unavailable")
 
     class WorkingImapProvider:
-        def read_messages(self, email_account: EmailAccountMailbox) -> list[MailboxMessage]:
+        def read_messages(
+            self,
+            email_account: EmailAccountMailbox,
+            folder: str = "inbox",
+            skip: int = 0,
+            top: int = 50,
+        ) -> list[MailboxMessage]:
+            _ = (folder, skip, top)
             return [
                 MailboxMessage(
                     recipient_address=email_account.primary_address,
