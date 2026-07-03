@@ -17,6 +17,7 @@ from hx_email.server.mail.verification import (
     VerificationMatch,
     coerce_message,
     extract_verification_code,
+    recipient_matches_target,
 )
 
 logger = logging.getLogger(__name__)
@@ -157,7 +158,8 @@ def fetch_and_store_for_account(
         relevant = [
             m
             for m in addressed
-            if m.recipient_address is not None and m.recipient_address.lower() == ue_addr.lower()
+            if m.recipient_address is not None
+            and recipient_matches_target(ue_addr, m.recipient_address)
         ]
         if not relevant:
             continue

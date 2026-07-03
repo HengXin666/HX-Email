@@ -90,6 +90,43 @@ def test_fetch_emails_uses_injected_provider_stores_cache_and_updates_refresh_ti
     assert accounts_after.json()["accounts"][0]["last_refresh_at"]
 
 
+def test_read_verification_fetches_latest_before_extracting_from_cached_messages(tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    migrate(settings)
+    provider = SequenceMailboxProvider(
+        [
+            [
+                MailboxMessage(
+                    recipient_address="owner@example.com",
+                    subject="Old verification",
+                    body="Your code is 314159",
+                    received_at="2026-06-25 10:00:00",
+                )
+            ],
+            [
+                MailboxMessage(
+                    recipient_address="owner@example.com",
+                    subject="New verification",
+                    body="Your code is 271828",
+                    received_at="2026-06-25 10:01:00",
+                )
+            ],
+        ]
+    )
+    client = TestClient(create_app(settings, mailbox_provider=provider))
+    headers = login_admin(client, settings)
+    account = create_account(client, headers)
+    primary_id = account["primary_usable_email"]["id"]
+
+    fetched = client.post(f"{API}/usable-emails/{primary_id}/fetch-emails", headers=headers)
+    reading = client.post(f"{API}/usable-emails/{primary_id}/verification/read", headers=headers)
+
+    assert fetched.status_code == 200
+    assert fetched.json()["messages_stored"] == 1
+    assert [m["code"] for m in reading.json()["matches"]] == ["271828", "314159"]
+    assert provider.calls == 2
+
+
 def test_read_verification_reuses_recent_code_then_waits_for_new_code_after_cooldown(tmp_path):
     settings = Settings(data_dir=tmp_path)
     migrate(settings)
@@ -99,7 +136,7 @@ def test_read_verification_reuses_recent_code_then_waits_for_new_code_after_cool
                 MailboxMessage(
                     recipient_address="owner@example.com",
                     subject="Old verification",
-                    body="Your code is 111111",
+                    body="Your code is 314159",
                     received_at="2026-06-25 10:00:00",
                 )
             ],
@@ -107,7 +144,7 @@ def test_read_verification_reuses_recent_code_then_waits_for_new_code_after_cool
                 MailboxMessage(
                     recipient_address="owner@example.com",
                     subject="Old verification",
-                    body="Your code is 111111",
+                    body="Your code is 314159",
                     received_at="2026-06-25 10:00:00",
                 )
             ],
@@ -115,13 +152,13 @@ def test_read_verification_reuses_recent_code_then_waits_for_new_code_after_cool
                 MailboxMessage(
                     recipient_address="owner@example.com",
                     subject="New verification",
-                    body="Your code is 222222",
+                    body="Your code is 271828",
                     received_at="2026-06-25 10:01:00",
                 ),
                 MailboxMessage(
                     recipient_address="owner@example.com",
                     subject="Old verification",
-                    body="Your code is 111111",
+                    body="Your code is 314159",
                     received_at="2026-06-25 10:00:00",
                 ),
             ],
@@ -140,13 +177,13 @@ def test_read_verification_reuses_recent_code_then_waits_for_new_code_after_cool
             """
             UPDATE verification_readings
             SET created_at = ?
-            WHERE usable_email_id = ? AND code = '111111'
+            WHERE usable_email_id = ? AND code = '314159'
             """,
             (old_started_at, primary_id),
         )
     third = client.post(f"{API}/usable-emails/{primary_id}/verification/read", headers=headers)
 
-    assert [m["code"] for m in first.json()["matches"]] == ["111111"]
-    assert [m["code"] for m in second.json()["matches"]] == ["111111"]
-    assert [m["code"] for m in third.json()["matches"]] == ["222222"]
+    assert [m["code"] for m in first.json()["matches"]] == ["314159"]
+    assert [m["code"] for m in second.json()["matches"]] == ["314159"]
+    assert [m["code"] for m in third.json()["matches"]] == ["271828", "314159"]
     assert provider.calls == 3

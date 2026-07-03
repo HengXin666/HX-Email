@@ -14,11 +14,11 @@ from hx_email.server.mail.verification import (
     MailboxProvider,
     coerce_message,
     first_match,
+    normalize_plus_subaddress,
 )
 
 
 def _find_email_account(settings: Settings, email_addr: str) -> EmailAccountMailbox | None:
-    """Find an email account by primary address or alias."""
     with connect(settings) as connection:
         row = connection.execute(
             """
@@ -27,7 +27,7 @@ def _find_email_account(settings: Settings, email_addr: str) -> EmailAccountMail
             JOIN usable_emails ue ON ue.email_account_id = ea.id
             WHERE LOWER(ue.address) = LOWER(?)
             """,
-            (email_addr,),
+            (normalize_plus_subaddress(email_addr),),
         ).fetchone()
 
     if row is None:

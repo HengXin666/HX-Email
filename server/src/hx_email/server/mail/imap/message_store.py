@@ -81,7 +81,7 @@ def get_messages(
                    body, received_at, created_at
             FROM fetched_messages
             WHERE usable_email_id = ?
-            ORDER BY id DESC
+            ORDER BY received_at DESC, id DESC
             LIMIT ? OFFSET ?
             """,
             (usable_email_id, limit, offset),
