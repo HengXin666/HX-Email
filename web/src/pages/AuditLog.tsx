@@ -177,7 +177,7 @@ export const AuditLog: React.FC = () => {
                           </div>
                           <div className="w-20 shrink-0 text-center">
                             <span className="text-xs text-gh-text-secondary tabular-nums">
-                              #{log.user_id}
+                              {log.user_id === null ? "--" : `#${log.user_id}`}
                             </span>
                           </div>
                           <div className="w-24 shrink-0 flex justify-center">
@@ -190,7 +190,7 @@ export const AuditLog: React.FC = () => {
                           </div>
                           <div className="w-20 shrink-0 text-center hidden md:block">
                             <span className="text-xs text-gh-text-secondary tabular-nums">
-                              #{log.resource_id}
+                              {log.resource_id === null ? "--" : `#${log.resource_id}`}
                             </span>
                           </div>
                           <div className="flex-1 min-w-0 hidden lg:block">
@@ -234,7 +234,7 @@ export const AuditLog: React.FC = () => {
                                       资源 ID
                                     </div>
                                     <div className="text-sm text-gh-text tabular-nums">
-                                      {log.resource_id}
+                                      {log.resource_id ?? "--"}
                                     </div>
                                   </div>
                                   <div>
@@ -242,7 +242,7 @@ export const AuditLog: React.FC = () => {
                                       用户 ID
                                     </div>
                                     <div className="text-sm text-gh-text tabular-nums">
-                                      {log.user_id}
+                                      {log.user_id ?? "--"}
                                     </div>
                                   </div>
                                   <div>

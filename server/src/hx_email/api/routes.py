@@ -2,7 +2,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, FastAPI, Header, HTTPException, Response, status
 
-from hx_email.api.audit_routes import register_audit_routes
+from hx_email.api.audit_routes import register_audit_middleware, register_audit_routes
 from hx_email.api.dependencies import require_user
 from hx_email.api.impl.auth_routes import register_auth_routes
 from hx_email.api.impl.external import (
@@ -42,6 +42,8 @@ def register_routes(
     mailbox_provider: MailboxProvider,
     temp_mail_providers: dict[str, TempMailProvider],
 ) -> None:
+    register_audit_middleware(app, settings)
+
     # Health + static-file routes stay on app directly (no /api/v1 prefix)
     register_health_routes(app)
     register_static_routes(app, settings)

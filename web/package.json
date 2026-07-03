@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --config vite.config.ts --host 0.0.0.0",
     "build": "tsc -b && vite build --config vite.config.ts",
+    "hooks": "lefthook install -c ../lefthook.yml",
     "test": "vitest --config vite.config.ts run"
   },
   "dependencies": {

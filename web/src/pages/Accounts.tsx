@@ -46,6 +46,7 @@ import type {
   UsableEmail,
   VerificationMatch,
 } from "../types";
+import { PlatformLogo } from "./impl/PlatformLogo";
 
 const COLORS = [
   "#58a6ff",
@@ -1785,17 +1786,21 @@ const BindingsTab: React.FC<{ bindings: any[]; emailId: number }> = ({ bindings,
   const { toast } = useToast();
   const [showBind, setShowBind] = useState(false);
   const [selPlatform, setSelPlatform] = useState<number | "">("");
+  const selectedPlatform =
+    typeof selPlatform === "number"
+      ? platforms.find((platform) => platform.id === selPlatform)
+      : null;
 
   const handleBind = async () => {
-    if (!selPlatform) return;
+    if (typeof selPlatform !== "number") return;
     try {
-      await api.createBinding(emailId, selPlatform as number);
+      await api.createBinding(emailId, selPlatform);
       toast("已绑定平台", "success");
       setShowBind(false);
       setSelPlatform("");
       refreshEmails();
-    } catch (err: any) {
-      toast(err.message, "error");
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : "平台绑定失败", "error");
     }
   };
 
@@ -1832,9 +1837,7 @@ const BindingsTab: React.FC<{ bindings: any[]; emailId: number }> = ({ bindings,
               key={b.id}
               className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-gh-border bg-gh-canvas-subtle"
             >
-              <div className="w-8 h-8 rounded-md bg-gh-accent/10 text-gh-accent flex items-center justify-center">
-                <IconShield size={14} />
-              </div>
+              <PlatformLogo name={b.platform.name} size="sm" />
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-gh-text">{b.platform.name}</div>
                 {b.notes && (
@@ -1873,7 +1876,7 @@ const BindingsTab: React.FC<{ bindings: any[]; emailId: number }> = ({ bindings,
             <label className="text-xs font-medium text-gh-text-muted block mb-1.5">选择平台</label>
             <select
               value={selPlatform}
-              onChange={(e) => setSelPlatform(Number(e.target.value))}
+              onChange={(e) => setSelPlatform(e.target.value ? Number(e.target.value) : "")}
               className="w-full bg-gh-canvas-inset border border-gh-border rounded-md px-3 py-1.5 text-sm text-gh-text focus:outline-none focus:border-gh-accent"
             >
               <option value="">请选择...</option>
@@ -1883,6 +1886,17 @@ const BindingsTab: React.FC<{ bindings: any[]; emailId: number }> = ({ bindings,
                 </option>
               ))}
             </select>
+            {selectedPlatform && (
+              <div className="mt-2 flex items-center gap-2 rounded-lg border border-gh-border bg-gh-canvas-subtle px-3 py-2">
+                <PlatformLogo name={selectedPlatform.name} size="sm" />
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-gh-text truncate">
+                    {selectedPlatform.name}
+                  </div>
+                  <div className="text-xs text-gh-text-secondary">将绑定到该平台</div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </Modal>

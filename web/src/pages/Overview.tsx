@@ -20,6 +20,7 @@ import { StatCard } from "../components/ui/StatCard";
 import { useToast } from "../components/ui/Toast";
 import { useApp } from "../store/AppContext";
 import type { ActivityStats, PoolStats, VerificationStats } from "../types";
+import { PlatformLogo } from "./impl/PlatformLogo";
 
 export const Overview: React.FC = () => {
   const { overview, emails, groups, platforms, refreshOverview } = useApp();
@@ -191,7 +192,10 @@ export const Overview: React.FC = () => {
                       transition={{ delay: i * 0.05 }}
                     >
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm text-gh-text">{p.name}</span>
+                        <span className="flex items-center gap-2 min-w-0">
+                          <PlatformLogo name={p.name} size="xs" />
+                          <span className="text-sm text-gh-text truncate">{p.name}</span>
+                        </span>
                         <span className="text-xs text-gh-text-muted tabular-nums">
                           {p.binding_count || 0} 绑定
                         </span>

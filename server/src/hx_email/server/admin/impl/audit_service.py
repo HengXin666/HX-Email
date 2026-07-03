@@ -1,11 +1,49 @@
-"""Lightweight audit logging: insert and query audit_logs."""
+"""Audit trail facade."""
 
 from __future__ import annotations
 
-from typing import Any
-
 from hx_email.config import Settings
-from hx_email.database import connect
+from hx_email.server.admin.impl.audit_models import (
+    AuditEvent,
+    AuditQuery,
+    AuditRequest,
+    AuditResponse,
+)
+from hx_email.server.admin.impl.audit_policy import AuditClassifier
+from hx_email.server.admin.impl.audit_store import AuditLogRepository
+from hx_email.server.auth import authenticate_token
+
+
+class AuditTrail:
+    def __init__(
+        self,
+        settings: Settings,
+        repository: AuditLogRepository | None = None,
+        classifier: AuditClassifier | None = None,
+    ) -> None:
+        self.settings: Settings = settings
+        self.repository: AuditLogRepository = repository or AuditLogRepository(settings)
+        self.classifier: AuditClassifier = classifier or AuditClassifier()
+
+    def capture(self, request: AuditRequest, response: AuditResponse) -> None:
+        event: AuditEvent | None = self.classifier.classify(request, response)
+        if event is not None:
+            self.repository.insert(event)
+
+    def identify_user(self, authorization: str | None) -> int | None:
+        scheme: str
+        token: str
+        scheme, _, token = (authorization or "").partition(" ")
+        if scheme.lower() != "bearer" or not token:
+            return None
+        user = authenticate_token(self.settings, token)
+        return user.id if user is not None else None
+
+    def query(self, query: AuditQuery) -> dict[str, object]:
+        return self.repository.search(query)
+
+    def record(self, event: AuditEvent) -> None:
+        self.repository.insert(event)
 
 
 def log_audit(
@@ -17,14 +55,16 @@ def log_audit(
     detail: str = "",
     ip_address: str = "",
 ) -> None:
-    with connect(settings) as connection:
-        connection.execute(
-            """
-            INSERT INTO audit_logs (user_id, action, resource_type, resource_id, detail, ip_address)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (user_id, action, resource_type, resource_id, detail, ip_address),
+    AuditTrail(settings).record(
+        AuditEvent(
+            user_id=user_id,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            detail=detail,
+            ip_address=ip_address,
         )
+    )
 
 
 def get_audit_logs(
@@ -33,38 +73,14 @@ def get_audit_logs(
     offset: int = 0,
     action: str | None = None,
     resource_type: str | None = None,
+    user_id: int | None = None,
 ) -> dict[str, object]:
-    where_clauses: list[str] = []
-    params: list[Any] = []
-
-    if action:
-        where_clauses.append("action = ?")
-        params.append(action)
-
-    if resource_type:
-        where_clauses.append("resource_type = ?")
-        params.append(resource_type)
-
-    where_sql: str = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
-
-    with connect(settings) as connection:
-        total: int = connection.execute(
-            f"SELECT COUNT(*) FROM audit_logs {where_sql}", params
-        ).fetchone()[0]
-
-        rows = connection.execute(
-            f"""
-            SELECT id, user_id, action, resource_type, resource_id,
-                   detail, ip_address, created_at
-            FROM audit_logs
-            {where_sql}
-            ORDER BY id DESC
-            LIMIT ? OFFSET ?
-            """,
-            [*params, limit, offset],
-        ).fetchall()
-
-    return {
-        "logs": [dict(row) for row in rows],
-        "total": total,
-    }
+    return AuditTrail(settings).query(
+        AuditQuery(
+            limit=limit,
+            offset=offset,
+            action=action,
+            resource_type=resource_type,
+            user_id=user_id,
+        )
+    )

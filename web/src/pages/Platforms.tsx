@@ -1,6 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
 import React, { useMemo, useState } from "react";
-import { api } from "../api/client";
 import {
   IconEdit,
   IconLink,
@@ -14,16 +13,17 @@ import { Topbar } from "../components/layout";
 import { Badge, Button, Card, Input, Modal } from "../components/ui/Primitives";
 import { useToast } from "../components/ui/Toast";
 import { useApp } from "../store/AppContext";
+import { PlatformCreateModal } from "./impl/PlatformCreateModal";
+import { PlatformLogo } from "./impl/PlatformLogo";
 
 export const Platforms: React.FC = () => {
-  const { platforms, emails, createPlatform, updatePlatform, deletePlatform, refreshPlatforms } =
-    useApp();
+  const { platforms, emails, createPlatform, updatePlatform, deletePlatform } = useApp();
   const { toast } = useToast();
   const [query, setQuery] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [selectedPlatformId, setSelectedPlatformId] = useState<number | null>(null);
-  const [newName, setNewName] = useState("");
+  const [editName, setEditName] = useState("");
 
   const filtered = useMemo(
     () =>
@@ -37,38 +37,30 @@ export const Platforms: React.FC = () => {
     [selected, emails],
   );
 
-  const handleCreate = async () => {
-    if (!newName.trim()) return;
-    try {
-      await createPlatform(newName.trim());
-      toast("平台已创建", "success");
-      setNewName("");
-      setShowCreate(false);
-    } catch (err: any) {
-      toast(err.message, "error");
-    }
+  const handleCreate = async (name: string): Promise<void> => {
+    await createPlatform(name);
   };
 
-  const handleUpdate = async () => {
-    if (!editingId || !newName.trim()) return;
+  const handleUpdate = async (): Promise<void> => {
+    if (!editingId || !editName.trim()) return;
     try {
-      await updatePlatform(editingId, newName.trim());
+      await updatePlatform(editingId, editName.trim());
       toast("平台已更新", "success");
       setEditingId(null);
-      setNewName("");
-    } catch (err: any) {
-      toast(err.message, "error");
+      setEditName("");
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : "平台更新失败", "error");
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: number): Promise<void> => {
     if (!confirm("确定删除该平台？")) return;
     try {
       await deletePlatform(id);
       toast("平台已删除", "success");
       if (selectedPlatformId === id) setSelectedPlatformId(null);
-    } catch (err: any) {
-      toast(err.message, "error");
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : "平台删除失败", "error");
     }
   };
 
@@ -116,9 +108,7 @@ export const Platforms: React.FC = () => {
                     className="p-3"
                   >
                     <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-gh-accent to-gh-purple flex items-center justify-center text-white shrink-0">
-                        <IconServer size={18} />
-                      </div>
+                      <PlatformLogo name={p.name} />
                       <div className="flex-1 min-w-0">
                         <div className="font-medium text-gh-text truncate">{p.name}</div>
                         <div className="text-xs text-gh-text-secondary mt-0.5">
@@ -135,7 +125,7 @@ export const Platforms: React.FC = () => {
                         variant="ghost"
                         onClick={() => {
                           setEditingId(p.id);
-                          setNewName(p.name);
+                          setEditName(p.name);
                         }}
                       >
                         <IconEdit size={12} /> 编辑
@@ -172,9 +162,11 @@ export const Platforms: React.FC = () => {
             >
               <div className="px-6 py-5 border-b border-gh-border bg-gradient-to-r from-gh-canvas-subtle to-gh-canvas">
                 <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-gh-accent to-gh-purple flex items-center justify-center text-white shadow-lg shadow-gh-accent/30">
-                    <IconServer size={24} />
-                  </div>
+                  <PlatformLogo
+                    name={selected.name}
+                    size="lg"
+                    className="shadow-lg shadow-black/20"
+                  />
                   <div>
                     <h2 className="text-xl font-bold text-gh-text">{selected.name}</h2>
                     <div className="text-sm text-gh-text-secondary mt-1">
@@ -222,39 +214,30 @@ export const Platforms: React.FC = () => {
         </div>
       </div>
 
-      {/* Create */}
-      <Modal
+      <PlatformCreateModal
         open={showCreate}
         onClose={() => setShowCreate(false)}
-        title="新建平台"
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setShowCreate(false)}>
-              取消
-            </Button>
-            <Button variant="primary" onClick={handleCreate}>
-              创建
-            </Button>
-          </>
-        }
-      >
-        <Input
-          label="平台名称"
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          placeholder="例如：GitHub"
-          autoFocus
-        />
-      </Modal>
+        onCreate={handleCreate}
+        existingPlatforms={platforms}
+      />
 
       {/* Edit */}
       <Modal
         open={!!editingId}
-        onClose={() => setEditingId(null)}
+        onClose={() => {
+          setEditingId(null);
+          setEditName("");
+        }}
         title="编辑平台"
         footer={
           <>
-            <Button variant="ghost" onClick={() => setEditingId(null)}>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setEditingId(null);
+                setEditName("");
+              }}
+            >
               取消
             </Button>
             <Button variant="primary" onClick={handleUpdate}>
@@ -263,7 +246,16 @@ export const Platforms: React.FC = () => {
           </>
         }
       >
-        <Input label="平台名称" value={newName} onChange={(e) => setNewName(e.target.value)} />
+        <div className="flex items-end gap-3">
+          <PlatformLogo name={editName} />
+          <div className="flex-1">
+            <Input
+              label="平台名称"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+            />
+          </div>
+        </div>
       </Modal>
     </div>
   );
