@@ -22,7 +22,7 @@ export const settingsApi = {
     }),
 
   testEmail: (data: Record<string, unknown>) =>
-    request<{ success: boolean; message: string }>("/settings/email-test", {
+    request<{ success: boolean; message?: string; error?: string }>("/settings/email-test", {
       method: "POST",
       body: JSON.stringify(data),
     }),

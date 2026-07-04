@@ -9,8 +9,8 @@
 export function formatRelativeTime(raw: string): string {
   if (!raw) return "—";
   try {
-    const d = new Date(raw);
-    if (isNaN(d.getTime())) return raw;
+    const d = parseDateTime(raw);
+    if (!d) return raw;
     const diff = Date.now() - d.getTime();
     const mins = Math.floor(diff / 60000);
     if (mins < 1) return "刚刚";
@@ -34,8 +34,8 @@ export function formatRelativeTime(raw: string): string {
 export function formatDateTime(raw: string): string {
   if (!raw) return "—";
   try {
-    const d = new Date(raw);
-    if (isNaN(d.getTime())) return raw;
+    const d = parseDateTime(raw);
+    if (!d) return raw;
     return d.toLocaleDateString("zh-CN", {
       month: "short",
       day: "numeric",
@@ -53,8 +53,8 @@ export function formatDateTime(raw: string): string {
 export function formatDateTimeFull(raw: string): string {
   if (!raw) return "—";
   try {
-    const d = new Date(raw);
-    if (isNaN(d.getTime())) return raw;
+    const d = parseDateTime(raw);
+    if (!d) return raw;
     return d.toLocaleString("zh-CN", {
       month: "short",
       day: "numeric",
@@ -65,4 +65,16 @@ export function formatDateTimeFull(raw: string): string {
   } catch {
     return raw;
   }
+}
+
+export function parseDateTime(raw: string): Date | null {
+  const value = raw.trim();
+  if (!value) return null;
+  const normalized = hasExplicitTimezone(value) ? value : value.replace(" ", "T");
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function hasExplicitTimezone(value: string): boolean {
+  return /(?:z|[+-]\d{2}:?\d{2})$/i.test(value);
 }

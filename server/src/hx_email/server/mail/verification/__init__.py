@@ -9,6 +9,8 @@ from hx_email.server.mail import EmailAccountMailbox, MailboxMessage
 from hx_email.server.mail.imap.message_store import get_messages, save_messages
 from hx_email.server.mail.usable_emails import UsableEmail
 from hx_email.server.mail.verification.addresses import (
+    is_delivery_alias,
+    normalize_delivery_address,
     normalize_plus_subaddress,
     recipient_matches_target,
 )
@@ -34,8 +36,10 @@ __all__ = [
     "first_match",
     "get_verification_history",
     "get_verification_state",
+    "is_delivery_alias",
     "load_target",
     "load_usable_email",
+    "normalize_delivery_address",
     "normalize_plus_subaddress",
     "read_verification",
     "recipient_matches_target",

@@ -14,30 +14,28 @@ from hx_email.server.mail.verification import (
     MailboxProvider,
     coerce_message,
     first_match,
-    normalize_plus_subaddress,
+    normalize_delivery_address,
 )
 
 
 def _find_email_account(settings: Settings, email_addr: str) -> EmailAccountMailbox | None:
+    target_address: str = normalize_delivery_address(email_addr)
     with connect(settings) as connection:
-        row = connection.execute(
+        rows = connection.execute(
             """
-            SELECT ea.id, ea.provider, ea.primary_address
+            SELECT ea.id, ea.provider, ea.primary_address, ue.address
             FROM email_accounts ea
             JOIN usable_emails ue ON ue.email_account_id = ea.id
-            WHERE LOWER(ue.address) = LOWER(?)
-            """,
-            (normalize_plus_subaddress(email_addr),),
-        ).fetchone()
+            """
+        ).fetchall()
 
-    if row is None:
-        return None
-
-    return EmailAccountMailbox(
-        id=row["id"],
-        provider=row["provider"],
-        primary_address=row["primary_address"],
-    )
+    for row in rows:
+        if normalize_delivery_address(str(row["address"] or "")) != target_address:
+            continue
+        return EmailAccountMailbox(
+            id=row["id"], provider=row["provider"], primary_address=row["primary_address"]
+        )
+    return None
 
 
 def _build_message_dict(msg: MailboxMessage, idx: int) -> dict[str, object]:

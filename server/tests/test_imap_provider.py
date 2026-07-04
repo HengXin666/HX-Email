@@ -5,6 +5,7 @@ from unittest.mock import patch
 from hx_email.config import Settings
 from hx_email.database import connect, migrate
 from hx_email.server.mail import EmailAccountMailbox
+from hx_email.server.mail.imap.imap_helpers import parse_date
 from hx_email.server.mail.imap.imap_provider import IMAPMailboxProvider
 
 
@@ -15,6 +16,7 @@ class FakeImapConnection:
         self.port: int = port
         self.selected: list[str] = []
         self.fetch_ids: list[str] = []
+        self.fetch_call_count: int = 0
 
     def authenticate(self, mechanism: str, authobject: object) -> None:
         _ = (mechanism, authobject)
@@ -28,12 +30,17 @@ class FakeImapConnection:
         if command == "SEARCH":
             return "OK", [b"1 2 3 4"]
         if command == "FETCH":
-            uid = args[0]
-            self.fetch_ids.append(uid.decode("ascii") if isinstance(uid, bytes) else str(uid))
-            subject = "Newest" if uid == b"4" else "Third"
-            return "OK", [
-                (f"{uid!r} (RFC822 {{1}}".encode(), raw_message(subject)),
-            ]
+            self.fetch_call_count += 1
+            uid_set = args[0]
+            uid_text = uid_set.decode("ascii") if isinstance(uid_set, bytes) else str(uid_set)
+            response: list[tuple[bytes, bytes]] = []
+            for uid in uid_text.split(","):
+                self.fetch_ids.append(uid)
+                subject = "Newest" if uid == "4" else "Third"
+                response.append(
+                    (f"{uid.encode()!r} (UID {uid} RFC822 {{1}}".encode(), raw_message(subject))
+                )
+            return "OK", response
         return "NO", []
 
     def close(self) -> None:
@@ -83,7 +90,13 @@ def test_imap_provider_fetches_latest_message_ids_first_like_reference_project(t
 
     assert fake.selected == ["Junk Email"]
     assert fake.fetch_ids == ["4", "3"]
+    assert fake.fetch_call_count == 1
     assert [message.subject for message in messages] == ["Newest", "Third"]
+
+
+def test_parse_date_converts_imap_timestamp_to_local_timezone() -> None:
+    assert parse_date("Fri, 04 Jul 2026 08:00:00 +0000") == "2026-07-04 16:00:00"
+    assert parse_date("Fri, 04 Jul 2026 01:00:00 -0700") == "2026-07-04 16:00:00"
 
 
 def test_imap_provider_uses_group_proxy_for_account_group(tmp_path) -> None:

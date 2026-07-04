@@ -33,6 +33,7 @@ VALID_BINDING_STATUSES = {
 class Platform:
     id: int
     name: str
+    binding_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -76,24 +77,29 @@ def create_platform(settings: Settings, user_id: int, name: str) -> Platform:
 
 
 def list_platforms(settings: Settings, user_id: int, query: str | None = None) -> list[Platform]:
-    where = ["user_id = ?"]
+    where = ["platforms.user_id = ?"]
     params: list[object] = [user_id]
     if query:
-        where.append("name LIKE ?")
+        where.append("platforms.name LIKE ?")
         params.append(f"%{query}%")
 
     with connect(settings) as connection:
         rows = connection.execute(
             f"""
-            SELECT id, name
+            SELECT platforms.id, platforms.name, COUNT(platform_bindings.id) AS binding_count
             FROM platforms
+            LEFT JOIN platform_bindings ON platform_bindings.user_id = platforms.user_id
+                AND platform_bindings.platform_id = platforms.id
             WHERE {" AND ".join(where)}
-            ORDER BY id
+            GROUP BY platforms.id
+            ORDER BY platforms.id
             """,
             params,
         ).fetchall()
 
-    return [Platform(id=row["id"], name=row["name"]) for row in rows]
+    return [
+        Platform(id=row["id"], name=row["name"], binding_count=row["binding_count"]) for row in rows
+    ]
 
 
 def update_platform(

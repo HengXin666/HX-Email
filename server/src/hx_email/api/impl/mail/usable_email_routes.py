@@ -1,4 +1,4 @@
-from typing import Annotated, cast
+from typing import Annotated
 
 from fastapi import APIRouter, Header, HTTPException, status
 
@@ -16,6 +16,10 @@ from hx_email.server.mail.imap.message_store import (
 from hx_email.server.mail.impl.email_fetch_service import (
     fetch_and_store_for_account,
 )
+from hx_email.server.mail.impl.fetch.targets import (
+    enrich_fetch_account_info,
+    resolve_fetch_account_info,
+)
 from hx_email.server.mail.usable_emails import (
     add_usable_email,
     deactivate_usable_email,
@@ -29,75 +33,6 @@ from hx_email.server.mail.verification import (
     get_verification_state,
     read_verification,
 )
-
-
-def _lookup_account_refresh(
-    settings: Settings,
-    email_account_id: int | None,
-) -> str | None:
-    """Return last_refresh_at for an email account, or None."""
-    if email_account_id is None:
-        return None
-    with connect(settings) as conn:
-        row = conn.execute(
-            "SELECT last_refresh_at FROM email_accounts WHERE id = ?",
-            (email_account_id,),
-        ).fetchone()
-    return row["last_refresh_at"] if row else None
-
-
-def _batch_enrich_refresh(
-    settings: Settings,
-    items: list[dict[str, object]],
-) -> list[dict[str, object]]:
-    """Add last_refresh_at to a list of serialized usable-email dicts via a
-    single batch query against email_accounts."""
-    account_ids: list[int] = [
-        cast(int, i["email_account_id"])
-        for i in items
-        if isinstance(i.get("email_account_id"), int)
-    ]
-    if not account_ids:
-        for item in items:
-            item["last_refresh_at"] = None
-        return items
-    with connect(settings) as conn:
-        placeholders = ",".join("?" for _ in account_ids)
-        rows = conn.execute(
-            f"SELECT id, last_refresh_at FROM email_accounts WHERE id IN ({placeholders})",
-            account_ids,
-        ).fetchall()
-    refresh_map: dict[int, str | None] = {r["id"]: r["last_refresh_at"] for r in rows}
-    for item in items:
-        aid = item.get("email_account_id")
-        item["last_refresh_at"] = refresh_map.get(aid) if isinstance(aid, int) else None
-    return items
-
-
-def _resolve_account_info(
-    settings: Settings,
-    user_id: int,
-    usable_email_id: int,
-) -> tuple[int | None, str | None]:
-    """Return (email_account_id, last_refresh_at) by joining usable_emails
-    with email_accounts.
-    get_usable_email() omits email_account_id from its SELECT, so callers
-    that need it should use this helper instead of relying on the
-    UsableEmail object.
-    """
-    with connect(settings) as conn:
-        row = conn.execute(
-            """
-            SELECT ue.email_account_id, ea.last_refresh_at
-            FROM usable_emails ue
-            LEFT JOIN email_accounts ea ON ea.id = ue.email_account_id
-            WHERE ue.id = ? AND ue.user_id = ?
-            """,
-            (usable_email_id, user_id),
-        ).fetchone()
-    if row is None:
-        return None, None
-    return row["email_account_id"], row["last_refresh_at"]
 
 
 def register_usable_email_routes(
@@ -122,7 +57,7 @@ def register_usable_email_routes(
     ) -> dict[str, list[dict[str, object]]]:
         user = require_user(settings, authorization)
         items = [serialize_usable_email(email) for email in list_usable_emails(settings, user.id)]
-        return {"usable_emails": _batch_enrich_refresh(settings, items)}
+        return {"usable_emails": enrich_fetch_account_info(settings, user.id, items)}
 
     @router.get("/usable-emails/{usable_email_id}")
     def get_usable_email_detail(
@@ -135,14 +70,10 @@ def register_usable_email_routes(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Usable email not found"
             )
-        email_account_id, last_refresh_at = _resolve_account_info(
-            settings,
-            user.id,
-            usable_email_id,
-        )
+        account_info = resolve_fetch_account_info(settings, user.id, usable_email_id)
         result = serialize_usable_email(usable_email)
-        result["email_account_id"] = email_account_id
-        result["last_refresh_at"] = last_refresh_at
+        result["email_account_id"] = account_info.email_account_id
+        result["last_refresh_at"] = account_info.last_refresh_at
         return result
 
     @router.post("/usable-emails/{usable_email_id}/deactivate")
@@ -156,14 +87,10 @@ def register_usable_email_routes(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Usable email not found"
             )
-        email_account_id, last_refresh_at = _resolve_account_info(
-            settings,
-            user.id,
-            usable_email_id,
-        )
+        account_info = resolve_fetch_account_info(settings, user.id, usable_email_id)
         result = serialize_usable_email(usable_email)
-        result["email_account_id"] = email_account_id
-        result["last_refresh_at"] = last_refresh_at
+        result["email_account_id"] = account_info.email_account_id
+        result["last_refresh_at"] = account_info.last_refresh_at
         return result
 
     @router.delete("/usable-emails/{usable_email_id}")
@@ -199,7 +126,7 @@ def register_usable_email_routes(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Usable email not found"
             )
-        email_account_id: int | None = row["email_account_id"]
+        account_info = resolve_fetch_account_info(settings, user.id, usable_email_id)
         return {
             "usable_email": {
                 "id": row["id"],
@@ -207,8 +134,8 @@ def register_usable_email_routes(
                 "label": row["label"],
                 "kind": row["kind"],
                 "status": row["status"],
-                "email_account_id": email_account_id,
-                "last_refresh_at": _lookup_account_refresh(settings, email_account_id),
+                "email_account_id": account_info.email_account_id,
+                "last_refresh_at": account_info.last_refresh_at,
             }
         }
 
@@ -282,17 +209,13 @@ def register_usable_email_routes(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Usable email not found"
             )
-        with connect(settings) as conn:
-            row = conn.execute(
-                "SELECT email_account_id FROM usable_emails WHERE id = ? AND user_id = ?",
-                (usable_email_id, user.id),
-            ).fetchone()
-        if row is None or not row["email_account_id"]:
+        account_info = resolve_fetch_account_info(settings, user.id, usable_email_id)
+        if account_info.email_account_id is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="This email is not linked to an IMAP account",
             )
         result = fetch_and_store_for_account(
-            settings, user.id, row["email_account_id"], mailbox_provider
+            settings, user.id, account_info.email_account_id, mailbox_provider
         )
         return result

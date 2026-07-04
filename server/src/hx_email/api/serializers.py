@@ -37,7 +37,7 @@ def serialize_tag(tag: Tag) -> dict[str, object]:
 
 
 def serialize_platform(platform: Platform) -> dict[str, object]:
-    return {"id": platform.id, "name": platform.name}
+    return {"id": platform.id, "name": platform.name, "binding_count": platform.binding_count}
 
 
 def serialize_platform_binding(binding: PlatformBinding) -> dict[str, object]:

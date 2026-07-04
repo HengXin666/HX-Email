@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { api } from "../api/client";
 import {
   IconEdit,
   IconLink,
@@ -13,17 +14,33 @@ import { Topbar } from "../components/layout";
 import { Badge, Button, Card, Input, Modal } from "../components/ui/Primitives";
 import { useToast } from "../components/ui/Toast";
 import { useApp } from "../store/AppContext";
+import type { BindingStatus, Platform, PlatformBinding, UsableEmail } from "../types";
 import { PlatformCreateModal } from "./impl/PlatformCreateModal";
 import { PlatformLogo } from "./impl/PlatformLogo";
 
+type PlatformEmailBinding = PlatformBinding & { email: UsableEmail };
+
 export const Platforms: React.FC = () => {
-  const { platforms, emails, createPlatform, updatePlatform, deletePlatform } = useApp();
+  const {
+    platforms,
+    emails,
+    createPlatform,
+    updatePlatform,
+    deletePlatform,
+    createEmail,
+    refreshEmails,
+    refreshPlatforms,
+  } = useApp();
   const { toast } = useToast();
   const [query, setQuery] = useState("");
   const [showCreate, setShowCreate] = useState(false);
+  const [showAddEmail, setShowAddEmail] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [selectedPlatformId, setSelectedPlatformId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
+  const [bindingsByPlatform, setBindingsByPlatform] = useState<
+    Record<number, PlatformEmailBinding[]>
+  >({});
 
   const filtered = useMemo(
     () =>
@@ -32,10 +49,51 @@ export const Platforms: React.FC = () => {
   );
 
   const selected = platforms.find((p) => p.id === selectedPlatformId);
+  const refreshBindingMap = useCallback(async (): Promise<void> => {
+    const entries = await Promise.all(
+      emails.map(async (email) => {
+        try {
+          const bindings = await api.listBindings(email.id);
+          return { email, bindings };
+        } catch {
+          return { email, bindings: [] as PlatformBinding[] };
+        }
+      }),
+    );
+    const next: Record<number, PlatformEmailBinding[]> = {};
+    entries.forEach(({ email, bindings }) => {
+      bindings.forEach((binding) => {
+        const platformId = binding.platform.id;
+        next[platformId] = [...(next[platformId] || []), { ...binding, email }];
+      });
+    });
+    setBindingsByPlatform((current) => {
+      const merged: Record<number, PlatformEmailBinding[]> = { ...next };
+      Object.entries(current).forEach(([platformId, bindings]) => {
+        const id = Number(platformId);
+        const known = new Set((merged[id] || []).map((binding) => binding.id));
+        const missing = bindings.filter((binding) => !known.has(binding.id));
+        if (missing.length > 0) merged[id] = [...(merged[id] || []), ...missing];
+      });
+      return merged;
+    });
+  }, [emails]);
+
+  useEffect(() => {
+    void refreshBindingMap();
+  }, [refreshBindingMap]);
+
   const selectedBindings = useMemo(
-    () => (selected ? emails.filter((e) => (e.platform_binding_count || 0) > 0) : []),
-    [selected, emails],
+    () => (selected ? bindingsByPlatform[selected.id] || [] : []),
+    [bindingsByPlatform, selected],
   );
+  const bindingCounts = useMemo(() => {
+    const counts: Record<number, number> = {};
+    platforms.forEach((platform) => {
+      counts[platform.id] = bindingsByPlatform[platform.id]?.length || platform.binding_count || 0;
+    });
+    return counts;
+  }, [bindingsByPlatform, platforms]);
 
   const handleCreate = async (name: string): Promise<void> => {
     await createPlatform(name);
@@ -61,6 +119,41 @@ export const Platforms: React.FC = () => {
       if (selectedPlatformId === id) setSelectedPlatformId(null);
     } catch (err: unknown) {
       toast(err instanceof Error ? err.message : "平台删除失败", "error");
+    }
+  };
+
+  const handleAddEmailToPlatform = async (payload: AddPlatformEmailPayload): Promise<void> => {
+    if (!selected) return;
+    const newAddress = payload.address.trim();
+    try {
+      let usableEmail: UsableEmail | undefined;
+      if (newAddress) {
+        usableEmail =
+          emails.find((email) => email.address.toLowerCase() === newAddress.toLowerCase()) ||
+          (await createEmail(newAddress, payload.label.trim() || newAddress));
+      } else if (payload.usableEmailId !== null) {
+        usableEmail = emails.find((email) => email.id === payload.usableEmailId);
+      }
+      if (!usableEmail) return;
+      const binding = await api.createBinding(
+        usableEmail.id,
+        selected.id,
+        payload.status,
+        payload.notes.trim(),
+      );
+      setBindingsByPlatform((current) => {
+        const platformBindings = current[selected.id] || [];
+        if (platformBindings.some((item) => item.id === binding.id)) return current;
+        return {
+          ...current,
+          [selected.id]: [...platformBindings, { ...binding, email: usableEmail }],
+        };
+      });
+      await Promise.all([refreshEmails(), refreshPlatforms()]);
+      toast("邮箱已添加到平台", "success");
+      setShowAddEmail(false);
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : "添加邮箱失败", "error");
     }
   };
 
@@ -112,7 +205,7 @@ export const Platforms: React.FC = () => {
                       <div className="flex-1 min-w-0">
                         <div className="font-medium text-gh-text truncate">{p.name}</div>
                         <div className="text-xs text-gh-text-secondary mt-0.5">
-                          {p.binding_count || 0} 个邮箱绑定
+                          {bindingCounts[p.id] || 0} 个邮箱绑定
                         </div>
                       </div>
                     </div>
@@ -170,26 +263,35 @@ export const Platforms: React.FC = () => {
                   <div>
                     <h2 className="text-xl font-bold text-gh-text">{selected.name}</h2>
                     <div className="text-sm text-gh-text-secondary mt-1">
-                      {selected.binding_count || 0} 个绑定
+                      {bindingCounts[selected.id] || 0} 个绑定
                     </div>
                   </div>
                 </div>
               </div>
 
               <div className="flex-1 overflow-auto p-6">
-                <h3 className="text-sm font-semibold text-gh-text mb-3 flex items-center gap-2">
-                  <IconShield size={14} /> 绑定的邮箱
-                </h3>
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <h3 className="text-sm font-semibold text-gh-text flex items-center gap-2">
+                    <IconShield size={14} /> 绑定的邮箱
+                  </h3>
+                  <Button size="sm" variant="secondary" onClick={() => setShowAddEmail(true)}>
+                    <IconPlus size={12} /> 添加邮箱
+                  </Button>
+                </div>
                 <div className="space-y-2">
                   {selectedBindings.length === 0 ? (
                     <div className="text-center py-12 text-sm text-gh-text-secondary">
                       暂无邮箱绑定到此平台
-                      <div className="mt-2 text-xs">前往 "账号管理" 页面为邮箱绑定此平台</div>
+                      <div className="mt-2">
+                        <Button size="sm" variant="ghost" onClick={() => setShowAddEmail(true)}>
+                          <IconPlus size={12} /> 添加邮箱
+                        </Button>
+                      </div>
                     </div>
                   ) : (
-                    selectedBindings.map((e) => (
+                    selectedBindings.map((binding) => (
                       <div
-                        key={e.id}
+                        key={binding.id}
                         className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-gh-border bg-gh-canvas-subtle"
                       >
                         <div className="w-8 h-8 rounded-md bg-gh-accent/10 text-gh-accent flex items-center justify-center">
@@ -197,10 +299,12 @@ export const Platforms: React.FC = () => {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-medium text-gh-text truncate">
-                            {e.address}
+                            {binding.email.address}
                           </div>
-                          {e.label && (
-                            <div className="text-xs text-gh-text-secondary truncate">{e.label}</div>
+                          {(binding.notes || binding.email.label) && (
+                            <div className="text-xs text-gh-text-secondary truncate">
+                              {binding.notes || binding.email.label}
+                            </div>
                           )}
                         </div>
                         <Badge color="#3fb950">已绑定</Badge>
@@ -219,6 +323,14 @@ export const Platforms: React.FC = () => {
         onClose={() => setShowCreate(false)}
         onCreate={handleCreate}
         existingPlatforms={platforms}
+      />
+
+      <PlatformEmailModal
+        open={showAddEmail}
+        onClose={() => setShowAddEmail(false)}
+        emails={emails}
+        platform={selected}
+        onSubmit={handleAddEmailToPlatform}
       />
 
       {/* Edit */}
@@ -258,5 +370,155 @@ export const Platforms: React.FC = () => {
         </div>
       </Modal>
     </div>
+  );
+};
+
+interface AddPlatformEmailPayload {
+  usableEmailId: number | null;
+  address: string;
+  label: string;
+  status: BindingStatus;
+  notes: string;
+}
+
+const BINDING_STATUS_OPTIONS: Array<{ value: BindingStatus; label: string }> = [
+  { value: "active", label: "正常使用中" },
+  { value: "pending_verification", label: "待验证" },
+  { value: "risk", label: "有风险" },
+  { value: "disabled", label: "不可用" },
+  { value: "archived", label: "已归档" },
+];
+
+const PlatformEmailModal: React.FC<{
+  open: boolean;
+  onClose: () => void;
+  emails: UsableEmail[];
+  platform: Platform | undefined;
+  onSubmit: (payload: AddPlatformEmailPayload) => Promise<void>;
+}> = ({ open, onClose, emails, platform, onSubmit }) => {
+  const [usableEmailId, setUsableEmailId] = useState<number | "">("");
+  const [address, setAddress] = useState("");
+  const [label, setLabel] = useState("");
+  const [status, setStatus] = useState<BindingStatus>("active");
+  const [notes, setNotes] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setUsableEmailId("");
+    setAddress("");
+    setLabel("");
+    setStatus("active");
+    setNotes("");
+  }, [open]);
+
+  const canSubmit = Boolean(address.trim() || usableEmailId);
+
+  const handleSubmit = async (): Promise<void> => {
+    if (!canSubmit) return;
+    setLoading(true);
+    try {
+      await onSubmit({
+        usableEmailId: usableEmailId === "" ? null : usableEmailId,
+        address,
+        label,
+        status,
+        notes,
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="添加邮箱到平台"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            取消
+          </Button>
+          <Button variant="primary" onClick={handleSubmit} loading={loading} disabled={!canSubmit}>
+            添加
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        {platform && (
+          <div className="flex items-center gap-2 rounded-md border border-gh-border bg-gh-canvas-inset px-3 py-2">
+            <PlatformLogo name={platform.name} size="sm" />
+            <div className="text-sm font-medium text-gh-text truncate">{platform.name}</div>
+          </div>
+        )}
+        <div>
+          <label
+            htmlFor="platform-existing-email"
+            className="text-xs font-medium text-gh-text-muted block mb-1.5"
+          >
+            已有邮箱
+          </label>
+          <select
+            id="platform-existing-email"
+            value={usableEmailId}
+            onChange={(event) =>
+              setUsableEmailId(event.target.value ? Number(event.target.value) : "")
+            }
+            className="w-full bg-gh-canvas-inset border border-gh-border rounded-md px-3 py-1.5 text-sm text-gh-text focus:outline-none focus:border-gh-accent"
+          >
+            <option value="">不选择</option>
+            {emails.map((email) => (
+              <option key={email.id} value={email.id}>
+                {email.address}
+              </option>
+            ))}
+          </select>
+        </div>
+        <Input
+          label="新邮箱地址"
+          type="email"
+          value={address}
+          onChange={(event) => setAddress(event.target.value)}
+          placeholder="owner+site@example.com"
+        />
+        <Input
+          label="备注名称"
+          value={label}
+          onChange={(event) => setLabel(event.target.value)}
+          placeholder="GitHub login"
+        />
+        <div>
+          <label
+            htmlFor="platform-binding-status"
+            className="text-xs font-medium text-gh-text-muted block mb-1.5"
+          >
+            绑定状态
+          </label>
+          <select
+            id="platform-binding-status"
+            value={status}
+            onChange={(event) => setStatus(event.target.value as BindingStatus)}
+            className="w-full bg-gh-canvas-inset border border-gh-border rounded-md px-3 py-1.5 text-sm text-gh-text focus:outline-none focus:border-gh-accent"
+          >
+            {BINDING_STATUS_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-gh-text-muted block mb-1.5">绑定备注</label>
+          <textarea
+            value={notes}
+            onChange={(event) => setNotes(event.target.value)}
+            rows={3}
+            className="w-full bg-gh-canvas-inset border border-gh-border rounded-md px-3 py-2 text-sm text-gh-text placeholder-gh-text-secondary focus:outline-none focus:border-gh-accent resize-y"
+          />
+        </div>
+      </div>
+    </Modal>
   );
 };

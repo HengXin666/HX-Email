@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import sqlite3
 from datetime import UTC
 from sqlite3 import Row
@@ -31,14 +32,17 @@ def save_messages(
         return 0
 
     inserted = 0
-    import hashlib
-
     with connect(settings) as conn:
         for msg in messages:
-            body_hash = hashlib.sha256(
-                (msg.body or "").encode("utf-8", errors="replace")
-            ).hexdigest()[:32]
             from_addr = msg.from_address or ""
+            subject = msg.subject or ""
+            received_at = msg.received_at or ""
+            body_hash = message_dedup_hash(msg, received_at)
+            legacy_hash = legacy_body_hash(msg.body or "")
+            if message_already_saved(
+                conn, usable_email_id, from_addr, subject, received_at, body_hash, legacy_hash
+            ):
+                continue
 
             # INSERT OR IGNORE: atomic dedup via UNIQUE index — no TOCTOU race
             cursor = conn.execute(
@@ -55,9 +59,9 @@ def save_messages(
                     email_account_id,
                     from_addr,
                     msg.recipient_address or "",
-                    msg.subject or "",
+                    subject,
                     msg.body or "",
-                    msg.received_at or now_iso(),
+                    received_at or now_iso(),
                     body_hash,
                 ),
             )
@@ -65,6 +69,41 @@ def save_messages(
                 inserted += 1
 
     return inserted
+
+
+def message_dedup_hash(message: MailboxMessage, received_at: str) -> str:
+    key = (message.message_id or "").strip() or received_at.strip()
+    if not key:
+        return legacy_body_hash(message.body or "")
+    return legacy_body_hash(f"{key}\n{message.body or ''}")
+
+
+def legacy_body_hash(body: str) -> str:
+    return hashlib.sha256(body.encode("utf-8", errors="replace")).hexdigest()[:32]
+
+
+def message_already_saved(
+    conn: sqlite3.Connection,
+    usable_email_id: int,
+    from_address: str,
+    subject: str,
+    received_at: str,
+    body_hash: str,
+    legacy_hash: str,
+) -> bool:
+    row = conn.execute(
+        """
+        SELECT 1 FROM fetched_messages
+        WHERE usable_email_id = ?
+          AND from_address = ?
+          AND subject = ?
+          AND received_at = ?
+          AND body_hash IN (?, ?)
+        LIMIT 1
+        """,
+        (usable_email_id, from_address, subject, received_at, body_hash, legacy_hash),
+    ).fetchone()
+    return row is not None
 
 
 def get_messages(

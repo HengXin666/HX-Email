@@ -52,6 +52,8 @@ def parse_date(date_str: str | None) -> str:
         return ""
     try:
         dt = parsedate_to_datetime(str(date_str))
+        if dt.tzinfo is not None:
+            dt = dt.astimezone()
         return dt.strftime("%Y-%m-%d %H:%M:%S")
     except (ValueError, TypeError):
         return str(date_str)[:19]

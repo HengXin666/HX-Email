@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import email
 import imaplib
 import logging
 import ssl
@@ -14,15 +13,12 @@ from hx_email.database import connect
 from hx_email.server.mail import EmailAccountMailbox, MailboxMessage
 from hx_email.server.mail.imap.imap_helpers import (
     _OUTLOOK_PROVIDERS,
-    decode_mime_header,
-    extract_flags_from_fetch,
-    extract_from,
-    extract_text_and_html,
-    has_attachments,
-    parse_date,
-    recipient_from_envelope,
-    strip_html,
     try_get_imap_token,
+)
+from hx_email.server.mail.imap.impl.fetch_batch import (
+    chunk_uids,
+    messages_from_fetch_data,
+    uid_set_for_fetch,
 )
 from hx_email.server.mail.imap.impl.folder_candidates import get_imap_folder_candidates
 from hx_email.server.mail.imap.impl.outlook_fallback import imap_fetch_outlook_fallback
@@ -91,6 +87,13 @@ class IMAPMailboxProvider:
         password: str = (row["imap_password"] or "").strip()
         client_id: str = (row["client_id"] or "").strip()
         refresh_token: str = (row["refresh_token"] or "").strip()
+        if (
+            not password
+            and refresh_token
+            and not client_id
+            and account.provider not in _OUTLOOK_PROVIDERS
+        ):
+            password = refresh_token
         proxy_url: str = load_group_proxy(self._settings, account.id)
         if proxy_url:
             logger.info(
@@ -226,36 +229,14 @@ class IMAPMailboxProvider:
             logger.info(
                 "IMAP %d total, fetching %d (skip=%d top=%d)", total, len(paged_uids), skip, top
             )
-            for uid in paged_uids:
+            for uid_batch in chunk_uids(paged_uids):
                 try:
-                    f_status, f_data = conn.uid("FETCH", uid, "(FLAGS RFC822)")  # type: ignore[arg-type]
+                    f_status, f_data = conn.uid(
+                        "FETCH", uid_set_for_fetch(uid_batch), "(UID FLAGS RFC822)"
+                    )
                     if f_status != "OK" or not f_data:
                         continue
-                    raw_email: bytes | None = None
-                    flags_text = ""
-                    for item in f_data:
-                        if isinstance(item, tuple) and len(item) >= 2:
-                            flags_text = extract_flags_from_fetch(item)
-                            raw_email = item[1]
-                            break
-                    if not raw_email:
-                        continue
-                    msg = email.message_from_bytes(raw_email)
-                    text_body, html_body = extract_text_and_html(msg)
-                    body_text = text_body or strip_html(html_body)
-                    uid_str = uid.decode("ascii") if isinstance(uid, bytes) else str(uid)
-                    messages.append(
-                        MailboxMessage(
-                            recipient_address=recipient_from_envelope(msg, account.primary_address),
-                            subject=decode_mime_header(str(msg.get("subject") or "")),
-                            body=body_text,
-                            from_address=extract_from(msg),
-                            received_at=parse_date(msg.get("date")),
-                            message_id=uid_str,
-                            is_read="\\Seen" in flags_text,
-                            has_attachments=has_attachments(msg),
-                        )
-                    )
+                    messages.extend(messages_from_fetch_data(f_data, uid_batch, account))
                 except Exception:
                     continue
             logger.info("IMAP parsed %d messages for account %d", len(messages), account.id)

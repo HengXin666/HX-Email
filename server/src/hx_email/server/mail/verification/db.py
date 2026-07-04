@@ -6,7 +6,7 @@ from hx_email.config import Settings
 from hx_email.database import connect
 from hx_email.server.mail import EmailAccountMailbox
 from hx_email.server.mail.usable_emails import UsableEmail
-from hx_email.server.mail.verification.addresses import normalize_plus_subaddress
+from hx_email.server.mail.verification.addresses import normalize_delivery_address
 
 
 def load_target(
@@ -30,19 +30,26 @@ def load_target(
                 "WHERE id = ? AND user_id = ?",
                 (usable_row["email_account_id"], user_id),
             ).fetchone()
-        normalized_address: str = normalize_plus_subaddress(str(usable_row["address"]))
-        if account_row is None and normalized_address.lower() != str(usable_row["address"]).lower():
-            account_row = connection.execute(
+        normalized_address: str = normalize_delivery_address(str(usable_row["address"]))
+        if account_row is None and "@" in normalized_address:
+            account_rows = connection.execute(
                 """
-                SELECT ea.id, ea.provider, ea.primary_address
+                SELECT ea.id, ea.provider, ea.primary_address, ue.address
                 FROM usable_emails ue
                 JOIN email_accounts ea ON ea.id = ue.email_account_id
                 WHERE ue.user_id = ? AND ea.user_id = ?
                   AND ue.email_account_id IS NOT NULL
-                  AND LOWER(ue.address) = LOWER(?)
                 """,
-                (user_id, user_id, normalized_address),
-            ).fetchone()
+                (user_id, user_id),
+            ).fetchall()
+            account_row = next(
+                (
+                    row
+                    for row in account_rows
+                    if normalize_delivery_address(str(row["address"] or "")) == normalized_address
+                ),
+                None,
+            )
     if account_row is None:
         return None
     return (

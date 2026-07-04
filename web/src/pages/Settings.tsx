@@ -837,6 +837,7 @@ const AutomationTab: React.FC<TabProps> = ({ settings, setSetting, toast }) => {
 
   const handleEmailTest = async () => {
     const recipient = settings.email_notification_recipient || "";
+    const smtpPort = Number(settings.email_notification_smtp_port || "587");
     if (!recipient) {
       toast("请填写收件邮箱", "error");
       return;
@@ -844,13 +845,27 @@ const AutomationTab: React.FC<TabProps> = ({ settings, setSetting, toast }) => {
     setEmailTestLoading(true);
     setEmailTestResult(null);
     try {
-      const res = await api.testEmail({ recipient });
-      setEmailTestResult({ success: res.success, message: res.message });
+      const res = await api.testEmail({
+        recipient,
+        smtp_host: settings.email_notification_smtp_host || undefined,
+        smtp_port: Number.isFinite(smtpPort) ? smtpPort : undefined,
+        smtp_user: settings.email_notification_smtp_user || undefined,
+        smtp_password: settings.email_notification_smtp_password || undefined,
+      });
+      setEmailTestResult({
+        success: res.success,
+        message: res.message || res.error || "邮件测试完成",
+      });
     } catch (err: any) {
       setEmailTestResult({ success: false, message: err.message });
     } finally {
       setEmailTestLoading(false);
     }
+  };
+
+  const applySmtpPreset = (host: string, port: string): void => {
+    setSetting("email_notification_smtp_host", host);
+    setSetting("email_notification_smtp_port", port);
   };
 
   const handleTelegramTest = async () => {
@@ -1091,6 +1106,60 @@ const AutomationTab: React.FC<TabProps> = ({ settings, setSetting, toast }) => {
               <IconMail size={13} /> 测试发送
             </Button>
           </div>
+          <div className="flex gap-1.5 flex-wrap">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => applySmtpPreset("smtp.gmail.com", "587")}
+            >
+              Gmail
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => applySmtpPreset("smtp-mail.outlook.com", "587")}
+            >
+              Outlook
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => applySmtpPreset("smtp.qq.com", "587")}
+            >
+              QQ
+            </Button>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="SMTP 主机"
+              value={settings.email_notification_smtp_host || ""}
+              onChange={(e) => setSetting("email_notification_smtp_host", e.target.value)}
+              placeholder="smtp.gmail.com"
+            />
+            <Input
+              label="SMTP 端口"
+              type="number"
+              value={settings.email_notification_smtp_port || "587"}
+              onChange={(e) => setSetting("email_notification_smtp_port", e.target.value)}
+              placeholder="587"
+            />
+          </div>
+          <Input
+            label="SMTP 用户"
+            type="email"
+            value={settings.email_notification_smtp_user || ""}
+            onChange={(e) => setSetting("email_notification_smtp_user", e.target.value)}
+            placeholder="owner@gmail.com"
+          />
+          <Input
+            label="SMTP 密码"
+            type="password"
+            value={settings.email_notification_smtp_password || ""}
+            onChange={(e) => setSetting("email_notification_smtp_password", e.target.value)}
+          />
           <TestResult result={emailTestResult} />
         </div>
       </Card>

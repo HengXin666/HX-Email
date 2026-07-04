@@ -46,6 +46,7 @@ import type {
   UsableEmail,
   VerificationMatch,
 } from "../types";
+import { formatDateTimeFull, formatRelativeTime } from "../utils/time";
 import { PlatformLogo } from "./impl/PlatformLogo";
 
 const COLORS = [
@@ -1550,7 +1551,8 @@ const MessagesTab: React.FC<{ messages: any[] }> = ({ messages }) => {
         {messages.map((m, i) => {
           const isExpanded = expandedId === m.id;
           const avatarColor = stringToColor(m.from_address || m.subject || "?");
-          const timeLabel = formatRelativeTime(m.received_at || m.created_at);
+          const timeValue = m.received_at || m.created_at || "";
+          const timeLabel = timeValue ? formatRelativeTime(timeValue) : "";
           return (
             <motion.div
               key={m.id}
@@ -1641,7 +1643,7 @@ const MessagesTab: React.FC<{ messages: any[] }> = ({ messages }) => {
                       {m.received_at && (
                         <div className="mt-2 text-[11px] text-gh-text-secondary flex items-center gap-1">
                           <IconClock size={10} />
-                          收到时间: {m.received_at}
+                          收到时间: {formatDateTimeFull(m.received_at)}
                         </div>
                       )}
                     </div>
@@ -1671,24 +1673,6 @@ function stringToColor(s: string): string {
   let hash = 0;
   for (let i = 0; i < s.length; i++) hash = ((hash << 5) - hash + s.charCodeAt(i)) | 0;
   return colors[Math.abs(hash) % colors.length];
-}
-
-/** Format ISO timestamps as relative time strings */
-function formatRelativeTime(iso: string): string {
-  if (!iso) return "";
-  try {
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return iso;
-    const now = Date.now();
-    const diff = Math.floor((now - d.getTime()) / 1000);
-    if (diff < 60) return "刚刚";
-    if (diff < 3600) return `${Math.floor(diff / 60)}分钟前`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}小时前`;
-    if (diff < 604800) return `${Math.floor(diff / 86400)}天前`;
-    return d.toLocaleDateString("zh-CN", { month: "short", day: "numeric" });
-  } catch {
-    return iso;
-  }
 }
 
 /** Detect if text content looks like HTML */
@@ -1915,6 +1899,8 @@ const AddEmailModal: React.FC<{
   const { toast } = useToast();
   const [groupId, setGroupId] = useState<number | "">("");
   const [provider, setProvider] = useState("outlook");
+  const [customImapHost, setCustomImapHost] = useState("");
+  const [customImapPort, setCustomImapPort] = useState("993");
   const [credentialText, setCredentialText] = useState("");
   const [addToPool, setAddToPool] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -1930,6 +1916,8 @@ const AddEmailModal: React.FC<{
   const reset = () => {
     setGroupId("");
     setProvider("outlook");
+    setCustomImapHost("");
+    setCustomImapPort("993");
     setCredentialText("");
     setAddToPool(false);
     setResult(null);
@@ -1944,6 +1932,8 @@ const AddEmailModal: React.FC<{
         provider,
         group_id: groupId || null,
         add_to_pool: addToPool,
+        custom_imap_host: customImapHost,
+        custom_imap_port: Number(customImapPort) || 993,
       });
       await Promise.all([
         refreshAccounts(),
@@ -1968,6 +1958,7 @@ const AddEmailModal: React.FC<{
   };
 
   const isOutlook = provider === "outlook";
+  const isCustom = provider === "custom";
   const hasResult = result !== null;
   const totalProcessed = (result?.imported ?? 0) + (result?.skipped ?? 0) + (result?.failed ?? 0);
 
@@ -2075,15 +2066,33 @@ const AddEmailModal: React.FC<{
             className="w-full bg-gh-canvas-inset border border-gh-border rounded-md px-3 py-1.5 text-sm text-gh-text focus:outline-none focus:border-gh-accent"
           >
             <option value="outlook">Outlook</option>
+            <option value="auto">自动识别</option>
             <option value="gmail">Gmail</option>
             <option value="yahoo">Yahoo</option>
-            <option value="icloud">iCloud</option>
             <option value="qq">QQ邮箱</option>
             <option value="163">163邮箱</option>
             <option value="126">126邮箱</option>
-            <option value="other">其他</option>
+            <option value="aliyun">阿里邮箱</option>
+            <option value="custom">自定义 IMAP</option>
           </select>
         </div>
+
+        {isCustom && (
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="IMAP 主机"
+              value={customImapHost}
+              onChange={(e) => setCustomImapHost(e.target.value)}
+              placeholder="imap.example.com"
+            />
+            <Input
+              label="IMAP 端口"
+              type="number"
+              value={customImapPort}
+              onChange={(e) => setCustomImapPort(e.target.value)}
+            />
+          </div>
+        )}
 
         {/* 凭证输入 */}
         <div>

@@ -11,13 +11,12 @@ from typing import Any
 from hx_email.config import Settings
 from hx_email.server.mail import EmailAccountMailbox, MailboxMessage
 from hx_email.server.mail.graph.fallback_provider import FallbackMailProvider
-from hx_email.server.mail.imap.message_store import save_messages
+from hx_email.server.mail.impl.fetch.distribution import store_messages_for_usable_emails
+from hx_email.server.mail.impl.fetch.reader import read_refresh_messages
+from hx_email.server.mail.impl.fetch.targets import list_fetch_usable_emails_for_account
 from hx_email.server.mail.verification import (
     MailboxProvider,
-    VerificationMatch,
     coerce_message,
-    extract_verification_code,
-    recipient_matches_target,
 )
 
 logger = logging.getLogger(__name__)
@@ -69,11 +68,7 @@ def fetch_and_store_for_account(
             primary_address=row["primary_address"],
         )
 
-        # Find all usable_emails for this account
-        email_rows = conn.execute(
-            "SELECT id, address FROM usable_emails WHERE email_account_id = ? AND user_id = ?",
-            (account_id, user_id),
-        ).fetchall()
+    email_rows = list_fetch_usable_emails_for_account(settings, user_id, account_id)
 
     if not email_rows:
         return {
@@ -86,7 +81,7 @@ def fetch_and_store_for_account(
 
     # Fetch from IMAP
     try:
-        raw_messages = provider.read_messages(account)
+        raw_messages = read_refresh_messages(provider, account)
     except Exception as exc:
         error_msg = str(exc) or type(exc).__name__
         logger.warning(
@@ -116,72 +111,13 @@ def fetch_and_store_for_account(
     # Coerce and deduplicate
     messages: list[MailboxMessage] = [coerce_message(m) for m in raw_messages]
 
-    total_stored = 0
-    codes_found = 0
-
-    # Separate messages with known recipients vs. broadcast (no recipient)
-    addressed: list[MailboxMessage] = []
-    broadcast: list[MailboxMessage] = []
-    for m in messages:
-        if m.recipient_address is not None:
-            addressed.append(m)
-        else:
-            broadcast.append(m)
-
-    # Store broadcast messages only once (for the first/primary email) to avoid
-    # duplicating the same message across every alias when IMAP omits the To: header.
-    primary_row = email_rows[0] if email_rows else None
-    if primary_row and broadcast:
-        stored = save_messages(settings, user_id, primary_row["id"], account_id, broadcast)
-        total_stored += stored
-        for msg in broadcast:
-            content = f"{msg.subject}\n{msg.body}"
-            code = extract_verification_code(content)
-            if code:
-                from hx_email.server.mail.verification import save_history
-
-                match = VerificationMatch(
-                    code=code,
-                    link=None,
-                    recipient_address=msg.recipient_address,
-                    certainty="medium",
-                    subject=msg.subject,
-                )
-                save_history(settings, user_id, primary_row["id"], (match,))
-                codes_found += 1
-
-    # Store addressed messages per matching usable_email
-    for email_row in email_rows:
-        ue_id: int = email_row["id"]
-        ue_addr: str = email_row["address"]
-
-        relevant = [
-            m
-            for m in addressed
-            if m.recipient_address is not None
-            and recipient_matches_target(ue_addr, m.recipient_address)
-        ]
-        if not relevant:
-            continue
-
-        stored = save_messages(settings, user_id, ue_id, account_id, relevant)
-        total_stored += stored
-
-        for msg in relevant:
-            content = f"{msg.subject}\n{msg.body}"
-            code = extract_verification_code(content)
-            if code:
-                from hx_email.server.mail.verification import save_history
-
-                match = VerificationMatch(
-                    code=code,
-                    link=None,
-                    recipient_address=msg.recipient_address,
-                    certainty="high",
-                    subject=msg.subject,
-                )
-                save_history(settings, user_id, ue_id, (match,))
-                codes_found += 1
+    total_stored, codes_found = store_messages_for_usable_emails(
+        settings,
+        user_id,
+        account_id,
+        email_rows,
+        messages,
+    )
 
     _mark_account_refreshed(settings, account_id)
     return {

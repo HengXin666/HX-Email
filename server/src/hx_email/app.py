@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 from hx_email.api.routes import register_routes
 from hx_email.config import Settings
+from hx_email.database import migrate
 from hx_email.server.mail.graph.fallback_provider import FallbackMailProvider
 from hx_email.server.mail.impl.email_fetch_service import start_background_fetch
 from hx_email.server.mail.temp_mail import TempMailProvider
@@ -28,6 +29,7 @@ def create_app(
     # Start background email fetcher (runs every 120 seconds)
     @app.on_event("startup")
     def _start_bg_fetch() -> None:
+        migrate(resolved_settings)
         start_background_fetch(resolved_settings, interval=120)
 
     @app.on_event("shutdown")

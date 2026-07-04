@@ -3,11 +3,30 @@ from hx_email.app import create_app
 from hx_email.config import Settings
 from hx_email.database import migrate
 
+API = "/api/v1"
+
+
+class ApiClient:
+    def __init__(self, client):
+        self.client = client
+
+    def post(self, path, **kwargs):
+        return self.client.post(f"{API}{path}", **kwargs)
+
+    def get(self, path, **kwargs):
+        return self.client.get(f"{API}{path}", **kwargs)
+
+    def put(self, path, **kwargs):
+        return self.client.put(f"{API}{path}", **kwargs)
+
+    def delete(self, path, **kwargs):
+        return self.client.delete(f"{API}{path}", **kwargs)
+
 
 def authenticated_client(tmp_path):
-    settings = Settings(data_dir=tmp_path)
+    settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
     migrate(settings)
-    client = TestClient(create_app(settings))
+    client = ApiClient(TestClient(create_app(settings)))
     session = client.post(
         "/auth/login",
         json={"username": "admin", "password": "admin"},
@@ -29,18 +48,22 @@ def test_user_can_create_search_and_update_platforms_with_case_sensitive_names(t
     )
 
     assert github.status_code == 201
-    assert github.json() == {"id": github.json()["id"], "name": "GitHub"}
+    assert github.json() == {"id": github.json()["id"], "name": "GitHub", "binding_count": 0}
     assert lowercase_github.status_code == 201
     assert duplicate.status_code == 409
     assert search.status_code == 200
     assert search.json() == {
         "platforms": [
-            {"id": github.json()["id"], "name": "GitHub"},
-            {"id": lowercase_github.json()["id"], "name": "github"},
+            {"id": github.json()["id"], "name": "GitHub", "binding_count": 0},
+            {"id": lowercase_github.json()["id"], "name": "github", "binding_count": 0},
         ]
     }
     assert update.status_code == 200
-    assert update.json() == {"id": github.json()["id"], "name": "GitHub Enterprise"}
+    assert update.json() == {
+        "id": github.json()["id"],
+        "name": "GitHub Enterprise",
+        "binding_count": 0,
+    }
 
 
 def test_user_can_bind_usable_emails_to_platforms_with_status_and_notes(tmp_path):
@@ -111,10 +134,49 @@ def test_user_can_bind_usable_emails_to_platforms_with_status_and_notes(tmp_path
     assert update.json()["notes"] == "moved to another email"
 
 
+def test_platform_list_reports_binding_counts(tmp_path):
+    client, headers = authenticated_client(tmp_path)
+    email_one = client.post(
+        "/usable-emails",
+        json={"address": "one@example.com", "label": "One"},
+        headers=headers,
+    ).json()
+    email_two = client.post(
+        "/usable-emails",
+        json={"address": "two@example.com", "label": "Two"},
+        headers=headers,
+    ).json()
+    github = client.post("/platforms", json={"name": "GitHub"}, headers=headers).json()
+    stripe = client.post("/platforms", json={"name": "Stripe"}, headers=headers).json()
+    client.post(
+        f"/usable-emails/{email_one['id']}/platform-bindings",
+        json={"platform_id": github["id"], "status": "active", "notes": ""},
+        headers=headers,
+    )
+    client.post(
+        f"/usable-emails/{email_two['id']}/platform-bindings",
+        json={"platform_id": github["id"], "status": "active", "notes": ""},
+        headers=headers,
+    )
+    client.post(
+        f"/usable-emails/{email_two['id']}/platform-bindings",
+        json={"platform_id": stripe["id"], "status": "active", "notes": ""},
+        headers=headers,
+    )
+
+    platforms = client.get("/platforms", headers=headers)
+
+    assert platforms.status_code == 200
+    assert platforms.json()["platforms"] == [
+        {"id": github["id"], "name": "GitHub", "binding_count": 2},
+        {"id": stripe["id"], "name": "Stripe", "binding_count": 1},
+    ]
+
+
 def test_platform_bindings_are_workspace_scoped_and_visible_in_workbench_filters(tmp_path):
-    settings = Settings(data_dir=tmp_path)
+    settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
     migrate(settings)
-    client = TestClient(create_app(settings))
+    client = ApiClient(TestClient(create_app(settings)))
 
     admin_session = client.post(
         "/auth/login",

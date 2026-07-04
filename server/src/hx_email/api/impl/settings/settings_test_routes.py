@@ -170,7 +170,7 @@ def register_settings_test_routes(router: APIRouter, settings: Settings) -> None
                     server.send_message(msg)
             return {"success": True, "message": f"Test email sent to {payload.recipient}"}
         except Exception as exc:
-            return {"success": False, "error": str(exc)}
+            return {"success": False, "message": str(exc)}
 
     @router.post("/settings/webhook-test")
     def webhook_test(

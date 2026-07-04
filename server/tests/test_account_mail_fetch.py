@@ -13,8 +13,11 @@ class SequenceMailboxProvider:
     def __init__(self, batches):
         self.batches = list(batches)
         self.calls = 0
+        self.last_top = 0
 
-    def read_messages(self, email_account):
+    def read_messages(self, email_account, folder="inbox", skip=0, top=50):
+        _ = (email_account, folder, skip)
+        self.last_top = top
         self.calls += 1
         if self.calls <= len(self.batches):
             return self.batches[self.calls - 1]
@@ -125,6 +128,92 @@ def test_read_verification_fetches_latest_before_extracting_from_cached_messages
     assert fetched.json()["messages_stored"] == 1
     assert [m["code"] for m in reading.json()["matches"]] == ["271828", "314159"]
     assert provider.calls == 2
+
+
+def test_fetch_emails_stores_newer_message_with_same_body_and_subject(tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    migrate(settings)
+    provider = SequenceMailboxProvider(
+        [
+            [
+                MailboxMessage(
+                    recipient_address="owner@example.com",
+                    subject="Login notice",
+                    body="Your account was used to sign in.",
+                    from_address="security@example.com",
+                    received_at="2026-06-25 10:00:00",
+                    message_id="101",
+                )
+            ],
+            [
+                MailboxMessage(
+                    recipient_address="owner@example.com",
+                    subject="Login notice",
+                    body="Your account was used to sign in.",
+                    from_address="security@example.com",
+                    received_at="2026-06-25 10:05:00",
+                    message_id="102",
+                )
+            ],
+        ]
+    )
+    client = TestClient(create_app(settings, mailbox_provider=provider))
+    headers = login_admin(client, settings)
+    account = create_account(client, headers)
+    primary_id = account["primary_usable_email"]["id"]
+
+    first_fetch = client.post(f"{API}/usable-emails/{primary_id}/fetch-emails", headers=headers)
+    second_fetch = client.post(f"{API}/usable-emails/{primary_id}/fetch-emails", headers=headers)
+    messages = client.get(f"{API}/usable-emails/{primary_id}/messages", headers=headers)
+
+    assert first_fetch.json()["messages_stored"] == 1
+    assert second_fetch.json()["messages_stored"] == 1
+    assert [message["received_at"] for message in messages.json()["messages"]] == [
+        "2026-06-25 10:05:00",
+        "2026-06-25 10:00:00",
+    ]
+    assert provider.last_top >= 200
+
+
+def test_fetch_emails_for_standalone_plus_email_uses_base_account(tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    migrate(settings)
+    provider = SequenceMailboxProvider(
+        [
+            [
+                MailboxMessage(
+                    recipient_address="GitHub <owner+github@example.com>",
+                    subject="GitHub verification",
+                    body="Your code is 123456",
+                    from_address="noreply@github.com",
+                    received_at="2026-06-25 10:08:00",
+                    message_id="github-1",
+                )
+            ]
+        ]
+    )
+    client = TestClient(create_app(settings, mailbox_provider=provider))
+    headers = login_admin(client, settings)
+    account = create_account(client, headers)
+    plus_email = client.post(
+        f"{API}/usable-emails",
+        json={"address": "owner+github@example.com", "label": "GitHub"},
+        headers=headers,
+    ).json()
+
+    listed = client.get(f"{API}/usable-emails", headers=headers)
+    fetched = client.post(f"{API}/usable-emails/{plus_email['id']}/fetch-emails", headers=headers)
+    plus_messages = client.get(f"{API}/usable-emails/{plus_email['id']}/messages", headers=headers)
+
+    listed_plus = next(
+        item for item in listed.json()["usable_emails"] if item["id"] == plus_email["id"]
+    )
+    assert listed_plus["email_account_id"] == account["id"]
+    assert fetched.status_code == 200
+    assert fetched.json()["error"] == ""
+    assert [message["subject"] for message in plus_messages.json()["messages"]] == [
+        "GitHub verification"
+    ]
 
 
 def test_read_verification_reuses_recent_code_then_waits_for_new_code_after_cooldown(tmp_path):

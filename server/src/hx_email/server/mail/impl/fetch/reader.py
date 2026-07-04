@@ -16,7 +16,17 @@ def read_refresh_messages(
                 provider.read_messages_folder(account, folder=folder, top=REFRESH_FOLDER_TOP)
             )
         return dedupe_messages(messages)
-    return provider.read_messages(account)
+    return read_messages_with_window(provider, account)
+
+
+def read_messages_with_window(
+    provider: MailboxProvider,
+    account: EmailAccountMailbox,
+) -> list[MailboxMessage | dict[str, object]]:
+    try:
+        return provider.read_messages(account, top=REFRESH_FOLDER_TOP)
+    except TypeError:
+        return provider.read_messages(account)
 
 
 def dedupe_messages(
