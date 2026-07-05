@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { copyToClipboard } from "../utils/clipboard";
 
 interface UseCopyToClipboardReturn {
   copied: boolean;
@@ -14,22 +15,8 @@ export function useCopyToClipboard(timeout = 2000): UseCopyToClipboardReturn {
 
   const copy = useCallback(
     async (text: string) => {
-      try {
-        await navigator.clipboard.writeText(text);
-      } catch {
-        const textarea = document.createElement("textarea");
-        textarea.value = text;
-        textarea.style.position = "fixed";
-        textarea.style.opacity = "0";
-        document.body.appendChild(textarea);
-        textarea.select();
-        try {
-          document.execCommand("copy");
-        } catch {
-          return;
-        }
-        document.body.removeChild(textarea);
-      }
+      const copiedToClipboard = await copyToClipboard(text);
+      if (!copiedToClipboard) return;
       setCopied(true);
       clearTimeout(timerRef.current);
       timerRef.current = setTimeout(() => setCopied(false), timeout);

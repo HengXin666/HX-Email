@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 from hx_email.app import create_app
 from hx_email.config import Settings
 from hx_email.database import migrate
+from hx_email.server.mail import EmailAccountMailbox, MailboxMessage
 from hx_email.server.mail.email_accounts import add_email_account
 
 API = "/api/v1"
@@ -35,6 +36,22 @@ class FakeIMAP:
 
     def logout(self) -> tuple[str, list[bytes]]:
         return "OK", []
+
+
+class FailingMailboxProvider:
+    def __init__(self, error: Exception) -> None:
+        self.error: Exception = error
+
+    def read_messages(
+        self,
+        email_account: EmailAccountMailbox,
+        folder: str = "inbox",
+        skip: int = 0,
+        top: int = 50,
+        since_uid: str = "",
+    ) -> list[MailboxMessage | dict[str, object]]:
+        _ = (email_account, folder, skip, top, since_uid)
+        raise self.error
 
 
 def login_admin(client: TestClient, settings: Settings) -> dict[str, str]:
@@ -148,3 +165,33 @@ def test_gmail_fetch_uses_legacy_refresh_token_app_password(tmp_path) -> None:
     assert result.status_code == 200
     assert fake.login_args == ("llh282000500@gmail.com", "legacy-gmail-app-pass")
     assert "账户没有配置密码" not in result.json()["error"]
+
+
+def test_gmail_authentication_failure_returns_app_password_hint(tmp_path) -> None:
+    settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
+    migrate(settings)
+    error = RuntimeError(
+        "IMAP login failed (wrong password/app-password): "
+        "b'[AUTHENTICATIONFAILED] Invalid credentials (Failure)'"
+    )
+    client = TestClient(create_app(settings, mailbox_provider=FailingMailboxProvider(error)))
+    headers = login_admin(client, settings)
+    client.post(
+        f"{API}/email-accounts/import",
+        json={
+            "provider": "gmail",
+            "text": "llh282000500@gmail.com----gmail-app-pass",
+        },
+        headers=headers,
+    )
+    account = client.get(f"{API}/email-accounts", headers=headers).json()["accounts"][0]
+    usable_email_id = account["primary_usable_email"]["id"]
+
+    result = client.post(f"{API}/usable-emails/{usable_email_id}/fetch-emails", headers=headers)
+
+    assert result.status_code == 200
+    message: str = result.json()["error"]
+    assert "Gmail IMAP 认证失败" in message
+    assert "App Password" in message
+    assert "不要使用 Gmail 登录密码" in message
+    assert "AUTHENTICATIONFAILED" in message

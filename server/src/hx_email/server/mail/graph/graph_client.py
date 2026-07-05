@@ -45,8 +45,10 @@ class GraphMailProvider:
         email_account: EmailAccountMailbox,
         folder: str = "inbox",
         top: int = 50,
+        since_uid: str = "",
     ) -> list[MailboxMessage]:
         """List recent messages from the given folder via Graph API."""
+        _ = since_uid
         return self.read_messages_result(email_account, folder, top).messages
 
     def read_messages_result(

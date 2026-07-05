@@ -159,8 +159,8 @@ export const PoolAdmin: React.FC = () => {
   return (
     <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
       <Topbar
-        title="号池管理"
-        subtitle="管理邮箱池中的账号状态"
+        title="邮箱池"
+        subtitle="管理邮箱池中的可用邮箱状态"
         actions={
           <Button variant="secondary" onClick={loadAccounts} loading={loading}>
             <IconRefresh size={14} /> 刷新

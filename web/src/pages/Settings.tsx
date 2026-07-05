@@ -28,6 +28,7 @@ import { Topbar } from "../components/layout";
 import { Button, Card, Input } from "../components/ui/Primitives";
 import { useToast } from "../components/ui/Toast";
 import { useApp } from "../store/AppContext";
+import { copyToClipboard } from "../utils/clipboard";
 import { CRON_PRESETS, maskValue } from "./impl/settings_api";
 
 /* ───── helpers ───── */
@@ -628,9 +629,12 @@ const ApiSecurityTab: React.FC<TabProps> = ({ settings, setSetting, toast }) => 
     }
   };
 
-  const handleCopyKey = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast("已复制到剪贴板", "success");
+  const handleCopyKey = async (text: string) => {
+    const copiedToClipboard = await copyToClipboard(text);
+    toast(
+      copiedToClipboard ? "已复制到剪贴板" : "复制失败，请手动复制",
+      copiedToClipboard ? "success" : "error",
+    );
   };
 
   return (

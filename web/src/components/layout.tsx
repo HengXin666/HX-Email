@@ -11,21 +11,21 @@ import {
   IconInbox,
   IconKey,
   IconLogout,
+  IconMail,
   IconServer,
   IconSettings,
   IconShield,
-  IconUser,
 } from "./icons";
 import { useToast } from "./ui/Toast";
 
 const NAV = [
-  { to: "/overview", label: "总览", icon: IconInbox },
-  { to: "/accounts", label: "账号管理", icon: IconUser },
-  { to: "/platforms", label: "平台管理", icon: IconServer },
+  { to: "/overview", label: "工作台", icon: IconInbox },
+  { to: "/accounts", label: "可用邮箱", icon: IconMail },
+  { to: "/platforms", label: "平台绑定", icon: IconServer },
   { to: "/temp-mail", label: "临时邮箱", icon: IconClock },
-  { to: "/token-tool", label: "Token 工具", icon: IconKey },
+  { to: "/token-tool", label: "OAuth Token", icon: IconKey },
   { to: "/refresh-log", label: "刷新日志", icon: IconClock },
-  { to: "/pool-admin", label: "号池管理", icon: IconDatabase },
+  { to: "/pool-admin", label: "邮箱池", icon: IconDatabase },
   { to: "/audit", label: "审计日志", icon: IconShield },
   { to: "/api", label: "API 接入", icon: IconCode },
   { to: "/settings", label: "设置", icon: IconSettings },
@@ -61,7 +61,7 @@ export const Sidebar: React.FC = () => {
             className="flex flex-col leading-tight"
           >
             <span className="font-semibold text-sm gradient-text">HX-Email</span>
-            <span className="text-[10px] text-gh-text-secondary">多邮箱管理平台</span>
+            <span className="text-[10px] text-gh-text-secondary">可用邮箱工作台</span>
           </motion.div>
         )}
       </div>

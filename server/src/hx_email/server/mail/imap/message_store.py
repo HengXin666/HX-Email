@@ -37,11 +37,23 @@ def save_messages(
             from_addr = msg.from_address or ""
             subject = msg.subject or ""
             received_at = msg.received_at or ""
+            message_id = msg.message_id or ""
             body_hash = message_dedup_hash(msg, received_at)
             legacy_hash = legacy_body_hash(msg.body or "")
             if message_already_saved(
                 conn, usable_email_id, from_addr, subject, received_at, body_hash, legacy_hash
             ):
+                if message_id:
+                    backfill_message_id(
+                        conn,
+                        usable_email_id,
+                        from_addr,
+                        subject,
+                        received_at,
+                        body_hash,
+                        legacy_hash,
+                        message_id,
+                    )
                 continue
 
             # INSERT OR IGNORE: atomic dedup via UNIQUE index — no TOCTOU race
@@ -49,9 +61,9 @@ def save_messages(
                 """
                 INSERT OR IGNORE INTO fetched_messages (
                     user_id, usable_email_id, email_account_id,
-                    from_address, recipient_address, subject, body,
+                    from_address, recipient_address, subject, body, message_id,
                     received_at, body_hash
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     user_id,
@@ -61,6 +73,7 @@ def save_messages(
                     msg.recipient_address or "",
                     subject,
                     msg.body or "",
+                    message_id,
                     received_at or now_iso(),
                     body_hash,
                 ),
@@ -106,6 +119,31 @@ def message_already_saved(
     return row is not None
 
 
+def backfill_message_id(
+    conn: sqlite3.Connection,
+    usable_email_id: int,
+    from_address: str,
+    subject: str,
+    received_at: str,
+    body_hash: str,
+    legacy_hash: str,
+    message_id: str,
+) -> None:
+    conn.execute(
+        """
+        UPDATE fetched_messages
+        SET message_id = ?
+        WHERE usable_email_id = ?
+          AND from_address = ?
+          AND subject = ?
+          AND received_at = ?
+          AND body_hash IN (?, ?)
+          AND message_id = ''
+        """,
+        (message_id, usable_email_id, from_address, subject, received_at, body_hash, legacy_hash),
+    )
+
+
 def get_messages(
     settings: Settings,
     usable_email_id: int,
@@ -117,7 +155,7 @@ def get_messages(
         rows = conn.execute(
             """
             SELECT id, from_address, recipient_address, subject,
-                   body, received_at, created_at
+                   body, message_id, received_at, created_at
             FROM fetched_messages
             WHERE usable_email_id = ?
             ORDER BY received_at DESC, id DESC
@@ -136,6 +174,23 @@ def get_message_count(settings: Settings, usable_email_id: int) -> int:
             (usable_email_id,),
         ).fetchone()
     return row["cnt"] if row else 0
+
+
+def get_latest_message_uid(settings: Settings, email_account_id: int) -> str:
+    with connect(settings) as conn:
+        row = conn.execute(
+            """
+            SELECT message_id
+            FROM fetched_messages
+            WHERE email_account_id = ?
+              AND message_id != ''
+              AND message_id NOT GLOB '*[^0-9]*'
+            ORDER BY CAST(message_id AS INTEGER) DESC
+            LIMIT 1
+            """,
+            (email_account_id,),
+        ).fetchone()
+    return str(row["message_id"]) if row is not None else ""
 
 
 def delete_messages_for_email(
@@ -179,6 +234,7 @@ def row_to_dict(row: Row) -> dict[str, object]:
         "recipient_address": row["recipient_address"],
         "subject": row["subject"],
         "body": row["body"],
+        "message_id": row["message_id"],
         "received_at": row["received_at"],
         "created_at": row["created_at"],
     }

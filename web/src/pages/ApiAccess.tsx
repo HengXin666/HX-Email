@@ -12,6 +12,7 @@ import {
 import { Topbar } from "../components/layout";
 import { Button, Card } from "../components/ui/Primitives";
 import { useToast } from "../components/ui/Toast";
+import { copyToClipboard } from "../utils/clipboard";
 
 interface EndpointRowProps {
   method: string;
@@ -46,8 +47,12 @@ const CodeBlock: React.FC<{ code: string; language?: string }> = ({ code, langua
       <div className="flex items-center justify-between px-3 py-1.5 bg-gh-border/30 border-b border-gh-border">
         <span className="text-[10px] text-gh-text-secondary uppercase">{language}</span>
         <button
-          onClick={() => {
-            navigator.clipboard.writeText(code);
+          onClick={async () => {
+            const copiedToClipboard = await copyToClipboard(code);
+            if (!copiedToClipboard) {
+              toast("复制失败，请手动复制", "error");
+              return;
+            }
             toast("已复制", "success");
             setCopied(true);
             setTimeout(() => setCopied(false), 1500);
@@ -90,7 +95,7 @@ export const ApiAccess: React.FC = () => {
                 <h2 className="text-xl font-bold text-gh-text">HX-Email REST API</h2>
                 <p className="text-sm text-gh-text-muted mt-1 max-w-2xl">
                   基于 FastAPI 构建，共 42
-                  个端点，支持邮箱管理、平台绑定、临时邮箱、验证码读取等核心能力。
+                  个端点，支持可用邮箱、平台绑定、临时邮箱、验证码读取等核心能力。
                 </p>
                 <div className="flex flex-wrap gap-3 mt-4">
                   <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-gh-canvas-inset border border-gh-border text-xs">
@@ -264,10 +269,10 @@ export const ApiAccess: React.FC = () => {
                 <EndpointRow method="POST" path="/mail-pool/entries/:id/release" desc="释放邮箱" />
 
                 <div className="text-[11px] font-semibold text-gh-accent uppercase tracking-wider px-3 py-1.5 mt-3">
-                  邮箱账户
+                  接入源
                 </div>
-                <EndpointRow method="POST" path="/email-accounts" desc="添加邮箱账户" />
-                <EndpointRow method="GET" path="/email-accounts" desc="账户列表" />
+                <EndpointRow method="POST" path="/email-accounts" desc="添加接入源" />
+                <EndpointRow method="GET" path="/email-accounts" desc="接入源列表" />
                 <EndpointRow method="POST" path="/email-accounts/:id/aliases" desc="添加别名" />
 
                 <div className="text-[11px] font-semibold text-gh-accent uppercase tracking-wider px-3 py-1.5 mt-3">

@@ -26,6 +26,7 @@ def imap_fetch_outlook_fallback(
     folder: str = "inbox",
     skip: int = 0,
     top: int = 50,
+    since_uid: str = "",
 ) -> list[MailboxMessage]:
     """Try multiple Outlook IMAP servers, returning first successful result."""
     servers = [primary_host] + [s for s in _OUTLOOK_IMAP_SERVERS if s != primary_host]
@@ -44,6 +45,7 @@ def imap_fetch_outlook_fallback(
                 folder=folder,
                 skip=skip,
                 top=top,
+                since_uid=since_uid,
             )
         except Exception as exc:
             logger.info("IMAP %s failed for %d: %s, trying next...", host, account.id, exc)

@@ -260,21 +260,21 @@ def migrate(settings: Settings) -> Path:
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS fetched_messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL REFERENCES users(id),
+                id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id),
                 usable_email_id INTEGER NOT NULL REFERENCES usable_emails(id),
                 email_account_id INTEGER REFERENCES email_accounts(id),
-                from_address TEXT NOT NULL DEFAULT '',
-                recipient_address TEXT NOT NULL DEFAULT '',
-                subject TEXT NOT NULL DEFAULT '',
-                body TEXT NOT NULL DEFAULT '',
-                body_hash TEXT NOT NULL DEFAULT '',
+                from_address TEXT NOT NULL DEFAULT '', recipient_address TEXT NOT NULL DEFAULT '',
+                subject TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '',
+                message_id TEXT NOT NULL DEFAULT '', body_hash TEXT NOT NULL DEFAULT '',
                 received_at TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             )
             """
         )
-        # Unique index to prevent duplicate messages at DB level
+        if not column_exists(connection, "fetched_messages", "message_id"):
+            connection.execute(
+                "ALTER TABLE fetched_messages ADD COLUMN message_id TEXT NOT NULL DEFAULT ''"
+            )
         connection.execute(
             """
             CREATE UNIQUE INDEX IF NOT EXISTS idx_fetched_msg_dedup
@@ -296,5 +296,5 @@ def migrate(settings: Settings) -> Path:
         )
         if not column_exists(connection, "groups", "proxy_url"):
             connection.execute("ALTER TABLE groups ADD COLUMN proxy_url TEXT NOT NULL DEFAULT ''")
-        connection.execute("PRAGMA user_version = 7")
+        connection.execute("PRAGMA user_version = 8")
     return database_path

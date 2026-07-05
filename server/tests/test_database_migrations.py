@@ -18,7 +18,8 @@ def test_migrate_creates_sqlite_database_in_configured_data_dir(tmp_path):
             "SELECT value FROM system_settings WHERE key = 'registration_enabled'"
         ).fetchone()[0]
         admin = connection.execute(
-            "SELECT username, is_admin FROM users WHERE username = 'admin'"
+            "SELECT username, is_admin FROM users WHERE username = ?",
+            (settings.admin_username,),
         ).fetchone()
         email_accounts_columns = {
             row[1] for row in connection.execute("PRAGMA table_info(email_accounts)").fetchall()
@@ -38,10 +39,13 @@ def test_migrate_creates_sqlite_database_in_configured_data_dir(tmp_path):
         mail_pool_columns = {
             row[1] for row in connection.execute("PRAGMA table_info(mail_pool_entries)").fetchall()
         }
+        fetched_message_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(fetched_messages)").fetchall()
+        }
 
-    assert version == 6
+    assert version == 8
     assert registration_enabled == "false"
-    assert admin == ("admin", 1)
+    assert admin == (settings.admin_username, 1)
     assert {"provider", "primary_address", "status"}.issubset(email_accounts_columns)
     assert {"email_account_id", "kind", "status", "group_id"}.issubset(usable_email_columns)
     assert {"user_id", "usable_email_id", "provider", "provider_mailbox_id"}.issubset(
@@ -58,3 +62,4 @@ def test_migrate_creates_sqlite_database_in_configured_data_dir(tmp_path):
         "claim_key",
         "completed_project_key",
     }.issubset(mail_pool_columns)
+    assert {"email_account_id", "message_id", "body_hash"}.issubset(fetched_message_columns)

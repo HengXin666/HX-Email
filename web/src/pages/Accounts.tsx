@@ -41,11 +41,14 @@ import { useApp } from "../store/AppContext";
 import type {
   AccountImportResult,
   EmailAccount,
+  EmailMessagesPage,
   SSERefreshEvent,
+  StoredEmailMessage,
   Tag,
   UsableEmail,
   VerificationMatch,
 } from "../types";
+import { copyToClipboard } from "../utils/clipboard";
 import { formatDateTimeFull, formatRelativeTime } from "../utils/time";
 import { PlatformLogo } from "./impl/PlatformLogo";
 
@@ -59,6 +62,8 @@ const COLORS = [
   "#db61a2",
   "#6e7681",
 ];
+
+const MESSAGE_PAGE_SIZE = 30;
 
 // ========== 左侧：分组栏 ==========
 const GroupSidebar: React.FC<{
@@ -434,9 +439,17 @@ const getAccountAliases = (account: EmailAccount | undefined): UsableEmail[] => 
   return account?.usable_emails.filter((email: UsableEmail) => email.kind === "alias") || [];
 };
 
-const copyText = (text: string, onCopied: () => void): void => {
-  navigator.clipboard.writeText(text);
-  onCopied();
+const copyText = async (
+  text: string,
+  onCopied: () => void,
+  onFailed?: () => void,
+): Promise<void> => {
+  const copied = await copyToClipboard(text);
+  if (copied) {
+    onCopied();
+    return;
+  }
+  onFailed?.();
 };
 
 const EmailList: React.FC<{
@@ -688,23 +701,61 @@ const EmailCard: React.FC<{
 
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
-    copyText(email.address, () => {
-      setCopied(true);
-      toast("已复制邮箱地址", "success");
-      setTimeout(() => setCopied(false), 1500);
-    });
+    void copyText(
+      email.address,
+      () => {
+        setCopied(true);
+        toast("已复制邮箱地址", "success");
+        setTimeout(() => setCopied(false), 1500);
+      },
+      () => toast("复制失败，请手动复制", "error"),
+    );
   };
 
   const handleCopyAlias = (e: React.MouseEvent, address: string): void => {
     e.stopPropagation();
-    copyText(address, () => toast("已复制别名邮箱", "success"));
+    void copyText(
+      address,
+      () => toast("已复制别名邮箱", "success"),
+      () => toast("复制失败，请手动复制", "error"),
+    );
+  };
+
+  const copyCode = async (
+    code: string,
+    successMessage: string,
+    type: "success" | "info" = "success",
+  ): Promise<void> => {
+    const copied = await copyToClipboard(code);
+    toast(copied ? successMessage : "验证码复制失败，请手动复制", copied ? type : "error");
+  };
+
+  const loadVerificationMatches = async (): Promise<VerificationMatch[]> => {
+    if (email.kind === "temp") {
+      const tempCodes = await api.tempCodes(email.id);
+      return tempCodes.map((item: { message_id: string; code: string }) => ({
+        code: item.code,
+        link: null,
+        recipient_address: email.address,
+        certainty: "certain",
+        subject: "",
+      }));
+    }
+    if (hasAccount) {
+      const syncResult = await api.fetchEmails(email.id);
+      if (syncResult.error) {
+        throw new Error(syncResult.error);
+      }
+    }
+    const history = await api.verificationHistory(email.id);
+    return newestHistoryMatches(history.matches);
   };
 
   const handleGetCode = async (e: React.MouseEvent) => {
     e.stopPropagation();
     setLoadingCode(true);
     try {
-      const res = await api.readVerification(email.id);
+      const matches = await loadVerificationMatches();
       const now = Date.now();
       const prev = lastCodeFetchRef.current;
       const isReFetch = prev.time > 0;
@@ -712,20 +763,25 @@ const EmailCard: React.FC<{
 
       if (isReFetch && secondsSinceLast > 30) {
         // User is probably waiting for a NEW verification email — find fresh codes
-        const freshMatches = res.matches.filter((m: any) => m.code && !prev.codes.has(m.code));
+        const freshMatches = matches.filter(
+          (match: VerificationMatch) => match.code && !prev.codes.has(match.code),
+        );
         if (freshMatches.length > 0) {
           const code = freshMatches[0].code || "";
-          navigator.clipboard.writeText(code);
-          toast(`新验证码 ${code} 已复制 (距上次 ${Math.floor(secondsSinceLast)}秒)`, "success");
+          await copyCode(
+            code,
+            `新验证码 ${code} 已复制 (距上次 ${Math.floor(secondsSinceLast)}秒)`,
+          );
           // Update seen codes
-          freshMatches.forEach((m: any) => prev.codes.add(m.code));
+          freshMatches.forEach((match: VerificationMatch) => {
+            if (match.code) prev.codes.add(match.code);
+          });
           lastCodeFetchRef.current = { time: now, codes: prev.codes };
         } else {
           // No new codes — fall back to first available
-          const match = res.matches[0];
+          const match = matches[0];
           if (match?.code) {
-            navigator.clipboard.writeText(match.code);
-            toast(`验证码 ${match.code} 已复制 (暂无新验证码)`, "info");
+            await copyCode(match.code, `验证码 ${match.code} 已复制 (暂无新验证码)`, "info");
           } else {
             toast("未找到验证码 (可能邮件尚未到达)", "info");
           }
@@ -733,10 +789,9 @@ const EmailCard: React.FC<{
         }
       } else {
         // First fetch or quick re-fetch (<30s): return first available code
-        const match = res.matches[0];
+        const match = matches[0];
         if (match?.code) {
-          navigator.clipboard.writeText(match.code);
-          toast(`验证码 ${match.code} 已复制`, "success");
+          await copyCode(match.code, `验证码 ${match.code} 已复制`);
           // Track this code
           prev.codes.add(match.code);
           lastCodeFetchRef.current = { time: now, codes: prev.codes };
@@ -1072,15 +1127,70 @@ const EmailCard: React.FC<{
   );
 };
 
+interface DetailMessage {
+  id: number | string;
+  from_address: string;
+  subject: string;
+  text: string;
+  html?: string;
+  received_at?: string;
+  created_at?: string;
+}
+
+interface VerificationCodeItem {
+  message_id: string;
+  code: string;
+}
+
+interface VerificationLinkItem {
+  message_id: string;
+  url: string;
+}
+
+function mapStoredMessages(messages: StoredEmailMessage[]): DetailMessage[] {
+  return messages.map((message: StoredEmailMessage) => ({
+    id: message.id,
+    from_address: message.from_address || "—",
+    subject: message.subject || "(无主题)",
+    text: message.body || "",
+    received_at: message.received_at || message.created_at || "",
+    created_at: message.created_at,
+  }));
+}
+
+function newestHistoryMatches(matches: VerificationMatch[]): VerificationMatch[] {
+  return [...matches].reverse();
+}
+
+function mapCodeItems(matches: VerificationMatch[]): VerificationCodeItem[] {
+  return newestHistoryMatches(matches)
+    .filter((match: VerificationMatch) => !!match.code)
+    .map((match: VerificationMatch, index: number) => ({
+      message_id: `v_${index}`,
+      code: match.code || "",
+    }));
+}
+
+function mapLinkItems(matches: VerificationMatch[]): VerificationLinkItem[] {
+  return newestHistoryMatches(matches)
+    .filter((match: VerificationMatch) => !!match.link)
+    .map((match: VerificationMatch, index: number) => ({
+      message_id: `v_${index}`,
+      url: match.link || "",
+    }));
+}
+
 // ========== 右侧：邮件详情 ==========
 const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
   const { accounts } = useApp();
   const { toast } = useToast();
-  const [messages, setMessages] = React.useState<any[]>([]);
-  const [codes, setCodes] = React.useState<any[]>([]);
-  const [links, setLinks] = React.useState<any[]>([]);
+  const [messages, setMessages] = React.useState<DetailMessage[]>([]);
+  const [messageTotal, setMessageTotal] = React.useState(0);
+  const [codes, setCodes] = React.useState<VerificationCodeItem[]>([]);
+  const [links, setLinks] = React.useState<VerificationLinkItem[]>([]);
   const [bindings, setBindings] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(false);
+  const [loadingMore, setLoadingMore] = React.useState(false);
   const [syncing, setSyncing] = React.useState(false); // subtle indicator for background fetch
   const [lastRefreshed, setLastRefreshed] = React.useState<Date | null>(null);
   const [elapsed, setElapsed] = React.useState("");
@@ -1095,7 +1205,11 @@ const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
   const hasIMAP = !!email?.email_account_id;
 
   const handleCopyAlias = (address: string): void => {
-    copyText(address, () => toast("已复制别名邮箱", "success"));
+    void copyText(
+      address,
+      () => toast("已复制别名邮箱", "success"),
+      () => toast("复制失败，请手动复制", "error"),
+    );
   };
 
   const loadData = React.useCallback(
@@ -1114,43 +1228,25 @@ const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
           ]);
           if (activeLoadIdRef.current !== emailId) return;
           setMessages(m);
+          setMessageTotal(m.length);
           setCodes(c);
           setLinks(l);
         } else if (hasIMAP) {
-          // Cache-first: load stored messages first, verification from history
-          const [storedMsgs, verifyRes] = await Promise.all([
-            api.getMessages(email.id).catch(() => []),
-            api.readVerification(email.id).catch(() => ({ matches: [] })),
+          const [messagePage, verifyRes] = await Promise.all([
+            api
+              .getMessagesPage(email.id, MESSAGE_PAGE_SIZE, 0)
+              .catch((): EmailMessagesPage => ({ messages: [], total: 0 })),
+            api.verificationHistory(email.id).catch(() => ({ matches: [] as VerificationMatch[] })),
           ]);
           if (activeLoadIdRef.current !== emailId) return;
-          setMessages(
-            storedMsgs.map((m: any) => ({
-              id: m.id,
-              from_address: m.from_address || "—",
-              subject: m.subject || "(无主题)",
-              text: m.body || "",
-              received_at: m.received_at || m.created_at || "",
-            })),
-          );
-          setCodes(
-            verifyRes.matches
-              .filter((x: any) => x.code)
-              .map((x: any, i: number) => ({
-                message_id: `v_${i}`,
-                code: x.code,
-              })),
-          );
-          setLinks(
-            verifyRes.matches
-              .filter((x: any) => x.link)
-              .map((x: any, i: number) => ({
-                message_id: `v_${i}`,
-                url: x.link,
-              })),
-          );
+          setMessages(mapStoredMessages(messagePage.messages));
+          setMessageTotal(messagePage.total);
+          setCodes(mapCodeItems(verifyRes.matches));
+          setLinks(mapLinkItems(verifyRes.matches));
         } else {
           if (activeLoadIdRef.current !== emailId) return;
           setMessages([]);
+          setMessageTotal(0);
           setCodes([]);
           setLinks([]);
         }
@@ -1171,6 +1267,25 @@ const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
     },
     [email, toast, hasIMAP],
   );
+
+  const loadMoreMessages = React.useCallback(async () => {
+    if (!email || !hasIMAP || loadingMore) return;
+    const emailId: number = email.id;
+    setLoadingMore(true);
+    try {
+      const page = await api.getMessagesPage(emailId, MESSAGE_PAGE_SIZE, messages.length);
+      if (activeLoadIdRef.current !== emailId) return;
+      setMessages((current: DetailMessage[]) => [...current, ...mapStoredMessages(page.messages)]);
+      setMessageTotal(page.total);
+    } catch (err: any) {
+      if (activeLoadIdRef.current !== emailId) return;
+      toast(err?.message || "加载更多邮件失败", "error");
+    } finally {
+      if (activeLoadIdRef.current === emailId) {
+        setLoadingMore(false);
+      }
+    }
+  }, [email, hasIMAP, loadingMore, messages.length, toast]);
 
   // 手动触发 IMAP 拉取
   const handleFetchEmails = async () => {
@@ -1213,6 +1328,7 @@ const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
     if (!email) return;
     // Clear previous email's data immediately to avoid showing stale content
     setMessages([]);
+    setMessageTotal(0);
     setCodes([]);
     setLinks([]);
     setBindings([]);
@@ -1466,7 +1582,12 @@ const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
               <span className="text-sm">正在加载邮件数据…</span>
             </div>
           ) : tab === "messages" ? (
-            <MessagesTab messages={messages} />
+            <MessagesTab
+              messages={messages}
+              total={messageTotal}
+              loadingMore={loadingMore}
+              onLoadMore={hasIMAP && messages.length < messageTotal ? loadMoreMessages : undefined}
+            />
           ) : tab === "verify" ? (
             <VerifyTab codes={codes} links={links} />
           ) : (
@@ -1478,7 +1599,12 @@ const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
   );
 };
 
-const MessagesTab: React.FC<{ messages: any[] }> = ({ messages }) => {
+const MessagesTab: React.FC<{
+  messages: DetailMessage[];
+  total: number;
+  loadingMore: boolean;
+  onLoadMore?: () => void;
+}> = ({ messages, total, loadingMore, onLoadMore }) => {
   const [expandedId, setExpandedId] = React.useState<string | number | null>(null);
   const [darkMode, setDarkMode] = React.useState(true);
   if (messages.length === 0) {
@@ -1510,6 +1636,11 @@ const MessagesTab: React.FC<{ messages: any[] }> = ({ messages }) => {
       <div className="space-y-1.5">
         {/* Dark mode toggle */}
         <div className="flex items-center justify-end mb-1">
+          {total > messages.length && (
+            <span className="mr-auto text-xs text-gh-text-secondary">
+              已加载 {messages.length}/{total}
+            </span>
+          )}
           <button
             onClick={() => setDarkMode(!darkMode)}
             className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
@@ -1558,7 +1689,7 @@ const MessagesTab: React.FC<{ messages: any[] }> = ({ messages }) => {
               key={m.id}
               initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.02 }}
+              transition={{ delay: Math.min(i, 8) * 0.015 }}
               onClick={() => setExpandedId(isExpanded ? null : m.id)}
               className={`rounded-lg border transition-all cursor-pointer ${
                 isExpanded
@@ -1653,6 +1784,13 @@ const MessagesTab: React.FC<{ messages: any[] }> = ({ messages }) => {
             </motion.div>
           );
         })}
+        {onLoadMore && messages.length < total && (
+          <div className="flex justify-center pt-3">
+            <Button variant="ghost" size="sm" onClick={onLoadMore} loading={loadingMore}>
+              加载更多邮件 ({total - messages.length})
+            </Button>
+          </div>
+        )}
       </div>
     </>
   );
@@ -1725,9 +1863,12 @@ const VerifyTab: React.FC<{ codes: any[]; links: any[] }> = ({ codes, links }) =
             {codes.map((c) => (
               <button
                 key={c.message_id}
-                onClick={() => {
-                  navigator.clipboard.writeText(c.code);
-                  toast("验证码已复制", "success");
+                onClick={async () => {
+                  const copied = await copyToClipboard(c.code);
+                  toast(
+                    copied ? "验证码已复制" : "验证码复制失败，请手动复制",
+                    copied ? "success" : "error",
+                  );
                 }}
                 className="px-3 py-2.5 rounded-lg border border-gh-border bg-gh-canvas-subtle hover:border-gh-accent hover:bg-gh-accent/5 transition-colors text-left"
               >
@@ -2318,7 +2459,11 @@ const EmailSettingsModal: React.FC<{
   };
 
   const handleCopyAlias = (address: string): void => {
-    copyText(address, () => toast("已复制别名邮箱", "success"));
+    void copyText(
+      address,
+      () => toast("已复制别名邮箱", "success"),
+      () => toast("复制失败，请手动复制", "error"),
+    );
   };
 
   const isOutlook = account?.provider === "outlook";
@@ -3132,8 +3277,8 @@ export const Accounts: React.FC = () => {
   return (
     <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
       <Topbar
-        title="账号管理"
-        subtitle="管理所有邮箱账户、可用邮箱和分组"
+        title="可用邮箱"
+        subtitle="按分组管理可用邮箱、验证码读取、平台绑定和邮箱池操作"
         actions={
           <div className="flex items-center gap-1.5">
             <Button
@@ -3182,7 +3327,7 @@ export const Accounts: React.FC = () => {
                     onClick={handleRefreshSelected}
                     disabled={refreshRunning}
                   >
-                    <IconRefresh size={14} /> 刷新选中账户 ({selectedAccountIds.length})
+                    <IconRefresh size={14} /> 刷新选中源 ({selectedAccountIds.length})
                   </Button>
                 )}
               </>

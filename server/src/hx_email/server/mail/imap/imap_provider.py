@@ -17,6 +17,7 @@ from hx_email.server.mail.imap.imap_helpers import (
 )
 from hx_email.server.mail.imap.impl.fetch_batch import (
     chunk_uids,
+    filter_uids_since,
     messages_from_fetch_data,
     uid_set_for_fetch,
 )
@@ -53,8 +54,15 @@ class IMAPMailboxProvider:
         folder: str = "inbox",
         skip: int = 0,
         top: int = 50,
+        since_uid: str = "",
     ) -> list[MailboxMessage]:
-        return self._fetch_messages(email_account, folder=folder, skip=skip, top=top)
+        return self._fetch_messages(
+            email_account,
+            folder=folder,
+            skip=skip,
+            top=top,
+            since_uid=since_uid,
+        )
 
     def read_messages_folder(
         self,
@@ -63,11 +71,24 @@ class IMAPMailboxProvider:
         folder: str,
         top: int,
         skip: int = 0,
+        since_uid: str = "",
     ) -> list[MailboxMessage]:
-        return self.read_messages(email_account, folder=folder, skip=skip, top=top)
+        return self.read_messages(
+            email_account,
+            folder=folder,
+            skip=skip,
+            top=top,
+            since_uid=since_uid,
+        )
 
     def _fetch_messages(
-        self, account: EmailAccountMailbox, *, folder: str = "inbox", skip: int = 0, top: int = 50
+        self,
+        account: EmailAccountMailbox,
+        *,
+        folder: str = "inbox",
+        skip: int = 0,
+        top: int = 50,
+        since_uid: str = "",
     ) -> list[MailboxMessage]:
         with connect(self._settings) as conn:
             row = conn.execute(
@@ -121,6 +142,7 @@ class IMAPMailboxProvider:
                     folder=folder,
                     skip=skip,
                     top=top,
+                    since_uid=since_uid,
                 )
             return self._imap_fetch(
                 imap_host,
@@ -133,6 +155,7 @@ class IMAPMailboxProvider:
                 folder=folder,
                 skip=skip,
                 top=top,
+                since_uid=since_uid,
             )
         if password:
             return self._imap_fetch(
@@ -146,6 +169,7 @@ class IMAPMailboxProvider:
                 folder=folder,
                 skip=skip,
                 top=top,
+                since_uid=since_uid,
             )
         raise RuntimeError("账户没有配置密码或 OAuth 凭证，无法连接 IMAP")  # noqa: RUF001
 
@@ -162,6 +186,7 @@ class IMAPMailboxProvider:
         folder: str = "inbox",
         skip: int = 0,
         top: int = 50,
+        since_uid: str = "",
     ) -> list[MailboxMessage]:
         messages: list[MailboxMessage] = []
         conn: imaplib.IMAP4 | imaplib.IMAP4_SSL | None = None
@@ -219,6 +244,7 @@ class IMAPMailboxProvider:
             if not uid_bytes:
                 return messages
             uids: list[bytes] = uid_bytes.split()
+            uids = filter_uids_since(uids, since_uid)
             total = len(uids)
             # Paginate: newest first, slice by skip/top
             start_idx = max(0, total - skip - top)

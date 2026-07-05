@@ -1,4 +1,5 @@
 import React from "react";
+import { copyToClipboard } from "../../utils/clipboard";
 import { IconCheck, IconCopy } from "../icons";
 
 interface CopyButtonProps {
@@ -19,28 +20,11 @@ export const CopyButton: React.FC<CopyButtonProps> = ({
 
   const handleCopy = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    try {
-      await navigator.clipboard.writeText(text);
+    const copiedToClipboard = await copyToClipboard(text);
+    if (copiedToClipboard) {
       setCopied(true);
       clearTimeout(timerRef.current);
       timerRef.current = setTimeout(() => setCopied(false), timeout);
-    } catch {
-      // Fallback for older browsers
-      const textarea = document.createElement("textarea");
-      textarea.value = text;
-      textarea.style.position = "fixed";
-      textarea.style.opacity = "0";
-      document.body.appendChild(textarea);
-      textarea.select();
-      try {
-        document.execCommand("copy");
-        setCopied(true);
-        clearTimeout(timerRef.current);
-        timerRef.current = setTimeout(() => setCopied(false), timeout);
-      } catch {
-        // Silently fail
-      }
-      document.body.removeChild(textarea);
     }
   };
 
