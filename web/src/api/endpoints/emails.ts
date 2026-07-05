@@ -1,9 +1,11 @@
 import type {
   AccountImportResult,
   EmailAccount,
+  EmailMessagesPage,
   PaginatedEmails,
+  StoredEmailMessage,
   UsableEmail,
-  VerificationMatch,
+  VerificationReading,
 } from "../../types";
 import { request, requestText } from "../core";
 
@@ -40,15 +42,10 @@ export const emailsApi = {
 
   // Verification
   readVerification: (id: number) =>
-    request<{ usable_email: UsableEmail; matches: VerificationMatch[] }>(
-      `/usable-emails/${id}/verification/read`,
-      { method: "POST" },
-    ),
+    request<VerificationReading>(`/usable-emails/${id}/verification/read`, { method: "POST" }),
 
   verificationHistory: (id: number) =>
-    request<{ usable_email: UsableEmail; matches: VerificationMatch[] }>(
-      `/usable-emails/${id}/verification/history`,
-    ),
+    request<VerificationReading>(`/usable-emails/${id}/verification/history`),
 
   verificationState: (id: number) =>
     request<{
@@ -65,21 +62,15 @@ export const emailsApi = {
   },
 
   // Messages
-  getMessages: (emailId: number, limit = 100, offset = 0) =>
-    request<{
-      messages: Array<{
-        id: number;
-        from_address: string;
-        recipient_address: string;
-        subject: string;
-        body: string;
-        received_at: string;
-        created_at: string;
-      }>;
-      total: number;
-    }>(`/usable-emails/${emailId}/messages?limit=${limit}&offset=${offset}`).then(
-      (r) => r.messages,
+  getMessagesPage: (emailId: number, limit = 30, offset = 0) =>
+    request<EmailMessagesPage>(
+      `/usable-emails/${emailId}/messages?limit=${limit}&offset=${offset}`,
     ),
+
+  getMessages: (emailId: number, limit = 100, offset = 0) =>
+    request<{ messages: StoredEmailMessage[]; total: number }>(
+      `/usable-emails/${emailId}/messages?limit=${limit}&offset=${offset}`,
+    ).then((r) => r.messages),
 
   fetchEmails: (emailId: number) =>
     request<{

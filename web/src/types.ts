@@ -18,7 +18,13 @@ export type {
   WorkbenchEmail,
 } from "./types/email";
 export type { Group, Tag } from "./types/group";
-export type { TempMessage, VerificationMatch } from "./types/message";
+export type {
+  EmailMessagesPage,
+  StoredEmailMessage,
+  TempMessage,
+  VerificationMatch,
+  VerificationReading,
+} from "./types/message";
 export type {
   ActivityStats,
   Overview,

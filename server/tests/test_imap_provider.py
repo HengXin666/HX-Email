@@ -21,6 +21,9 @@ class FakeImapConnection:
     def authenticate(self, mechanism: str, authobject: object) -> None:
         _ = (mechanism, authobject)
 
+    def login(self, username: str, password: str) -> None:
+        _ = (username, password)
+
     def select(self, folder: str, readonly: bool = False) -> tuple[str, list[bytes]]:
         _ = readonly
         self.selected.append(folder)
@@ -92,6 +95,33 @@ def test_imap_provider_fetches_latest_message_ids_first_like_reference_project(t
     assert fake.fetch_ids == ["4", "3"]
     assert fake.fetch_call_count == 1
     assert [message.subject for message in messages] == ["Newest", "Third"]
+
+
+def test_imap_provider_fetches_only_uids_newer_than_since_uid(tmp_path) -> None:
+    settings = Settings(data_dir=tmp_path)
+    migrate(settings)
+    with connect(settings) as conn:
+        conn.execute(
+            """
+            INSERT INTO email_accounts
+                (id, user_id, provider, primary_address, imap_host, username, imap_password)
+            VALUES (1, 1, 'gmail', 'owner@example.com', 'imap.gmail.com',
+                    'owner@example.com', 'secret')
+            """
+        )
+
+    fake = FakeImapConnection("imap.gmail.com", 993)
+
+    with patch("hx_email.server.mail.imap.imap_provider.imaplib.IMAP4_SSL", return_value=fake):
+        messages = IMAPMailboxProvider(settings).read_messages(
+            EmailAccountMailbox(id=1, provider="gmail", primary_address="owner@example.com"),
+            top=10,
+            since_uid="3",
+        )
+
+    assert fake.fetch_ids == ["4"]
+    assert fake.fetch_call_count == 1
+    assert [message.subject for message in messages] == ["Newest"]
 
 
 def test_parse_date_converts_imap_timestamp_to_local_timezone() -> None:

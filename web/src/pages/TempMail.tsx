@@ -17,6 +17,7 @@ import { Badge, Button, Card, Input, Modal } from "../components/ui/Primitives";
 import { useToast } from "../components/ui/Toast";
 import { useApp } from "../store/AppContext";
 import type { TempMessage } from "../types";
+import { copyToClipboard } from "../utils/clipboard";
 
 export const TempMail: React.FC = () => {
   const { emails, createTempMail, refreshEmails } = useApp();
@@ -215,8 +216,12 @@ const TempDetail: React.FC<{ emailId: number; address: string; label: string }> 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [emailId]);
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(address);
+  const handleCopy = async () => {
+    const copiedToClipboard = await copyToClipboard(address);
+    if (!copiedToClipboard) {
+      toast("复制失败，请手动复制", "error");
+      return;
+    }
     setCopied(true);
     toast("已复制邮箱地址", "success");
     setTimeout(() => setCopied(false), 1500);
@@ -283,9 +288,12 @@ const TempDetail: React.FC<{ emailId: number; address: string; label: string }> 
               {codes.slice(0, 4).map((c) => (
                 <button
                   key={c.message_id}
-                  onClick={() => {
-                    navigator.clipboard.writeText(c.code);
-                    toast("已复制", "success");
+                  onClick={async () => {
+                    const copiedToClipboard = await copyToClipboard(c.code);
+                    toast(
+                      copiedToClipboard ? "已复制" : "验证码复制失败，请手动复制",
+                      copiedToClipboard ? "success" : "error",
+                    );
                   }}
                   className="px-4 py-3 rounded-lg border border-gh-border bg-gradient-to-br from-gh-success/5 to-gh-canvas-subtle hover:border-gh-success/50 transition-all text-left pulse-ring"
                 >

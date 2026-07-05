@@ -27,6 +27,21 @@ def uid_set_for_fetch(uids: list[bytes]) -> str:
     return b",".join(uids).decode("ascii", errors="ignore")
 
 
+def filter_uids_since(uids: list[bytes], since_uid: str) -> list[bytes]:
+    if not since_uid:
+        return uids
+    try:
+        min_uid = int(since_uid)
+    except ValueError:
+        return uids
+    return [uid for uid in uids if uid_is_after(uid, min_uid)]
+
+
+def uid_is_after(uid: bytes, min_uid: int) -> bool:
+    uid_text: str = uid.decode("ascii", errors="ignore")
+    return uid_text.isdigit() and int(uid_text) > min_uid
+
+
 def messages_from_fetch_data(
     fetch_data: list[object],
     fallback_uids: list[bytes],

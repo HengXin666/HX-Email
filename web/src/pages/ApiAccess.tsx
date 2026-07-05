@@ -12,6 +12,7 @@ import {
 import { Topbar } from "../components/layout";
 import { Button, Card } from "../components/ui/Primitives";
 import { useToast } from "../components/ui/Toast";
+import { copyToClipboard } from "../utils/clipboard";
 
 interface EndpointRowProps {
   method: string;
@@ -46,8 +47,12 @@ const CodeBlock: React.FC<{ code: string; language?: string }> = ({ code, langua
       <div className="flex items-center justify-between px-3 py-1.5 bg-gh-border/30 border-b border-gh-border">
         <span className="text-[10px] text-gh-text-secondary uppercase">{language}</span>
         <button
-          onClick={() => {
-            navigator.clipboard.writeText(code);
+          onClick={async () => {
+            const copiedToClipboard = await copyToClipboard(code);
+            if (!copiedToClipboard) {
+              toast("复制失败，请手动复制", "error");
+              return;
+            }
             toast("已复制", "success");
             setCopied(true);
             setTimeout(() => setCopied(false), 1500);

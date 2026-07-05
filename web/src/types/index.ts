@@ -16,7 +16,13 @@ export type {
   WorkbenchEmail,
 } from "./email";
 export type { Group, Tag } from "./group";
-export type { TempMessage, VerificationMatch } from "./message";
+export type {
+  EmailMessagesPage,
+  StoredEmailMessage,
+  TempMessage,
+  VerificationMatch,
+  VerificationReading,
+} from "./message";
 export type { ActivityStats, Overview, OverviewSummary, VerificationStats } from "./overview";
 export type { BindingStatus, Platform, PlatformBinding } from "./platform";
 export type { MailPoolEntry, MailPoolStatus, PoolAdminAccount, PoolStats } from "./pool";

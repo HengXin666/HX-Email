@@ -14,10 +14,12 @@ class SequenceMailboxProvider:
         self.batches = list(batches)
         self.calls = 0
         self.last_top = 0
+        self.since_uids = []
 
-    def read_messages(self, email_account, folder="inbox", skip=0, top=50):
+    def read_messages(self, email_account, folder="inbox", skip=0, top=50, since_uid=""):
         _ = (email_account, folder, skip)
         self.last_top = top
+        self.since_uids.append(since_uid)
         self.calls += 1
         if self.calls <= len(self.batches):
             return self.batches[self.calls - 1]

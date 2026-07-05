@@ -44,13 +44,20 @@ class FallbackMailProvider:
         folder: str = "inbox",
         skip: int = 0,
         top: int = 50,
+        since_uid: str = "",
     ) -> list[MailboxMessage | dict[str, object]]:
         """Fetch messages with Graph→IMAP fallback for Outlook accounts."""
         if email_account.provider in _OUTLOOK_PROVIDERS:
             graph_msgs = self._try_graph_read(email_account, folder=folder, top=top)
             if graph_msgs is not None:
                 return graph_msgs  # type: ignore[return-value]
-        return self._imap.read_messages(email_account, folder=folder, skip=skip, top=top)  # type: ignore[return-value]
+        return self._imap.read_messages(  # type: ignore[return-value]
+            email_account,
+            folder=folder,
+            skip=skip,
+            top=top,
+            since_uid=since_uid,
+        )
 
     # ── extended API (not in protocol, used directly by email_service) ───
 

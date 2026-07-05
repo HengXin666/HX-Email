@@ -75,6 +75,7 @@ class MailboxProvider(Protocol):
         folder: str = "inbox",
         skip: int = 0,
         top: int = 50,
+        since_uid: str = "",
     ) -> list[MailboxMessage | dict[str, object]]: ...
 
 
@@ -87,6 +88,7 @@ class FolderMailboxProvider(Protocol):
         folder: str,
         top: int,
         skip: int = 0,
+        since_uid: str = "",
     ) -> list[MailboxMessage | dict[str, object]]: ...
 
 
@@ -97,7 +99,9 @@ class EmptyMailboxProvider:
         folder: str = "inbox",
         skip: int = 0,
         top: int = 50,
+        since_uid: str = "",
     ) -> list[MailboxMessage]:
+        _ = since_uid
         return []
 
 
