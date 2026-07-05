@@ -3277,8 +3277,8 @@ export const Accounts: React.FC = () => {
   return (
     <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
       <Topbar
-        title="账号管理"
-        subtitle="管理所有邮箱账户、可用邮箱和分组"
+        title="可用邮箱"
+        subtitle="按分组管理可用邮箱、验证码读取、平台绑定和邮箱池操作"
         actions={
           <div className="flex items-center gap-1.5">
             <Button
@@ -3327,7 +3327,7 @@ export const Accounts: React.FC = () => {
                     onClick={handleRefreshSelected}
                     disabled={refreshRunning}
                   >
-                    <IconRefresh size={14} /> 刷新选中账户 ({selectedAccountIds.length})
+                    <IconRefresh size={14} /> 刷新选中源 ({selectedAccountIds.length})
                   </Button>
                 )}
               </>
