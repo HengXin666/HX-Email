@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 from hx_email.config import Settings
@@ -10,10 +9,10 @@ from hx_email.database import connect
 from hx_email.server.mail import EmailAccountMailbox, MailboxMessage
 from hx_email.server.mail.graph.fallback_provider import FallbackMailProvider
 from hx_email.server.mail.verification import (
-    CODE_PATTERN,
+    DeliveryTarget,
     MailboxProvider,
     coerce_message,
-    first_match,
+    find_verification_code,
     normalize_delivery_address,
 )
 
@@ -258,30 +257,14 @@ def extract_verification_code(
         return {"verification_code": "", "matched_email_id": "", "match_count": 0}
 
     raw_messages: list[Any] = mailbox_provider.read_messages(account)
-    from hx_email.server.mail.verification import extract_verification_code as _vc
-
-    has_custom_pattern: bool = bool(code_regex) or code_length is not None
-    if has_custom_pattern:
-        pattern: re.Pattern[str] = re.compile(code_regex) if code_regex else CODE_PATTERN
-
-    for idx, raw in enumerate(raw_messages):
-        msg = coerce_message(raw)
-        if code_source == "subject":
-            content: str = msg.subject
-        elif code_source == "body":
-            content = msg.body
-        else:
-            content = f"{msg.subject}\n{msg.body}"
-        code = first_match(pattern, content) if has_custom_pattern else _vc(content)
-        if code is not None:
-            return {
-                "verification_code": code,
-                "matched_email_id": str(idx + 1),
-                "matched_subject": msg.subject,
-                "match_count": 1,
-            }
-
-    return {"verification_code": "", "matched_email_id": "", "match_count": 0}
+    messages: list[MailboxMessage] = [coerce_message(raw) for raw in raw_messages]
+    return find_verification_code(
+        messages,
+        DeliveryTarget(address=email_addr, provider=account.provider),
+        code_length=code_length,
+        code_regex=code_regex,
+        code_source=code_source,
+    )
 
 
 def delete_emails(

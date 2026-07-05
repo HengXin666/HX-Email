@@ -17,6 +17,10 @@ dist/
 .env.*
 !.env.example
 
+# Agent/runtime local state
+.agent_context/
+.multica/
+
 # 参考项目
 ref/
 .vscode/

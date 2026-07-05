@@ -5,9 +5,10 @@ from hx_email.server.mail import MailboxMessage
 from hx_email.server.mail.imap.message_store import save_messages
 from hx_email.server.mail.impl.fetch.targets import FetchUsableEmail
 from hx_email.server.mail.verification import (
+    DeliveryTarget,
     VerificationMatch,
     extract_verification_code,
-    recipient_matches_target,
+    message_matches_target,
     save_history,
 )
 
@@ -37,11 +38,15 @@ def store_messages_for_usable_emails(
         codes_found += save_codes(settings, user_id, primary_row.id, broadcast, certainty="medium")
 
     for email_row in email_rows:
+        target = DeliveryTarget(
+            address=email_row.address,
+            provider=email_row.provider,
+            kind=email_row.kind,
+        )
         relevant = [
             message
             for message in addressed
-            if message.recipient_address is not None
-            and recipient_matches_target(email_row.address, message.recipient_address)
+            if message_matches_target(target, message.recipient_address)
         ]
         if not relevant:
             continue

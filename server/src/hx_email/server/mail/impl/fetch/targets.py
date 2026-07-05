@@ -17,6 +17,8 @@ class FetchAccountInfo:
 class FetchUsableEmail:
     id: int
     address: str
+    kind: str = "custom"
+    provider: str = ""
 
 
 def resolve_fetch_account_info(
@@ -94,18 +96,32 @@ def list_fetch_usable_emails_for_account(
 ) -> list[FetchUsableEmail]:
     with connect(settings) as conn:
         direct_rows = conn.execute(
-            "SELECT id, address FROM usable_emails WHERE email_account_id = ? AND user_id = ?",
+            """
+            SELECT ue.id, ue.address, ue.kind, ea.provider
+            FROM usable_emails ue
+            JOIN email_accounts ea ON ea.id = ue.email_account_id
+            WHERE ue.email_account_id = ? AND ue.user_id = ?
+            """,
             (account_id, user_id),
         ).fetchall()
         standalone_rows = conn.execute(
             """
-            SELECT id, address
+            SELECT id, address, kind
             FROM usable_emails
             WHERE email_account_id IS NULL AND user_id = ? AND status = 'active'
             """,
             (user_id,),
         ).fetchall()
-    emails = [FetchUsableEmail(id=row["id"], address=row["address"]) for row in direct_rows]
+    account_provider: str = str(direct_rows[0]["provider"] or "") if direct_rows else ""
+    emails = [
+        FetchUsableEmail(
+            id=row["id"],
+            address=row["address"],
+            kind=row["kind"],
+            provider=row["provider"],
+        )
+        for row in direct_rows
+    ]
     base_addresses = {normalize_delivery_address(email.address) for email in emails}
     known_ids = {email.id for email in emails}
     for row in standalone_rows:
@@ -115,6 +131,13 @@ def list_fetch_usable_emails_for_account(
         email_id = int(row["id"])
         if email_id in known_ids:
             continue
-        emails.append(FetchUsableEmail(id=email_id, address=address))
+        emails.append(
+            FetchUsableEmail(
+                id=email_id,
+                address=address,
+                kind=row["kind"],
+                provider=account_provider,
+            )
+        )
         known_ids.add(email_id)
     return emails

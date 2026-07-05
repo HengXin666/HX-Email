@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 from hx_email.config import Settings
@@ -15,10 +14,11 @@ from hx_email.server.external_api.impl.mail.helpers import (
 from hx_email.server.mail import MailboxMessage
 from hx_email.server.mail.impl.email_service import _find_email_account
 from hx_email.server.mail.verification import (
-    CODE_PATTERN,
     LINK_PATTERN,
+    DeliveryTarget,
     MailboxProvider,
     coerce_message,
+    find_verification_code,
     first_match,
 )
 
@@ -176,8 +176,6 @@ def extract_verification_code(
     When no custom regex or length is given, uses keyword-context-aware
     extraction that only matches codes near verification keywords.
     """
-    from hx_email.server.mail.verification import extract_verification_code as vrf_extract
-
     resolved_email = resolve_email(settings, email, claim_token)
     account = _find_email_account(settings, resolved_email)
     if account is None:
@@ -188,29 +186,13 @@ def extract_verification_code(
     filtered: list[MailboxMessage] = filter_messages(
         all_msgs, from_contains, subject_contains, since_minutes
     )
-
-    has_custom_pattern: bool = bool(code_regex) or code_length is not None
-    if has_custom_pattern:
-        pattern: re.Pattern[str] = re.compile(code_regex) if code_regex else CODE_PATTERN
-
-    for idx, msg in enumerate(filtered):
-        if code_source == "subject":
-            content: str = msg.subject
-        elif code_source == "body":
-            content = msg.body or ""
-        else:
-            content = f"{msg.subject}\n{msg.body or ''}"
-
-        code = first_match(pattern, content) if has_custom_pattern else vrf_extract(content)
-        if code is not None:
-            return {
-                "verification_code": code,
-                "matched_email_id": str(idx + 1),
-                "matched_subject": msg.subject,
-                "match_count": 1,
-            }
-
-    return {"verification_code": "", "matched_email_id": "", "match_count": 0}
+    return find_verification_code(
+        filtered,
+        DeliveryTarget(address=resolved_email, provider=account.provider),
+        code_length=code_length,
+        code_regex=code_regex,
+        code_source=code_source,
+    )
 
 
 def extract_verification_link(
