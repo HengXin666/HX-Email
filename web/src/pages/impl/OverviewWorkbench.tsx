@@ -144,8 +144,8 @@ export const OverviewWorkbench: React.FC<OverviewWorkbenchProps> = ({
   ];
 
   return (
-    <div className="flex-1 min-h-0 overflow-hidden p-4 lg:p-5">
-      <div className="h-full min-h-0 max-w-[1600px] mx-auto flex flex-col gap-4">
+    <div className="flex-1 min-h-0 overflow-hidden p-5 md:p-6 xl:p-8">
+      <div className="h-full min-h-0 max-w-[1600px] mx-auto flex flex-col gap-6">
         <OverviewMetrics
           overview={overview}
           visibleEmailCount={visibleEmails.length}
@@ -155,7 +155,7 @@ export const OverviewWorkbench: React.FC<OverviewWorkbenchProps> = ({
 
         <div className="flex-1 min-h-0 flex flex-col lg:flex-row border border-gh-border bg-gh-canvas-subtle rounded-lg overflow-hidden">
           <aside className="lg:w-72 shrink-0 border-b lg:border-b-0 lg:border-r border-gh-border bg-gh-canvas">
-            <div className="h-11 px-4 flex items-center justify-between border-b border-gh-border">
+            <div className="min-h-12 px-5 py-3 flex items-center justify-between border-b border-gh-border">
               <span className="text-xs font-semibold text-gh-text-muted uppercase tracking-wider">
                 资源流程
               </span>
@@ -169,13 +169,13 @@ export const OverviewWorkbench: React.FC<OverviewWorkbenchProps> = ({
                 <IconRefresh size={14} />
               </button>
             </div>
-            <div className="p-2 space-y-1">
+            <div className="p-3 space-y-2">
               {flowSteps.map((step) => (
                 <button
                   key={step.key}
                   type="button"
                   onClick={() => onNavigate(step.path)}
-                  className="w-full flex items-center gap-3 rounded-md px-3 py-2.5 text-left text-gh-text-muted hover:text-gh-text hover:bg-gh-border/35 transition-colors"
+                  className="w-full flex items-center gap-3 rounded-md px-3 py-3 text-left text-gh-text-muted hover:text-gh-text hover:bg-gh-border/35 transition-colors"
                 >
                   <span
                     className="w-8 h-8 rounded-md flex items-center justify-center shrink-0"
@@ -203,7 +203,7 @@ export const OverviewWorkbench: React.FC<OverviewWorkbenchProps> = ({
           </aside>
 
           <main className="flex-1 min-w-0 min-h-[320px] flex flex-col">
-            <div className="h-11 px-4 flex items-center justify-between border-b border-gh-border bg-gh-canvas/70">
+            <div className="min-h-14 px-5 py-3 flex items-center justify-between gap-4 border-b border-gh-border bg-gh-canvas/70">
               <div>
                 <h2 className="text-sm font-semibold text-gh-text">可用邮箱主工作区</h2>
                 <p className="text-[11px] text-gh-text-secondary">
@@ -216,7 +216,7 @@ export const OverviewWorkbench: React.FC<OverviewWorkbenchProps> = ({
             </div>
             <div className="flex-1 overflow-auto">
               <div className="min-w-[720px]">
-                <div className="grid grid-cols-[minmax(260px,1.5fr)_110px_130px_90px_120px] gap-3 px-4 py-2 border-b border-gh-border bg-gh-canvas-inset text-[11px] font-semibold text-gh-text-muted uppercase tracking-wider">
+                <div className="grid grid-cols-[minmax(260px,1.5fr)_110px_130px_90px_120px] gap-3 px-5 py-3 border-b border-gh-border bg-gh-canvas-inset text-[11px] font-semibold text-gh-text-muted uppercase tracking-wider">
                   <div>邮箱</div>
                   <div>类型</div>
                   <div>分组</div>
@@ -233,7 +233,7 @@ export const OverviewWorkbench: React.FC<OverviewWorkbenchProps> = ({
                       key={email.id}
                       type="button"
                       onClick={() => setSelectedEmailId(email.id)}
-                      className={`grid w-full grid-cols-[minmax(260px,1.5fr)_110px_130px_90px_120px] gap-3 px-4 py-3 border-b border-gh-border/50 text-left transition-colors ${
+                      className={`grid w-full grid-cols-[minmax(260px,1.5fr)_110px_130px_90px_120px] gap-3 px-5 py-4 border-b border-gh-border/50 text-left transition-colors ${
                         selectedEmailId === email.id ? "bg-gh-accent/10" : "hover:bg-gh-border/25"
                       }`}
                     >

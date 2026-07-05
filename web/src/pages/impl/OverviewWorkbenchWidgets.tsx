@@ -46,7 +46,7 @@ export const OverviewMetrics: React.FC<OverviewMetricsProps> = ({
   tempEmailCount,
   accountCount,
 }) => (
-  <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3">
+  <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-4">
     <MetricTile
       label="可用邮箱"
       value={overview?.usable_email_count ?? visibleEmailCount}
@@ -87,7 +87,7 @@ export const OverviewMetrics: React.FC<OverviewMetricsProps> = ({
 );
 
 const MetricTile: React.FC<MetricTileProps> = ({ label, value, icon: Icon, color }) => (
-  <div className="rounded-lg border border-gh-border bg-gh-canvas-subtle px-3 py-2.5">
+  <div className="rounded-lg border border-gh-border bg-gh-canvas-subtle px-4 py-4">
     <div className="flex items-center justify-between gap-3">
       <span className="text-xs text-gh-text-muted">{label}</span>
       <Icon size={14} className="shrink-0" style={{ color }} />
@@ -112,12 +112,12 @@ export const OperationPanel: React.FC<OperationPanelProps> = ({
   onNavigate,
 }) => (
   <aside className="lg:w-80 shrink-0 border-t lg:border-t-0 lg:border-l border-gh-border bg-gh-canvas flex flex-col min-h-[320px]">
-    <div className="h-11 px-4 flex items-center border-b border-gh-border">
+    <div className="min-h-12 px-5 py-3 flex items-center border-b border-gh-border">
       <span className="text-xs font-semibold text-gh-text-muted uppercase tracking-wider">
         详情与操作
       </span>
     </div>
-    <div className="flex-1 overflow-auto p-4 space-y-4">
+    <div className="flex-1 overflow-auto p-5 space-y-5">
       {selectedEmail ? (
         <>
           <div>
@@ -141,7 +141,7 @@ export const OperationPanel: React.FC<OperationPanelProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-3">
             <Button variant="secondary" size="sm" onClick={() => onNavigate("/accounts")}>
               <IconKey size={13} /> 验证码
             </Button>
@@ -162,11 +162,11 @@ export const OperationPanel: React.FC<OperationPanelProps> = ({
         </div>
       )}
 
-      <div className="pt-4 border-t border-gh-border">
+      <div className="pt-5 border-t border-gh-border">
         <h4 className="text-xs font-semibold text-gh-text-muted uppercase tracking-wider mb-2">
           资源概况
         </h4>
-        <div className="grid grid-cols-3 gap-2 text-center">
+        <div className="grid grid-cols-3 gap-3 text-center">
           <MiniCount icon={IconServer} label="平台" value={platforms.length} />
           <MiniCount icon={IconDatabase} label="分组" value={groups.length} />
           <MiniCount icon={IconActivity} label="今日" value={activityStats?.today_actions ?? 0} />
