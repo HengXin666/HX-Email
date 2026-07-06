@@ -106,15 +106,7 @@ export const emailsApi = {
       body: JSON.stringify({ address, label }),
     }),
 
-  getEmailAccount: (id: number) =>
-    request<
-      EmailAccount & {
-        imap_password?: string;
-        refresh_token?: string;
-        has_imap_password?: boolean;
-        has_refresh_token?: boolean;
-      }
-    >(`/email-accounts/${id}`),
+  getEmailAccount: (id: number) => request<EmailAccount>(`/email-accounts/${id}`),
 
   deactivateEmailAccount: (id: number) =>
     request<EmailAccount>(`/email-accounts/${id}/deactivate`, { method: "POST" }),

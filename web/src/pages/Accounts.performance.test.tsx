@@ -27,10 +27,12 @@ vi.mock("framer-motion", () => ({
 
 const listPoolEntries = vi.fn();
 const getMessagesPage = vi.fn();
+const getEmailAccount = vi.fn();
 const readVerification = vi.fn();
 const verificationHistory = vi.fn();
 const listBindings = vi.fn();
 const fetchEmails = vi.fn();
+const updateEmailAccount = vi.fn();
 
 const primaryEmail: UsableEmail = {
   id: 7,
@@ -52,13 +54,18 @@ const account: EmailAccount = {
   last_refresh_at: "2026-07-04T10:00:00Z",
 };
 
+let mockEmails: UsableEmail[] = [primaryEmail];
+let mockAccounts: EmailAccount[] = [account];
+
 vi.mock("../api/client", () => ({
   api: {
     fetchEmails: (...args: unknown[]) => fetchEmails(...args),
+    getEmailAccount: (...args: unknown[]) => getEmailAccount(...args),
     getMessagesPage: (...args: unknown[]) => getMessagesPage(...args),
     listBindings: (...args: unknown[]) => listBindings(...args),
     listPoolEntries: (...args: unknown[]) => listPoolEntries(...args),
     readVerification: (...args: unknown[]) => readVerification(...args),
+    updateEmailAccount: (...args: unknown[]) => updateEmailAccount(...args),
     verificationHistory: (...args: unknown[]) => verificationHistory(...args),
   },
   streamRefresh: vi.fn(),
@@ -66,8 +73,8 @@ vi.mock("../api/client", () => ({
 
 vi.mock("../store/AppContext", () => ({
   useApp: () => ({
-    accounts: [account],
-    emails: [primaryEmail],
+    accounts: mockAccounts,
+    emails: mockEmails,
     groups: [],
     platforms: [],
     tags: [],
@@ -90,11 +97,14 @@ function renderAccounts(): void {
 }
 
 beforeEach(() => {
+  mockEmails = [primaryEmail];
+  mockAccounts = [account];
   Object.defineProperty(document, "execCommand", {
     configurable: true,
     value: vi.fn(() => true),
   });
   listPoolEntries.mockResolvedValue([]);
+  getEmailAccount.mockResolvedValue(account);
   getMessagesPage.mockResolvedValue({
     messages: [
       {
@@ -150,4 +160,45 @@ test("verification button uses incremental fetch before reading cached history",
   });
   expect(verificationHistory).toHaveBeenCalledWith(7);
   expect(readVerification).not.toHaveBeenCalled();
+});
+
+test("settings credential tab uses account detail provider when list cache misses the account", async () => {
+  const outlookEmail: UsableEmail = {
+    id: 11,
+    address: "late-owner@outlook.com",
+    label: "Late Outlook",
+    kind: "primary",
+    status: "active",
+    email_account_id: 99,
+    platform_binding_count: 0,
+  };
+  const outlookAccount: EmailAccount & {
+    imap_password: string;
+    refresh_token: string;
+  } = {
+    id: 99,
+    provider: "outlook",
+    primary_address: "late-owner@outlook.com",
+    display_name: "Late Outlook",
+    status: "active",
+    usable_emails: [outlookEmail],
+    imap_password: "outlook-password",
+    client_id: "client-id-from-detail",
+    refresh_token: "refresh-token-from-detail",
+  };
+  mockEmails = [outlookEmail];
+  mockAccounts = [];
+  getEmailAccount.mockResolvedValue(outlookAccount);
+
+  renderAccounts();
+
+  fireEvent.click(screen.getByTitle("设置"));
+  fireEvent.click(screen.getByRole("button", { name: "凭证" }));
+
+  await waitFor(() => {
+    expect(getEmailAccount).toHaveBeenCalledWith(99);
+  });
+  expect(await screen.findByDisplayValue("outlook-password")).toBeInTheDocument();
+  expect(screen.getByDisplayValue("client-id-from-detail")).toBeInTheDocument();
+  expect(screen.getByDisplayValue("refresh-token-from-detail")).toBeInTheDocument();
 });
