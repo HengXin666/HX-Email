@@ -2306,7 +2306,7 @@ const EmailSettingsModal: React.FC<{
   const [credCid, setCredCid] = useState("");
   const [credRtk, setCredRtk] = useState("");
   const [credStatus, setCredStatus] = useState("active");
-  const [credLoaded, setCredLoaded] = useState(false);
+  const [credentialAccount, setCredentialAccount] = useState<EmailAccount | null>(null);
   // Account remark (多行备注)
   const [remark, setRemark] = useState("");
   // 邮箱池
@@ -2314,7 +2314,8 @@ const EmailSettingsModal: React.FC<{
   const [initialInPool, setInitialInPool] = useState(false);
   const [poolLoaded, setPoolLoaded] = useState(false);
   // 已有别名列表
-  const aliases = (account?.usable_emails || []).filter((u) => u.kind === "alias");
+  const settingsAccount = credentialAccount ?? account;
+  const aliases = (settingsAccount?.usable_emails || []).filter((u) => u.kind === "alias");
   const availableTags = useMemo(() => {
     const existingIds: Set<number> = new Set(tags.map((tag: Tag) => tag.id));
     return [...tags, ...createdTags.filter((tag: Tag) => !existingIds.has(tag.id))];
@@ -2325,7 +2326,11 @@ const EmailSettingsModal: React.FC<{
       setLabel(email.label || "");
       setGroupId(email.group?.id || "");
       setTagIds(email.tags?.map((t) => t.id) || []);
-      setCredLoaded(false);
+      setCredentialAccount(null);
+      setCredPwd("");
+      setCredCid("");
+      setCredRtk("");
+      setCredStatus("active");
       setInPool(false);
       setInitialInPool(false);
       setPoolLoaded(false);
@@ -2337,20 +2342,30 @@ const EmailSettingsModal: React.FC<{
 
   // 加载凭证信息
   useEffect(() => {
-    if (email?.email_account_id && !credLoaded) {
-      api
-        .getEmailAccount(email.email_account_id)
-        .then((acc: any) => {
-          setCredPwd(acc.imap_password || "");
-          setCredCid(acc.client_id || "");
-          setCredRtk(acc.refresh_token || "");
-          setCredStatus(acc.status || "active");
-          setRemark(acc.remark || "");
-          setCredLoaded(true);
-        })
-        .catch(() => setCredLoaded(true));
+    if (!email?.email_account_id) {
+      setCredentialAccount(null);
+      return;
     }
-  }, [email?.email_account_id, credLoaded]);
+    let cancelled = false;
+    const accountId: number = email.email_account_id;
+    api
+      .getEmailAccount(accountId)
+      .then((acc: EmailAccount) => {
+        if (cancelled) return;
+        setCredentialAccount(acc);
+        setCredPwd(acc.imap_password || "");
+        setCredCid(acc.client_id || "");
+        setCredRtk(acc.refresh_token || "");
+        setCredStatus(acc.status || "active");
+        setRemark(acc.remark || "");
+      })
+      .catch(() => {
+        if (!cancelled) setCredentialAccount(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [email?.email_account_id]);
 
   // 加载邮箱池状态
   useEffect(() => {
@@ -2423,13 +2438,12 @@ const EmailSettingsModal: React.FC<{
 
   const handleAddAlias = async () => {
     if (!email || !newAlias) return;
-    const acc = (accounts || []).find((a) => a.id === email.email_account_id);
-    if (!acc) {
+    if (!email.email_account_id) {
       toast("该邮箱没有关联的账户", "error");
       return;
     }
     try {
-      await addAlias(acc.id, newAlias);
+      await addAlias(email.email_account_id, newAlias);
       toast("别名已添加", "success");
       setNewAlias("");
       refreshAccounts();
@@ -2466,7 +2480,7 @@ const EmailSettingsModal: React.FC<{
     );
   };
 
-  const isOutlook = account?.provider === "outlook";
+  const isOutlook = settingsAccount?.provider === "outlook";
 
   return (
     <Modal
