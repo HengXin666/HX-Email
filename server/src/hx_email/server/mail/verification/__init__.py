@@ -9,7 +9,10 @@ from hx_email.server.mail import EmailAccountMailbox, MailboxMessage
 from hx_email.server.mail.imap.message_store import get_messages, save_messages
 from hx_email.server.mail.usable_emails import UsableEmail
 from hx_email.server.mail.verification.addresses import (
+    DeliveryTarget,
+    addresses_match_for_delivery,
     is_delivery_alias,
+    message_matches_target,
     normalize_delivery_address,
     normalize_plus_subaddress,
     recipient_matches_target,
@@ -21,24 +24,29 @@ from hx_email.server.mail.verification.extract import (
     extract_verification_code,
     first_match,
 )
+from hx_email.server.mail.verification.search import find_verification_code
 
 __all__ = [
     "CODE_PATTERN",
     "LINK_PATTERN",
+    "DeliveryTarget",
     "EmptyMailboxProvider",
     "FolderMailboxProvider",
     "MailboxProvider",
     "VerificationMatch",
     "VerificationReading",
     "VerificationState",
+    "addresses_match_for_delivery",
     "coerce_message",
     "extract_verification_code",
+    "find_verification_code",
     "first_match",
     "get_verification_history",
     "get_verification_state",
     "is_delivery_alias",
     "load_target",
     "load_usable_email",
+    "message_matches_target",
     "normalize_delivery_address",
     "normalize_plus_subaddress",
     "read_verification",
@@ -116,14 +124,16 @@ def read_verification(
     if target is None:
         return None
     usable_email, email_account = target
+    delivery_target = DeliveryTarget(
+        address=usable_email.address,
+        provider=email_account.provider,
+        kind=usable_email.kind,
+    )
     live_messages: list[MailboxMessage] = []
     try:
         for raw_message in mailbox_provider.read_messages(email_account):
             message = coerce_message(raw_message)
-            if message.recipient_address is not None and not recipient_matches_target(
-                usable_email.address,
-                message.recipient_address,
-            ):
+            if not message_matches_target(delivery_target, message.recipient_address):
                 continue
             live_messages.append(message)
     except Exception:
@@ -135,7 +145,7 @@ def read_verification(
     cached_msgs: list[dict[str, object]] = get_messages(settings, usable_email_id)
     for msg in cached_msgs:
         rcp: str | None = str(msg["recipient_address"]) if msg.get("recipient_address") else None
-        if rcp and not recipient_matches_target(usable_email.address, rcp):
+        if not message_matches_target(delivery_target, rcp):
             continue
         subj: str = str(msg.get("subject") or "")
         content = f"{subj}\n{msg.get('body') or ''!s}"

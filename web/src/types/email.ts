@@ -27,3 +27,25 @@ export interface PaginatedEmails {
   page: number;
   page_size: number;
 }
+
+export interface SendDebugEmailRequest {
+  recipient: string;
+  subject: string;
+  body: string;
+}
+
+export interface SendDebugEmailResult {
+  success: boolean;
+  code: string;
+  message: string;
+  credential_policy: string;
+  credential_strategy: string;
+  from_address: string;
+  to_address: string;
+  usable_email_id: number | null;
+  email_account_id: number | null;
+  smtp_host: string;
+  smtp_port: number | null;
+  security: string;
+  actions: string[];
+}

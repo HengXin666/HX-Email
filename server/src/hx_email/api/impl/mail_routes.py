@@ -9,6 +9,7 @@ from hx_email.api.impl.mail import (
     register_mail_pool_routes,
     register_refresh_log_routes,
     register_refresh_routes,
+    register_send_email_routes,
     register_token_tool_routes,
     register_usable_email_routes,
 )
@@ -28,6 +29,7 @@ def register_mail_routes(
     register_account_transfer_routes(router, settings)
     register_batch_routes(router, settings)
     register_export_routes(router, settings)
+    register_send_email_routes(router, settings)
     register_email_routes(router, settings, mailbox_provider)
     register_token_tool_routes(router, settings)
     register_refresh_routes(router, settings, mailbox_provider)

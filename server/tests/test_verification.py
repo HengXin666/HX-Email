@@ -86,6 +86,120 @@ def test_verification_reading_filters_messages_by_target_usable_email_address(tm
     ]
 
 
+def test_gmail_dot_plus_verification_uses_gmail_delivery_identity(tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    migrate(settings)
+    mailbox = FakeMailboxProvider(
+        [
+            {
+                "recipient_address": "Service <u.ser+github@gmail.com>",
+                "subject": "Gmail plus verification",
+                "body": "Your code is 246810. Confirm at https://service.test/gmail",
+            }
+        ]
+    )
+    client = TestClient(create_app(settings, mailbox_provider=mailbox))
+    headers = login_admin(client, settings)
+
+    account = client.post(
+        f"{API}/email-accounts",
+        json={
+            "provider": "gmail",
+            "primary_address": "user@gmail.com",
+            "display_name": "Gmail",
+        },
+        headers=headers,
+    ).json()
+
+    reading = client.post(
+        f"{API}/usable-emails/{account['primary_usable_email']['id']}/verification/read",
+        headers=headers,
+    )
+
+    assert reading.status_code == 200
+    assert [match["code"] for match in reading.json()["matches"]] == ["246810"]
+
+
+def test_direct_address_verification_filters_messages_to_target_recipient(tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    migrate(settings)
+    mailbox = FakeMailboxProvider(
+        [
+            {
+                "recipient_address": "owner@example.com",
+                "subject": "Owner verification",
+                "body": "Your code is 246810. Confirm at https://service.test/owner",
+            },
+            {
+                "recipient_address": "alias@example.com",
+                "subject": "Alias verification",
+                "body": "Your code is 975310. Confirm at https://service.test/alias",
+            },
+        ]
+    )
+    client = TestClient(create_app(settings, mailbox_provider=mailbox))
+    headers = login_admin(client, settings)
+
+    client.post(
+        f"{API}/email-accounts",
+        json={
+            "provider": "imap",
+            "primary_address": "owner@example.com",
+            "display_name": "Owner",
+            "alias_addresses": ["alias@example.com"],
+        },
+        headers=headers,
+    )
+
+    reading = client.get(
+        f"{API}/emails/alias@example.com/extract-verification",
+        headers=headers,
+    )
+
+    assert reading.status_code == 200
+    assert reading.json()["verification_code"] == "975310"
+    assert reading.json()["matched_subject"] == "Alias verification"
+
+
+def test_outlook_real_alias_verification_requires_alias_recipient(tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    migrate(settings)
+    mailbox = FakeMailboxProvider(
+        [
+            {
+                "subject": "Unknown recipient verification",
+                "body": "Your code is 246810. Confirm at https://service.test/unknown",
+            },
+            {
+                "recipient_address": "alias@outlook.com",
+                "subject": "Alias verification",
+                "body": "Your code is 975310. Confirm at https://service.test/alias",
+            },
+        ]
+    )
+    client = TestClient(create_app(settings, mailbox_provider=mailbox))
+    headers = login_admin(client, settings)
+
+    account = client.post(
+        f"{API}/email-accounts",
+        json={
+            "provider": "outlook",
+            "primary_address": "owner@outlook.com",
+            "display_name": "Outlook",
+            "alias_addresses": ["alias@outlook.com"],
+        },
+        headers=headers,
+    ).json()
+
+    reading = client.post(
+        f"{API}/usable-emails/{account['usable_emails'][1]['id']}/verification/read",
+        headers=headers,
+    )
+
+    assert reading.status_code == 200
+    assert [match["code"] for match in reading.json()["matches"]] == ["975310"]
+
+
 def test_verification_reading_marks_messages_without_recipient_as_uncertain(tmp_path):
     settings = Settings(data_dir=tmp_path)
     migrate(settings)

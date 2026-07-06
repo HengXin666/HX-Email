@@ -49,10 +49,11 @@ const PROVIDER_OPTIONS = [
 ];
 
 const STATUS_ACTIONS: Record<string, string[]> = {
+  "": ["add_to_pool"],
   available: ["claim", "freeze", "retire", "remove_from_pool"],
   claimed: ["release", "complete", "freeze"],
   completed: ["cooldown", "freeze"],
-  cooling: ["claim", "freeze", "retire"],
+  cooling: ["release", "freeze", "retire"],
   frozen: ["unfreeze"],
   retired: ["add_to_pool"],
 };
@@ -84,6 +85,17 @@ const ACTION_COLORS: Record<string, string> = {
 const DANGER_ACTIONS = new Set(["freeze", "retire", "remove_from_pool"]);
 
 const PAGE_SIZE = 20;
+
+function getAccountActions(account: PoolAdminAccount): string[] {
+  if (account.entry_id <= 0) return STATUS_ACTIONS[""];
+  return STATUS_ACTIONS[account.pool_status] || [];
+}
+
+function getActionLabel(account: PoolAdminAccount, action: string): string {
+  if (action === "release" && account.pool_status === "cooling") return "恢复可用";
+  if (action === "add_to_pool" && account.pool_status === "retired") return "恢复入池";
+  return ACTION_LABELS[action] || action;
+}
 
 export const PoolAdmin: React.FC = () => {
   const { toast } = useToast();
@@ -146,7 +158,7 @@ export const PoolAdmin: React.FC = () => {
     setActionLoading(account.id);
     try {
       const res = await api.executePoolAction(targetId, action);
-      toast(res.message || `${ACTION_LABELS[action] || action} 成功`, "success");
+      toast(res.message || `${getActionLabel(account, action)} 成功`, "success");
       await loadAccounts();
     } catch (err: unknown) {
       toast((err as { message?: string }).message || "操作失败", "error");
@@ -245,7 +257,7 @@ export const PoolAdmin: React.FC = () => {
                 ) : (
                   accounts.map((acct, i) => {
                     const statusColor = POOL_STATUS_COLORS[acct.pool_status] || "#6e7681";
-                    const actions = STATUS_ACTIONS[acct.pool_status] || [];
+                    const actions = getAccountActions(acct);
                     return (
                       <motion.div
                         key={acct.id}
@@ -308,7 +320,7 @@ export const PoolAdmin: React.FC = () => {
                                 backgroundColor: ACTION_COLORS[action] + "10",
                               }}
                             >
-                              {actionLoading === acct.id ? "..." : ACTION_LABELS[action] || action}
+                              {actionLoading === acct.id ? "..." : getActionLabel(acct, action)}
                             </button>
                           ))}
                         </div>
@@ -336,7 +348,7 @@ export const PoolAdmin: React.FC = () => {
         title="确认操作"
         message={
           confirmAction
-            ? `确定要对账号 #${confirmAction.account.id} 执行 ${ACTION_LABELS[confirmAction.action] || confirmAction.action} 操作吗？`
+            ? `确定要对账号 #${confirmAction.account.id} 执行 ${getActionLabel(confirmAction.account, confirmAction.action)} 操作吗？`
             : ""
         }
         confirmLabel="确认"

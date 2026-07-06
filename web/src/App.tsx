@@ -10,6 +10,7 @@ import { Overview } from "./pages/Overview";
 import { Platforms } from "./pages/Platforms";
 import { PoolAdmin } from "./pages/PoolAdmin";
 import { RefreshLogPage } from "./pages/RefreshLog";
+import { SendMail } from "./pages/SendMail";
 import { Settings } from "./pages/Settings";
 import { TempMail } from "./pages/TempMail";
 import { TokenTool } from "./pages/TokenTool";
@@ -61,6 +62,14 @@ const App: React.FC = () => {
         element={
           <RequireAuth>
             <Accounts />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/send-mail"
+        element={
+          <RequireAuth>
+            <SendMail />
           </RequireAuth>
         }
       />

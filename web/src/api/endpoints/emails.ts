@@ -3,6 +3,8 @@ import type {
   EmailAccount,
   EmailMessagesPage,
   PaginatedEmails,
+  SendDebugEmailRequest,
+  SendDebugEmailResult,
   StoredEmailMessage,
   UsableEmail,
   VerificationReading,
@@ -80,6 +82,12 @@ export const emailsApi = {
       codes_found: number;
       error: string;
     }>(`/usable-emails/${emailId}/fetch-emails`, { method: "POST" }),
+
+  sendDebugEmail: (emailId: number, data: SendDebugEmailRequest) =>
+    request<SendDebugEmailResult>(`/usable-emails/${emailId}/send-debug-email`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
 
   // Email Accounts
   listEmailAccounts: () =>

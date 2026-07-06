@@ -23,13 +23,9 @@ _VALID_ACTIONS: frozenset[str] = frozenset(
     }
 )
 
-_POOL_STATUSES: frozenset[str] = frozenset(
-    {"available", "claimed", "completed", "cooling", "frozen", "retired"}
-)
-
 _ACTION_TRANSITIONS: dict[str, tuple[str, ...]] = {
     "claim": ("available", "completed", "cooling"),
-    "release": ("claimed",),
+    "release": ("claimed", "cooling"),
     "complete": ("claimed", "completed"),
     "freeze": ("available", "claimed", "completed", "cooling"),
     "unfreeze": ("frozen",),
@@ -152,6 +148,27 @@ def _add_to_pool(settings: Settings, account_id: int, params: dict[str, Any]) ->
             raise ValueError(f"Usable email {account_id} not found")
 
         owner_id: int = user_id or usable["user_id"]
+        existing = connection.execute(
+            """
+            SELECT id, status
+            FROM mail_pool_entries
+            WHERE user_id = ? AND usable_email_id = ?
+            """,
+            (owner_id, account_id),
+        ).fetchone()
+        if existing is not None:
+            if existing["status"] != "retired":
+                raise ValueError(f"Usable email {account_id} is already in the pool")
+            connection.execute(
+                """
+                UPDATE mail_pool_entries
+                SET status = 'available', claim_key = '', claimed_project_key = ''
+                WHERE id = ?
+                """,
+                (existing["id"],),
+            )
+            return {"success": True, "message": f"Pool entry {existing['id']} restored"}
+
         try:
             connection.execute(
                 """

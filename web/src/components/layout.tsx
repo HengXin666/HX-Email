@@ -21,6 +21,7 @@ import { useToast } from "./ui/Toast";
 const NAV = [
   { to: "/overview", label: "工作台", icon: IconInbox },
   { to: "/accounts", label: "可用邮箱", icon: IconMail },
+  { to: "/send-mail", label: "发送邮件", icon: IconMail },
   { to: "/platforms", label: "平台绑定", icon: IconServer },
   { to: "/temp-mail", label: "临时邮箱", icon: IconClock },
   { to: "/token-tool", label: "OAuth Token", icon: IconKey },

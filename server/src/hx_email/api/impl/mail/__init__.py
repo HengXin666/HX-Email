@@ -7,6 +7,7 @@ from hx_email.api.impl.mail.refresh import (
     register_refresh_log_routes,
     register_refresh_routes,
 )
+from hx_email.api.impl.mail.send_routes import register_send_email_routes
 from hx_email.api.impl.mail.token_tool_routes import register_token_tool_routes
 from hx_email.api.impl.mail.usable_email_routes import register_usable_email_routes
 
@@ -19,6 +20,7 @@ __all__ = [
     "register_mail_pool_routes",
     "register_refresh_log_routes",
     "register_refresh_routes",
+    "register_send_email_routes",
     "register_token_tool_routes",
     "register_usable_email_routes",
 ]
