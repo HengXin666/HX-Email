@@ -12,6 +12,8 @@ export type { AuthResponse, User } from "./types/auth";
 export type { Pagination } from "./types/common";
 export type {
   PaginatedEmails,
+  SendDebugEmailRequest,
+  SendDebugEmailResult,
   UsableEmail,
   UsableEmailKind,
   UsableEmailStatus,
