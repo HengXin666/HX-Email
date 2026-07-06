@@ -8,7 +8,7 @@ import {
   IconMail,
   IconRefresh,
 } from "../../components/icons";
-import { Badge, Button } from "../../components/ui/Primitives";
+import { Button } from "../../components/ui/Primitives";
 import type {
   ActivityStats,
   EmailAccount,
@@ -19,7 +19,7 @@ import type {
   UsableEmail,
   VerificationStats,
 } from "../../types";
-import { formatRelativeTime } from "../../utils/time";
+import { OverviewEmailList } from "./OverviewEmailList";
 import { OperationPanel, OverviewMetrics } from "./OverviewWorkbenchWidgets";
 
 interface OverviewWorkbenchProps {
@@ -44,23 +44,6 @@ interface FlowStep {
   path: string;
   icon: React.FC<{ size?: number; className?: string }>;
   color: string;
-}
-
-function getEmailKindLabel(kind: UsableEmail["kind"]): string {
-  if (kind === "primary") return "主邮箱";
-  if (kind === "alias") return "别名";
-  if (kind === "temp") return "临时";
-  return "自定义";
-}
-
-function getEmailDisplayName(email: UsableEmail, accounts: EmailAccount[]): string {
-  const account = accounts.find((item) => item.id === email.email_account_id);
-  return email.label || account?.display_name || email.address;
-}
-
-function getRelativeUpdatedAt(email: UsableEmail): string {
-  if (!email.updated_at) return "未记录";
-  return formatRelativeTime(email.updated_at);
 }
 
 export const OverviewWorkbench: React.FC<OverviewWorkbenchProps> = ({
@@ -214,55 +197,13 @@ export const OverviewWorkbench: React.FC<OverviewWorkbenchProps> = ({
                 <IconMail size={13} /> 打开邮箱工作台
               </Button>
             </div>
-            <div className="flex-1 overflow-auto">
-              <div className="min-w-[720px]">
-                <div className="grid grid-cols-[minmax(260px,1.5fr)_110px_130px_90px_120px] gap-3 px-5 py-3 border-b border-gh-border bg-gh-canvas-inset text-[11px] font-semibold text-gh-text-muted uppercase tracking-wider">
-                  <div>邮箱</div>
-                  <div>类型</div>
-                  <div>分组</div>
-                  <div>绑定</div>
-                  <div>更新</div>
-                </div>
-                {visibleEmails.length === 0 ? (
-                  <div className="py-16 text-center text-sm text-gh-text-secondary">
-                    暂无可用邮箱
-                  </div>
-                ) : (
-                  visibleEmails.slice(0, 12).map((email) => (
-                    <button
-                      key={email.id}
-                      type="button"
-                      onClick={() => setSelectedEmailId(email.id)}
-                      className={`grid w-full grid-cols-[minmax(260px,1.5fr)_110px_130px_90px_120px] gap-3 px-5 py-4 border-b border-gh-border/50 text-left transition-colors ${
-                        selectedEmailId === email.id ? "bg-gh-accent/10" : "hover:bg-gh-border/25"
-                      }`}
-                    >
-                      <span className="min-w-0">
-                        <span className="block text-sm font-medium text-gh-text truncate">
-                          {getEmailDisplayName(email, accounts)}
-                        </span>
-                        <span className="block text-xs font-mono text-gh-text-secondary truncate">
-                          {email.address}
-                        </span>
-                      </span>
-                      <span className="self-center">
-                        <Badge color={email.kind === "temp" ? "#f0883e" : "#58a6ff"}>
-                          {getEmailKindLabel(email.kind)}
-                        </Badge>
-                      </span>
-                      <span className="self-center text-sm text-gh-text-muted truncate">
-                        {email.group?.name ?? "未分组"}
-                      </span>
-                      <span className="self-center text-sm text-gh-text tabular-nums">
-                        {email.platform_binding_count ?? 0}
-                      </span>
-                      <span className="self-center text-xs text-gh-text-secondary">
-                        {getRelativeUpdatedAt(email)}
-                      </span>
-                    </button>
-                  ))
-                )}
-              </div>
+            <div className="flex-1 min-w-0 overflow-auto">
+              <OverviewEmailList
+                emails={visibleEmails}
+                accounts={accounts}
+                selectedEmailId={selectedEmailId}
+                onSelectEmail={setSelectedEmailId}
+              />
             </div>
           </main>
 
