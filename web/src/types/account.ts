@@ -9,10 +9,14 @@ export interface EmailAccount {
   imap_host?: string;
   imap_port?: number | null;
   username?: string;
+  imap_password?: string;
   client_id?: string;
+  refresh_token?: string;
   has_imap_password?: boolean;
   has_refresh_token?: boolean;
+  group_id?: number | null;
   remark?: string | null;
+  telegram_enabled?: boolean;
   in_pool?: boolean;
   primary_usable_email?: UsableEmail;
   usable_emails: UsableEmail[];

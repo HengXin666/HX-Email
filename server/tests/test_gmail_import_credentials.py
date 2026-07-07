@@ -167,6 +167,32 @@ def test_gmail_fetch_uses_legacy_refresh_token_app_password(tmp_path) -> None:
     assert "账户没有配置密码" not in result.json()["error"]
 
 
+def test_gmail_detail_exposes_legacy_refresh_token_app_password(tmp_path) -> None:
+    settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
+    migrate(settings)
+    client = TestClient(create_app(settings))
+    headers = login_admin(client, settings)
+    account = add_email_account(
+        settings,
+        1,
+        "gmail",
+        "llh282000500@gmail.com",
+        "llh282000500@gmail.com",
+        "imap.gmail.com",
+        993,
+        "llh282000500@gmail.com",
+        "",
+        "",
+        "legacy-gmail-app-pass",
+    )
+
+    detail = client.get(f"{API}/email-accounts/{account.id}", headers=headers)
+
+    assert detail.status_code == 200
+    assert detail.json()["imap_password"] == "legacy-gmail-app-pass"
+    assert detail.json()["has_imap_password"] is True
+
+
 def test_gmail_authentication_failure_returns_app_password_hint(tmp_path) -> None:
     settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
     migrate(settings)
