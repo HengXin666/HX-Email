@@ -8,6 +8,16 @@ from hx_email.server.workspace.overview import WorkbenchOverview
 from hx_email.server.workspace.platforms import Platform, PlatformBinding, PlatformCandidate
 from hx_email.server.workspace.workbench import WorkbenchEmail
 
+OAUTH_PROVIDERS: set[str] = {"outlook", "outlook_oauth"}
+
+
+def effective_imap_password(account: EmailAccount) -> str:
+    if account.imap_password:
+        return account.imap_password
+    if account.refresh_token and not account.client_id and account.provider not in OAUTH_PROVIDERS:
+        return account.refresh_token
+    return ""
+
 
 def serialize_usable_email(usable_email: UsableEmail) -> dict[str, object]:
     return {
@@ -94,6 +104,7 @@ def serialize_temp_mailbox(mailbox: TempMailbox) -> dict[str, object]:
 
 
 def serialize_email_account(account: EmailAccount) -> dict[str, object]:
+    imap_password: str = effective_imap_password(account)
     return {
         "id": account.id,
         "provider": account.provider,
@@ -103,10 +114,10 @@ def serialize_email_account(account: EmailAccount) -> dict[str, object]:
         "imap_host": account.imap_host,
         "imap_port": account.imap_port,
         "username": account.username,
-        "imap_password": account.imap_password,
+        "imap_password": imap_password,
         "client_id": account.client_id,
         "refresh_token": account.refresh_token,
-        "has_imap_password": bool(account.imap_password),
+        "has_imap_password": bool(imap_password),
         "has_refresh_token": bool(account.refresh_token),
         "group_id": account.group_id,
         "remark": account.remark,
