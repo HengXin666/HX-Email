@@ -3,21 +3,14 @@ from sqlite3 import Row
 
 from hx_email.config import Settings
 from hx_email.database import connect
-
-SMTP_BY_PROVIDER: dict[str, tuple[str, int]] = {
-    "outlook": ("smtp-mail.outlook.com", 587),
-    "gmail": ("smtp.gmail.com", 587),
-    "qq": ("smtp.qq.com", 587),
-    "163": ("smtp.163.com", 465),
-    "126": ("smtp.126.com", 465),
-    "yahoo": ("smtp.mail.yahoo.com", 587),
-}
+from hx_email.server.mail.impl.sending.router import get_email_server
 
 
 @dataclass(frozen=True)
 class SendCredentials:
     usable_email_id: int
     email_account_id: int
+    provider: str
     from_address: str
     username: str
     password: str
@@ -76,6 +69,7 @@ def resolve_send_credentials(
 
 
 def build_credentials(row: Row) -> SendCredentials | None:
+    provider: str = str(row["provider"] or "").strip().lower()
     smtp_host, smtp_port = infer_smtp_server(row)
     username: str = str(row["username"] or "").strip() or str(row["primary_address"] or "").strip()
     password: str = str(row["imap_password"] or "").strip()
@@ -88,7 +82,8 @@ def build_credentials(row: Row) -> SendCredentials | None:
     return SendCredentials(
         usable_email_id=int(row["usable_email_id"]),
         email_account_id=int(row["account_id"]),
-        from_address=username,
+        provider=provider,
+        from_address=str(row["usable_address"] or "").strip() or username,
         username=username,
         password=password,
         smtp_host=smtp_host,
@@ -100,8 +95,9 @@ def build_credentials(row: Row) -> SendCredentials | None:
 
 def infer_smtp_server(row: Row) -> tuple[str, int]:
     provider: str = str(row["provider"] or "").strip().lower()
-    if provider in SMTP_BY_PROVIDER:
-        return SMTP_BY_PROVIDER[provider]
+    server = get_email_server(provider)
+    if server.smtp_host:
+        return server.smtp_host, server.smtp_port
     imap_host: str = str(row["imap_host"] or "").strip()
     if imap_host.startswith("imap."):
         return f"smtp.{imap_host[5:]}", 587

@@ -34,7 +34,7 @@ def test_send_debug_email_route_uses_account_smtp_credentials(tmp_path) -> None:
         "gmail-app-pass",
     )
 
-    with patch("hx_email.server.mail.impl.sending.delivery.smtplib.SMTP") as smtp:
+    with patch("hx_email.server.mail.impl.sending.providers.smtplib.SMTP") as smtp:
         response = client.post(
             f"{API}/usable-emails/{account.primary_usable_email.id}/send-debug-email",
             json={
@@ -55,6 +55,47 @@ def test_send_debug_email_route_uses_account_smtp_credentials(tmp_path) -> None:
         "sender@gmail.com", "gmail-app-pass"
     )
     smtp.return_value.__enter__.return_value.send_message.assert_called_once()
+
+
+def test_send_debug_email_uses_selected_alias_from_address(tmp_path) -> None:
+    settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
+    migrate(settings)
+    client = TestClient(create_app(settings))
+    headers = login_admin(client, settings)
+    account = add_email_account(
+        settings,
+        1,
+        "gmail",
+        "sender@gmail.com",
+        "Sender",
+        "imap.gmail.com",
+        993,
+        "sender@gmail.com",
+        "gmail-app-pass",
+        alias_addresses=["alias@gmail.com"],
+    )
+    alias = next(email for email in account.usable_emails if email.kind == "alias")
+
+    with patch("hx_email.server.mail.impl.sending.providers.smtplib.SMTP") as smtp:
+        response = client.post(
+            f"{API}/usable-emails/{alias.id}/send-debug-email",
+            json={
+                "recipient": "receiver@example.com",
+                "subject": "Debug",
+                "body": "Hello",
+            },
+            headers=headers,
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["success"] is True
+    assert payload["from_address"] == "alias@gmail.com"
+    smtp.return_value.__enter__.return_value.login.assert_called_once_with(
+        "sender@gmail.com", "gmail-app-pass"
+    )
+    message = smtp.return_value.__enter__.return_value.send_message.call_args.args[0]
+    assert message["From"] == "alias@gmail.com"
 
 
 def test_send_debug_email_returns_guidance_when_credentials_are_missing(tmp_path) -> None:
