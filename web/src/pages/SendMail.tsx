@@ -9,6 +9,7 @@ import type { SendDebugEmailResult, UsableEmail } from "../types";
 
 const DEFAULT_SUBJECT = "HX-Email debug email";
 const DEFAULT_BODY = "This is a debug email sent by HX-Email.";
+const RECIPIENT_REQUIRED_MESSAGE = "请填写收件人邮箱后再发送";
 
 function emailOptionLabel(email: UsableEmail): string {
   const state: string = email.status === "active" ? "可用" : "停用";
@@ -27,6 +28,7 @@ export const SendMail: React.FC = () => {
   const { toast } = useToast();
   const [selectedEmailId, setSelectedEmailId] = useState<string>("");
   const [recipient, setRecipient] = useState("");
+  const [recipientError, setRecipientError] = useState("");
   const [subject, setSubject] = useState(DEFAULT_SUBJECT);
   const [body, setBody] = useState(DEFAULT_BODY);
   const [sending, setSending] = useState(false);
@@ -60,11 +62,19 @@ export const SendMail: React.FC = () => {
       toast("请选择发件来源", "error");
       return;
     }
+    const trimmedRecipient = recipient.trim();
+    if (!trimmedRecipient) {
+      setRecipientError(RECIPIENT_REQUIRED_MESSAGE);
+      setResult(null);
+      toast(RECIPIENT_REQUIRED_MESSAGE, "error");
+      document.getElementById("send-mail-recipient")?.focus();
+      return;
+    }
     setSending(true);
     setResult(null);
     try {
       const response: SendDebugEmailResult = await api.sendDebugEmail(selectedEmail.id, {
-        recipient: recipient.trim(),
+        recipient: trimmedRecipient,
         subject: subject.trim(),
         body: body.trim(),
       });
@@ -115,12 +125,24 @@ export const SendMail: React.FC = () => {
               />
               <Input
                 label="收件人"
+                id="send-mail-recipient"
                 value={recipient}
-                onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-                  setRecipient(event.target.value)
-                }
+                onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
+                  const nextRecipient = event.target.value;
+                  setRecipient(nextRecipient);
+                  if (recipientError && nextRecipient.trim()) {
+                    setRecipientError("");
+                  }
+                }}
+                aria-invalid={recipientError ? "true" : undefined}
+                aria-describedby={recipientError ? "send-mail-recipient-error" : undefined}
                 placeholder={selectedEmail?.address ?? "receiver@example.com"}
               />
+              {recipientError && (
+                <p id="send-mail-recipient-error" className="-mt-2 text-xs text-gh-danger">
+                  {recipientError}
+                </p>
+              )}
               <Input
                 label="主题"
                 value={subject}
