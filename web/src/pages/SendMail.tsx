@@ -60,11 +60,16 @@ export const SendMail: React.FC = () => {
       toast("请选择发件来源", "error");
       return;
     }
+    const trimmedRecipient = recipient.trim();
+    if (!trimmedRecipient) {
+      toast("请填写收件人", "error");
+      return;
+    }
     setSending(true);
     setResult(null);
     try {
       const response: SendDebugEmailResult = await api.sendDebugEmail(selectedEmail.id, {
-        recipient: recipient.trim(),
+        recipient: trimmedRecipient,
         subject: subject.trim(),
         body: body.trim(),
       });
@@ -115,6 +120,9 @@ export const SendMail: React.FC = () => {
               />
               <Input
                 label="收件人"
+                type="email"
+                required
+                autoComplete="email"
                 value={recipient}
                 onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
                   setRecipient(event.target.value)
@@ -143,7 +151,12 @@ export const SendMail: React.FC = () => {
                 />
               </div>
               <div className="flex justify-end">
-                <Button type="submit" variant="primary" loading={sending}>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  loading={sending}
+                  disabled={!recipient.trim()}
+                >
                   <IconMail size={14} /> 发送
                 </Button>
               </div>
