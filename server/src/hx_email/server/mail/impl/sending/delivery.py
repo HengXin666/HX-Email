@@ -1,7 +1,5 @@
-import smtplib
-from email.mime.text import MIMEText
-
 from hx_email.server.mail.impl.sending.credentials import SendCredentials
+from hx_email.server.mail.impl.sending.router import get_email_server
 
 
 def deliver_debug_email(
@@ -10,16 +8,5 @@ def deliver_debug_email(
     subject: str,
     body: str,
 ) -> None:
-    message = MIMEText(body, "plain", "utf-8")
-    message["Subject"] = subject
-    message["From"] = credentials.from_address
-    message["To"] = recipient
-    if credentials.security == "ssl":
-        with smtplib.SMTP_SSL(credentials.smtp_host, credentials.smtp_port, timeout=15) as server:
-            server.login(credentials.username, credentials.password)
-            server.send_message(message)
-        return
-    with smtplib.SMTP(credentials.smtp_host, credentials.smtp_port, timeout=15) as server:
-        server.starttls()
-        server.login(credentials.username, credentials.password)
-        server.send_message(message)
+    server = get_email_server(credentials.provider, credentials.smtp_host, credentials.smtp_port)
+    server.req_email(credentials, recipient, subject, body)
