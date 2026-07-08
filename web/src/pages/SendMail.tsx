@@ -60,11 +60,16 @@ export const SendMail: React.FC = () => {
       toast("请选择发件来源", "error");
       return;
     }
+    const toAddress: string = recipient.trim();
+    if (!toAddress) {
+      toast("请填写收件人", "error");
+      return;
+    }
     setSending(true);
     setResult(null);
     try {
       const response: SendDebugEmailResult = await api.sendDebugEmail(selectedEmail.id, {
-        recipient: recipient.trim(),
+        recipient: toAddress,
         subject: subject.trim(),
         body: body.trim(),
       });
@@ -115,11 +120,13 @@ export const SendMail: React.FC = () => {
               />
               <Input
                 label="收件人"
+                type="email"
+                required
                 value={recipient}
                 onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
                   setRecipient(event.target.value)
                 }
-                placeholder={selectedEmail?.address ?? "receiver@example.com"}
+                placeholder="receiver@example.com"
               />
               <Input
                 label="主题"
