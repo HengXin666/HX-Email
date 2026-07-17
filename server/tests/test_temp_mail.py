@@ -32,31 +32,33 @@ class FakeCfTempMailProvider:
 
 
 def login_admin(client: TestClient) -> dict[str, str]:
-    session = client.post("/auth/login", json={"username": "admin", "password": "admin"}).json()
+    session = client.post(
+        "/api/v1/auth/login", json={"username": "admin", "password": "admin"}
+    ).json()
     return {"Authorization": f"Bearer {session['access_token']}"}
 
 
 def register_user(client: TestClient, username: str) -> dict[str, object]:
     return client.post(
-        "/auth/register",
+        "/api/v1/auth/register",
         json={"username": username, "password": f"{username}-pass"},
     ).json()
 
 
 def test_creating_cf_temp_mail_adds_temp_usable_email_without_email_account(tmp_path):
-    settings = Settings(data_dir=tmp_path)
+    settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
     migrate(settings)
     provider = FakeCfTempMailProvider()
     client = TestClient(create_app(settings, temp_mail_providers={"cf": provider}))
     headers = login_admin(client)
 
     created = client.post(
-        "/temp-mail/cf/mailboxes",
+        "/api/v1/temp-mail/cf/mailboxes",
         json={"address": "signup@example.test", "label": "Signup temp"},
         headers=headers,
     )
     workbench = client.get(
-        "/workbench/usable-emails",
+        "/api/v1/workbench/usable-emails",
         params={"kind": "temp"},
         headers=headers,
     )
@@ -88,7 +90,7 @@ def test_creating_cf_temp_mail_adds_temp_usable_email_without_email_account(tmp_
 
 
 def test_temp_mail_reads_messages_codes_and_verification_links_through_cf_provider(tmp_path):
-    settings = Settings(data_dir=tmp_path)
+    settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
     migrate(settings)
     provider = FakeCfTempMailProvider()
     provider.messages_by_address["cf-box-1"] = [
@@ -102,14 +104,14 @@ def test_temp_mail_reads_messages_codes_and_verification_links_through_cf_provid
     client = TestClient(create_app(settings, temp_mail_providers={"cf": provider}))
     headers = login_admin(client)
     mailbox = client.post(
-        "/temp-mail/cf/mailboxes",
+        "/api/v1/temp-mail/cf/mailboxes",
         json={"address": "signup@example.test", "label": "Signup temp"},
         headers=headers,
     ).json()
 
-    messages = client.get(f"/temp-mail/{mailbox['id']}/messages", headers=headers)
-    codes = client.get(f"/temp-mail/{mailbox['id']}/codes", headers=headers)
-    links = client.get(f"/temp-mail/{mailbox['id']}/verification-links", headers=headers)
+    messages = client.get(f"/api/v1/temp-mail/{mailbox['id']}/messages", headers=headers)
+    codes = client.get(f"/api/v1/temp-mail/{mailbox['id']}/codes", headers=headers)
+    links = client.get(f"/api/v1/temp-mail/{mailbox['id']}/verification-links", headers=headers)
 
     assert messages.status_code == 200
     assert messages.json()["messages"] == [
@@ -130,46 +132,46 @@ def test_temp_mail_reads_messages_codes_and_verification_links_through_cf_provid
 
 
 def test_temp_mail_is_isolated_by_user_and_can_be_deactivated_or_archived(tmp_path):
-    settings = Settings(data_dir=tmp_path)
+    settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
     migrate(settings)
     provider = FakeCfTempMailProvider()
     client = TestClient(create_app(settings, temp_mail_providers={"cf": provider}))
     admin_headers = login_admin(client)
-    client.put("/admin/settings/registration", json={"enabled": True}, headers=admin_headers)
+    client.put("/api/v1/admin/settings/registration", json={"enabled": True}, headers=admin_headers)
     alice = register_user(client, "alice")
     bob = register_user(client, "bob")
     alice_headers = {"Authorization": f"Bearer {alice['access_token']}"}
     bob_headers = {"Authorization": f"Bearer {bob['access_token']}"}
 
     alice_mailbox = client.post(
-        "/temp-mail/cf/mailboxes",
+        "/api/v1/temp-mail/cf/mailboxes",
         json={"address": "shared@example.test", "label": "Alice temp"},
         headers=alice_headers,
     ).json()
     bob_mailbox = client.post(
-        "/temp-mail/cf/mailboxes",
+        "/api/v1/temp-mail/cf/mailboxes",
         json={"address": "shared@example.test", "label": "Bob temp"},
         headers=bob_headers,
     )
     bob_archive_alice = client.post(
-        f"/temp-mail/{alice_mailbox['id']}/archive",
+        f"/api/v1/temp-mail/{alice_mailbox['id']}/archive",
         headers=bob_headers,
     )
     alice_archive = client.post(
-        f"/temp-mail/{alice_mailbox['id']}/archive",
+        f"/api/v1/temp-mail/{alice_mailbox['id']}/archive",
         headers=alice_headers,
     )
     bob_deactivate = client.post(
-        f"/usable-emails/{bob_mailbox.json()['id']}/deactivate",
+        f"/api/v1/usable-emails/{bob_mailbox.json()['id']}/deactivate",
         headers=bob_headers,
     )
     alice_workbench = client.get(
-        "/workbench/usable-emails",
+        "/api/v1/workbench/usable-emails",
         params={"kind": "temp", "status": "archived"},
         headers=alice_headers,
     )
     bob_workbench = client.get(
-        "/workbench/usable-emails",
+        "/api/v1/workbench/usable-emails",
         params={"kind": "temp", "status": "inactive"},
         headers=bob_headers,
     )

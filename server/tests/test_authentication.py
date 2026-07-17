@@ -19,7 +19,7 @@ def test_admin_can_log_in_after_database_initializes_from_environment(tmp_path):
     client = TestClient(create_app(settings))
 
     response = client.post(
-        "/auth/login",
+        "/api/v1/auth/login",
         json={"username": "owner", "password": "secret-pass"},
     )
 
@@ -40,23 +40,23 @@ def test_registration_is_rejected_until_admin_enables_it(tmp_path):
     client = TestClient(create_app(settings))
 
     closed_response = client.post(
-        "/auth/register",
+        "/api/v1/auth/register",
         json={"username": "alice", "password": "alice-pass"},
     )
 
     assert closed_response.status_code == 403
 
     admin_session = client.post(
-        "/auth/login",
+        "/api/v1/auth/login",
         json={"username": "owner", "password": "secret-pass"},
     ).json()
     toggle_response = client.put(
-        "/admin/settings/registration",
+        "/api/v1/admin/settings/registration",
         json={"enabled": True},
         headers={"Authorization": f"Bearer {admin_session['access_token']}"},
     )
     open_response = client.post(
-        "/auth/register",
+        "/api/v1/auth/register",
         json={"username": "alice", "password": "alice-pass"},
     )
 
@@ -76,30 +76,30 @@ def test_admin_can_update_own_credentials_and_log_out(tmp_path):
     migrate(settings)
     client = TestClient(create_app(settings))
     session = client.post(
-        "/auth/login",
+        "/api/v1/auth/login",
         json={"username": "owner", "password": "secret-pass"},
     ).json()
     headers = {"Authorization": f"Bearer {session['access_token']}"}
 
     update_response = client.put(
-        "/auth/me/credentials",
+        "/api/v1/auth/me/credentials",
         json={"username": "renamed-owner", "password": "new-secret-pass"},
         headers=headers,
     )
     old_login = client.post(
-        "/auth/login",
+        "/api/v1/auth/login",
         json={"username": "owner", "password": "secret-pass"},
     )
     new_login = client.post(
-        "/auth/login",
+        "/api/v1/auth/login",
         json={"username": "renamed-owner", "password": "new-secret-pass"},
     )
     logout_response = client.post(
-        "/auth/logout",
+        "/api/v1/auth/logout",
         headers={"Authorization": f"Bearer {new_login.json()['access_token']}"},
     )
     rejected_after_logout = client.put(
-        "/admin/settings/registration",
+        "/api/v1/admin/settings/registration",
         json={"enabled": True},
         headers={"Authorization": f"Bearer {new_login.json()['access_token']}"},
     )

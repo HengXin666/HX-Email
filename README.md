@@ -90,9 +90,22 @@ the task-1 scope to a usable route shell.
 ## Whole Repo Checks
 
 ```bash
-npm test
-npm run build
+bash scripts/verify.sh
 ```
+
+This single local/CI gate runs Python and React static checks, type checks,
+architecture checks, dead-code analysis, Vitest, pytest, and the Playwright S3
+browser flow. Install its local Chromium runtime once with:
+
+```bash
+cd web
+npx playwright install chromium
+```
+
+The S3 flow starts an isolated FastAPI database and a Vite production preview,
+then verifies authentication rejection, recovery, protected navigation, and
+logout in Chromium. Real OAuth, Graph, IMAP, SMTP, and temporary-mail provider
+canaries stay outside the PR gate.
 
 ## Migration Scope
 

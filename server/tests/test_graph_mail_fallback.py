@@ -67,8 +67,9 @@ def test_outlook_graph_failure_still_falls_back_to_imap(tmp_path) -> None:
             folder: str = "inbox",
             skip: int = 0,
             top: int = 50,
+            since_uid: str = "",
         ) -> list[MailboxMessage]:
-            _ = (folder, skip, top)
+            _ = (folder, skip, top, since_uid)
             return [
                 MailboxMessage(
                     recipient_address=email_account.primary_address,

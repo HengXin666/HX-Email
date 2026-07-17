@@ -1,7 +1,7 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
-  "entry": ["src/**/*.test.ts", "src/**/*.test.tsx"],
-  "project": ["src/**/*.{ts,tsx}"],
+  "entry": ["e2e/**/*.spec.ts", "src/**/*.test.ts", "src/**/*.test.tsx"],
+  "project": ["e2e/**/*.ts", "src/**/*.{ts,tsx}"],
   "ignoreFiles": [
     "src/api/endpoints/index.ts",
     "src/components/ui/index.ts",

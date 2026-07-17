@@ -1,7 +1,16 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.5.1/schema.json",
   "files": {
-    "includes": ["**", "!**/dist", "!**/node_modules", "!**/tsconfig.*.tsbuildinfo"]
+    "includes": [
+      "**",
+      "!**/dist",
+      "!**/node_modules",
+      "!**/playwright-report",
+      "!**/test-results",
+      "!**/tsconfig.*.tsbuildinfo",
+      "!vite.config.d.ts",
+      "!vite.config.js"
+    ]
   },
   "formatter": {
     "enabled": true,

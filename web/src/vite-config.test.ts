@@ -4,11 +4,12 @@ import { describe, expect, test } from "vitest";
 
 import config from "../vite.config";
 
-describe("vite dev server proxy", () => {
-  test("forwards backend routes to the local FastAPI server", () => {
-    const proxy = config.server?.proxy;
+describe("vite API proxy", () => {
+  test("forwards backend routes from development and production preview", () => {
+    const devProxy = config.server?.proxy;
+    const previewProxy = config.preview?.proxy;
 
-    expect(proxy).toBeDefined();
-    expect(proxy?.["/api/v1"]).toBe("http://127.0.0.1:8000");
+    expect(devProxy?.["/api/v1"]).toBe("http://127.0.0.1:8000");
+    expect(previewProxy?.["/api/v1"]).toBe("http://127.0.0.1:8000");
   });
 });

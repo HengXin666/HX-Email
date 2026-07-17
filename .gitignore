@@ -11,6 +11,8 @@ data/
 node_modules/
 dist/
 .vite/
+web/playwright-report/
+web/test-results/
 
 # Env
 .env

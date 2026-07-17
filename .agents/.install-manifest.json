@@ -1,12 +1,80 @@
 {
   "skill": "hx-init",
-  "languages": ["python", "react"],
   "mode": "modify",
-  "pythonTypeChecker": "mypy",
-  "installed": {
-    "sharedHooks": ["strip_emoji.sh", "clean_chars.sh"],
-    "pythonHooks": ["format_py.sh", "verify_py.sh"],
-    "reactHooks": ["format_react.sh", "verify_react.sh"],
-    "reactConfig": ["web/biome.json", "web/knip.json", "lefthook.yml"]
+  "languages": ["python", "react", "typescript"],
+  "packageManagers": {
+    "python": "uv",
+    "web": "npm"
+  },
+  "created": [
+    ".claude/settings.json",
+    ".claude/hooks.json",
+    ".claude/hooks/*.sh",
+    ".claude/rules/*.md",
+    ".codex/hooks.json",
+    ".codex/hooks/*.sh",
+    ".codex/rules/*.md",
+    "web/e2e/app.spec.ts",
+    "web/playwright.config.ts",
+    "web/tsconfig.e2e.json"
+  ],
+  "modified": [
+    ".agents/.install-manifest.json",
+    ".agents/hooks/verify_before_stop.sh",
+    "README.md",
+    ".github/workflows/ci.yml",
+    ".gitignore",
+    "scripts/verify.sh",
+    "web/biome.json",
+    "web/knip.json",
+    "web/package.json",
+    "web/package-lock.json",
+    "web/src/vite-config.test.ts",
+    "web/vite.config.ts",
+    "server/tests/test_authentication.py",
+    "server/tests/test_data_transfer.py",
+    "server/tests/test_email_accounts.py",
+    "server/tests/test_graph_mail_fallback.py",
+    "server/tests/test_temp_mail.py",
+    "server/tests/test_usable_email_workbench.py",
+    "server/tests/test_user_workspace.py"
+  ],
+  "skipped": [
+    {
+      "path": ".git/hooks/commit-msg",
+      "reason": "Commit-message enforcement is opt-in and was not requested"
+    },
+    {
+      "path": "pyproject.toml",
+      "reason": "Existing ruff, mypy, and pytest toolchain was reused"
+    }
+  ],
+  "commands": [
+    "npm test",
+    "npm run test:e2e --prefix web",
+    "uv run --directory server pytest -q",
+    "python .codex/skills/hx-test-pipeline/scripts/verify.py --root . --strict",
+    "bash scripts/verify.sh"
+  ],
+  "logs": {
+    "directory": ".git/hx-init/logs",
+    "latest": ".git/hx-init/logs/project-verify-latest.log",
+    "summary": ".git/hx-init/logs/project-verify-latest.summary.txt"
+  },
+  "testLayers": {
+    "static": ["ruff", "mypy", "architecture", "biome", "tsc", "knip"],
+    "S1": ["Vitest component and utility tests", "pytest domain-rule tests"],
+    "S2": [
+      "FastAPI, SQLite, provider-adapter, import/export, and mail-delivery tests"
+    ],
+    "S3": [
+      "Authenticated workspace and user-isolation tests",
+      "Playwright Chromium flow against isolated FastAPI and Vite production preview"
+    ],
+    "S4": "Real OAuth, Graph, IMAP, SMTP, temporary-mail providers, and network canaries remain outside the PR gate"
+  },
+  "baseline": {
+    "strictXfailCount": 11,
+    "reason": "Legacy API contract drift exposed while making the existing suite deterministic"
   }
 }

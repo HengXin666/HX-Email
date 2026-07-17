@@ -3,6 +3,7 @@ on: [push, pull_request]
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -15,4 +16,14 @@ jobs:
           python-version: "3.12"
       - run: uv sync
       - run: npm ci --prefix web
+      - name: Install Playwright Chromium
+        working-directory: web
+        run: npx playwright install --with-deps chromium
       - run: bash scripts/verify.sh
+      - name: Upload Playwright report
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: playwright-report
+          path: web/playwright-report/
+          retention-days: 14

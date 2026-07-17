@@ -7,7 +7,10 @@
     "dev": "vite --config vite.config.ts --host 0.0.0.0",
     "build": "tsc -b && vite build --config vite.config.ts",
     "hooks": "lefthook install -c ../lefthook.yml",
-    "test": "vitest --config vite.config.ts run"
+    "preview": "vite preview --config vite.config.ts",
+    "test": "vitest --config vite.config.ts run",
+    "test:e2e": "playwright test --config playwright.config.ts",
+    "typecheck": "tsc -b --pretty false && tsc --noEmit -p tsconfig.e2e.json --pretty false"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",
@@ -22,6 +25,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.1",
+    "@playwright/test": "^1.61.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
     "@types/node": "^24.0.0",
