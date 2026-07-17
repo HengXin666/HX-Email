@@ -41,14 +41,34 @@ beforeEach(() => {
   vi.mocked(api.sendDebugEmail).mockReset();
 });
 
-test("blocks sending when recipient is blank", async () => {
+test("sends to selected sender when recipient is blank", async () => {
+  vi.mocked(api.sendDebugEmail).mockResolvedValue({
+    success: true,
+    code: "sent",
+    message: "Debug email sent to sender@example.com.",
+    credential_policy: "Uses account SMTP credentials.",
+    credential_strategy: "email_account_smtp_password",
+    from_address: "sender@example.com",
+    to_address: "sender@example.com",
+    usable_email_id: 12,
+    email_account_id: 5,
+    smtp_host: "smtp.example.com",
+    smtp_port: 587,
+    security: "starttls",
+    actions: [],
+  });
   render(<SendMail />);
 
   fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
-  expect(await screen.findByText("请填写收件人邮箱后再发送")).toBeInTheDocument();
-  expect(toastMock).toHaveBeenCalledWith("请填写收件人邮箱后再发送", "error");
-  expect(api.sendDebugEmail).not.toHaveBeenCalled();
+  await waitFor(() => {
+    expect(api.sendDebugEmail).toHaveBeenCalledWith(12, {
+      recipient: "sender@example.com",
+      subject: "HX-Email debug email",
+      body: "This is a debug email sent by HX-Email.",
+    });
+  });
+  expect(toastMock).toHaveBeenCalledWith("邮件已发送", "success");
 });
 
 test("keeps recipient state and sends trimmed recipient", async () => {

@@ -54,23 +54,23 @@ def send_debug_email(
     subject: str,
     body: str,
 ) -> SendDebugEmailResult | None:
-    to_address: str = recipient.strip()
-    if not to_address:
-        return build_input_error("missing_recipient", "Recipient is required.", usable_email_id)
     message_subject: str = subject.strip() or "HX-Email debug email"
     message_body: str = body.strip() or "This is a debug email sent by HX-Email."
     resolution = resolve_send_credentials(settings, user_id, usable_email_id)
     if not resolution.exists:
         return None
+    to_address: str = recipient.strip()
     if resolution.problem is not None:
+        to_address = to_address or resolution.problem.from_address
         return build_problem_result(resolution.problem, to_address)
     credentials = resolution.credentials
     if credentials is None:
         return build_input_error(
             "missing_credentials", "Sending credentials are missing.", usable_email_id
         )
+    to_address = to_address or credentials.from_address
     try:
-        deliver_debug_email(credentials, to_address, message_subject, message_body)
+        deliver_debug_email(settings, credentials, to_address, message_subject, message_body)
     except Exception as error:
         return build_delivery_error(credentials, to_address, error)
     return build_success_result(credentials, to_address)

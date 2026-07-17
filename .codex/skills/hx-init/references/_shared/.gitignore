@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+.mypy_cache/
+.ruff_cache/
+.ty_cache/
+.agents/logs/

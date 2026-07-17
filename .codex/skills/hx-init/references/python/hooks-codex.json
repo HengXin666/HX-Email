@@ -1,0 +1,40 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "apply_patch|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$(git rev-parse --show-toplevel)/.codex/hooks/strip_emoji.sh\"",
+            "timeout": 30,
+            "statusMessage": "Stripping text emojis"
+          },
+          {
+            "type": "command",
+            "command": "bash \"$(git rev-parse --show-toplevel)/.codex/hooks/clean_chars.sh\"",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "bash \"$(git rev-parse --show-toplevel)/.codex/hooks/format_py.sh\"",
+            "timeout": 120,
+            "statusMessage": "Formatting (ruff)"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$(git rev-parse --show-toplevel)/.codex/hooks/verify_py.sh\"",
+            "timeout": 600,
+            "statusMessage": "Running repository verification"
+          }
+        ]
+      }
+    ]
+  }
+}

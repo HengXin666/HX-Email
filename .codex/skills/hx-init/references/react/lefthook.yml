@@ -1,0 +1,21 @@
+# lefthook.yml — git hooks 团队级门禁
+# 跨生态通用: npm / Next / Vite / React
+
+pre-commit:
+  parallel: true
+  commands:
+    biome:
+      glob: "*.{ts,tsx,js,jsx,json}"
+      run: "{{PKG_EXEC}} biome check --write --no-errors-on-unmatched {staged_files}"
+      stage_fixed: true
+    prettier:
+      glob: "*.{md,yml,yaml,css,scss}"
+      run: "{{PKG_EXEC}} prettier --write --ignore-unknown {staged_files}"
+      stage_fixed: true
+
+pre-push:
+  commands:
+    typecheck:
+      run: "{{PKG_EXEC}} tsc --noEmit"
+    deadcode:
+      run: "{{PKG_EXEC}} knip --no-progress"

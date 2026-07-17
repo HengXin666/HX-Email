@@ -14,6 +14,8 @@ class SendCredentials:
     from_address: str
     username: str
     password: str
+    client_id: str
+    refresh_token: str
     smtp_host: str
     smtp_port: int
     security: str
@@ -75,6 +77,21 @@ def build_credentials(row: Row) -> SendCredentials | None:
     password: str = str(row["imap_password"] or "").strip()
     client_id: str = str(row["client_id"] or "").strip()
     refresh_token: str = str(row["refresh_token"] or "").strip()
+    if provider == "outlook" and client_id and refresh_token:
+        return SendCredentials(
+            usable_email_id=int(row["usable_email_id"]),
+            email_account_id=int(row["account_id"]),
+            provider=provider,
+            from_address=str(row["usable_address"] or "").strip() or username,
+            username=username,
+            password=password,
+            client_id=client_id,
+            refresh_token=refresh_token,
+            smtp_host="graph.microsoft.com",
+            smtp_port=443,
+            security="https",
+            credential_strategy="outlook_graph_send_mail",
+        )
     if not password and not client_id and refresh_token:
         password = refresh_token
     if not smtp_host or not username or not password:
@@ -86,6 +103,8 @@ def build_credentials(row: Row) -> SendCredentials | None:
         from_address=str(row["usable_address"] or "").strip() or username,
         username=username,
         password=password,
+        client_id=client_id,
+        refresh_token=refresh_token,
         smtp_host=smtp_host,
         smtp_port=smtp_port,
         security="ssl" if smtp_port == 465 else "starttls",

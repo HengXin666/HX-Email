@@ -1,4 +1,6 @@
 # 提交即验证 (uv 驱动): 给 Agent 明确的 pass/fail 信号
+exclude: ^\.codex/skills/
+
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.8.6

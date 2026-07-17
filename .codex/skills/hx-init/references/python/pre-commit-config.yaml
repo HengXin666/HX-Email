@@ -1,0 +1,21 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+  - repo: local
+    hooks:
+      - id: type-check
+        name: type-check ({{CHECKER}})
+        entry: {{TYPE_CMD_PRECOMMIT}}
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: arch-check
+        name: arch-check advisory (300行/文件数/_前缀/中文命名)
+        entry: {{PYTHON_RUN}} scripts/check_arch.py {{SRC_DIR}}
+        language: system
+        pass_filenames: false
+        always_run: true

@@ -1,0 +1,4 @@
+interface:
+  display_name: "HX 一键项目管家"
+  short_description: "自动探索新老项目并完成选型、约束、测试与最终验证"
+  default_prompt: "Use $hx-skill-orchestrator to inspect this project and complete the appropriate setup, guardrails, and business-focused tests automatically."

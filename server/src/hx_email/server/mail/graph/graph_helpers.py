@@ -124,6 +124,40 @@ def graph_get(
     return data
 
 
+def graph_send_mail(
+    access_token: str,
+    *,
+    recipient: str,
+    subject: str,
+    body: str,
+    proxy_url: str = "",
+) -> None:
+    """Send a plain-text email through Microsoft Graph /me/sendMail."""
+    url: str = f"{_GRAPH_BASE_URL}/me/sendMail"
+    payload: dict[str, object] = {
+        "message": {
+            "subject": subject,
+            "body": {"contentType": "Text", "content": body},
+            "toRecipients": [{"emailAddress": {"address": recipient}}],
+        },
+        "saveToSentItems": True,
+    }
+    response = requests.post(
+        url,
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        },
+        json=payload,
+        timeout=30,
+        proxies=build_proxies(proxy_url),
+    )
+    if response.status_code != 202:
+        raise RuntimeError(
+            f"Graph sendMail failed status={response.status_code}: {response.text[:200]}"
+        )
+
+
 # ── Message parsing ─────────────────────────────────────────────────────────
 
 
