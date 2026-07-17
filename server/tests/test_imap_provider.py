@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from email.utils import parsedate_to_datetime
 from unittest.mock import patch
 
 from hx_email.config import Settings
@@ -125,8 +126,14 @@ def test_imap_provider_fetches_only_uids_newer_than_since_uid(tmp_path) -> None:
 
 
 def test_parse_date_converts_imap_timestamp_to_local_timezone() -> None:
-    assert parse_date("Fri, 04 Jul 2026 08:00:00 +0000") == "2026-07-04 16:00:00"
-    assert parse_date("Fri, 04 Jul 2026 01:00:00 -0700") == "2026-07-04 16:00:00"
+    utc_value: str = "Fri, 04 Jul 2026 08:00:00 +0000"
+    pacific_value: str = "Fri, 04 Jul 2026 01:00:00 -0700"
+    expected_local: str = (
+        parsedate_to_datetime(utc_value).astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    )
+
+    assert parse_date(utc_value) == expected_local
+    assert parse_date(pacific_value) == expected_local
 
 
 def test_imap_provider_uses_group_proxy_for_account_group(tmp_path) -> None:
