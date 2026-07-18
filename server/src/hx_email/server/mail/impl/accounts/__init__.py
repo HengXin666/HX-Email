@@ -1,5 +1,5 @@
+from hx_email.server.mail.impl.accounts.account_helpers import AccountPage
 from hx_email.server.mail.impl.accounts.account_service import (
-    AccountPage,
     delete_email_account,
     delete_email_account_by_email,
     list_email_accounts_enhanced,

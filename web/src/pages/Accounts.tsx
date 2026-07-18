@@ -2303,6 +2303,7 @@ const EmailSettingsModal: React.FC<{
   const email = emails.find((e) => e.id === emailId);
   const account = (accounts || []).find((a) => a.id === email?.email_account_id);
   const [activeTab, setActiveTab] = useState<"info" | "credentials">("info");
+  const [primaryAddress, setPrimaryAddress] = useState("");
   const [label, setLabel] = useState("");
   const [groupId, setGroupId] = useState<number | "">("");
   const [tagIds, setTagIds] = useState<number[]>([]);
@@ -2334,6 +2335,7 @@ const EmailSettingsModal: React.FC<{
 
   useEffect(() => {
     if (email) {
+      setPrimaryAddress(email.address);
       setLabel(email.label || "");
       setGroupId(email.group?.id || "");
       setTagIds(email.tags?.map((t) => t.id) || []);
@@ -2364,6 +2366,7 @@ const EmailSettingsModal: React.FC<{
       .then((acc: EmailAccount) => {
         if (cancelled) return;
         setCredentialAccount(acc);
+        setPrimaryAddress(acc.primary_address);
         setCredPwd(acc.imap_password || "");
         setCredCid(acc.client_id || "");
         setCredRtk("");
@@ -2410,6 +2413,11 @@ const EmailSettingsModal: React.FC<{
 
   const handleSave = async () => {
     if (!email) return;
+    const normalizedAddress = primaryAddress.trim().toLowerCase();
+    if (email.kind === "primary" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedAddress)) {
+      toast("请输入有效的邮箱地址", "error");
+      return;
+    }
     setLoading(true);
     try {
       await organizeEmail(email.id, {
@@ -2419,6 +2427,7 @@ const EmailSettingsModal: React.FC<{
       });
       if (email.email_account_id) {
         await api.updateEmailAccount(email.email_account_id, {
+          email: email.kind === "primary" ? normalizedAddress : undefined,
           password: credPwd || null,
           client_id: credCid || null,
           refresh_token: credRtk || null,
@@ -2551,11 +2560,27 @@ const EmailSettingsModal: React.FC<{
 
           {activeTab === "info" && (
             <>
-              {/* 邮箱地址（只读展示） */}
-              <div className="px-3 py-2 rounded-md bg-gh-canvas-inset border border-gh-border">
-                <div className="text-xs text-gh-text-secondary">邮箱地址</div>
-                <div className="text-sm font-mono text-gh-text">{email.address}</div>
-              </div>
+              {email.kind === "primary" ? (
+                <div>
+                  <Input
+                    label="邮箱地址"
+                    type="email"
+                    value={primaryAddress}
+                    onChange={(event) => setPrimaryAddress(event.target.value)}
+                    placeholder="name@example.com"
+                  />
+                  {primaryAddress.trim().toLowerCase() !== email.address.toLowerCase() && (
+                    <p className="mt-1.5 text-xs text-gh-warning">
+                      修改主地址后，旧 OAuth Token 将失效，需要重新授权。
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="px-3 py-2 rounded-md bg-gh-canvas-inset border border-gh-border">
+                  <div className="text-xs text-gh-text-secondary">别名邮箱</div>
+                  <div className="text-sm font-mono text-gh-text">{email.address}</div>
+                </div>
+              )}
 
               {/* 备注名称 */}
               <Input

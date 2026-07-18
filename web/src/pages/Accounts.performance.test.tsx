@@ -270,3 +270,20 @@ test("gmail OAuth setup explains Cloud requirements and testing expiry", async (
   expect(screen.getByText(/Testing 模式.*7 天/)).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "复制回调地址" })).toBeInTheDocument();
 });
+
+test("settings can update the primary email address", async () => {
+  updateEmailAccount.mockResolvedValue(account);
+  renderAccounts();
+
+  fireEvent.click(screen.getByTitle("设置"));
+  const addressInput = screen.getByRole("textbox", { name: "邮箱地址" });
+  fireEvent.change(addressInput, { target: { value: "corrected@gmail.com" } });
+  fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+  await waitFor(() => {
+    expect(updateEmailAccount).toHaveBeenCalledWith(
+      3,
+      expect.objectContaining({ email: "corrected@gmail.com" }),
+    );
+  });
+});

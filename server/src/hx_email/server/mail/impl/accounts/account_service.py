@@ -1,12 +1,15 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from hx_email.config import Settings
 from hx_email.database import connect
 from hx_email.security import encrypt_secret
 from hx_email.server.mail.imap.message_store import delete_messages_for_email
+from hx_email.server.mail.impl.accounts.account_helpers import (
+    AccountPage,
+    update_primary_usable_email,
+)
 
 if TYPE_CHECKING:
     from hx_email.server.mail.email_accounts import EmailAccount
@@ -16,14 +19,6 @@ def _get_email_account(settings: Settings, user_id: int, account_id: int) -> Ema
     from hx_email.server.mail.email_accounts import get_email_account as _gea
 
     return _gea(settings, user_id, account_id)
-
-
-@dataclass(frozen=True)
-class AccountPage:
-    accounts: tuple[EmailAccount, ...]
-    total_count: int
-    page: int
-    page_size: int
 
 
 def update_email_account(
@@ -48,8 +43,13 @@ def update_email_account(
         sets: list[str] = []
         params: list[object] = []
         if email is not None:
+            normalized_email: str = update_primary_usable_email(
+                connection, user_id, account_id, email
+            )
             sets.append("primary_address = ?")
-            params.append(email)
+            params.append(normalized_email)
+            if normalized_email != existing.primary_address.strip().lower():
+                sets.append("refresh_token = ''")
         if password is not None:
             sets.append("imap_password = ?")
             params.append(password)

@@ -3,10 +3,23 @@
 from __future__ import annotations
 
 import sqlite3
+from dataclasses import dataclass
 from sqlite3 import Connection, Row
+from typing import TYPE_CHECKING
 
 from hx_email.server.auth import require_inserted_id
 from hx_email.server.mail.usable_emails import UsableEmail
+
+if TYPE_CHECKING:
+    from hx_email.server.mail.email_accounts import EmailAccount
+
+
+@dataclass(frozen=True)
+class AccountPage:
+    accounts: tuple[EmailAccount, ...]
+    total_count: int
+    page: int
+    page_size: int
 
 
 class DuplicateUsableEmailError(ValueError):
@@ -15,6 +28,44 @@ class DuplicateUsableEmailError(ValueError):
 
 class InvalidAliasAddressError(ValueError):
     pass
+
+
+class InvalidPrimaryAddressError(ValueError):
+    pass
+
+
+def normalize_primary_address(address: str) -> str:
+    normalized: str = address.strip().lower()
+    local_part, separator, domain = normalized.partition("@")
+    if (
+        not local_part
+        or separator != "@"
+        or not domain
+        or "." not in domain
+        or any(character.isspace() for character in normalized)
+    ):
+        raise InvalidPrimaryAddressError("Enter a valid email address")
+    return normalized
+
+
+def update_primary_usable_email(
+    connection: Connection,
+    user_id: int,
+    account_id: int,
+    address: str,
+) -> str:
+    normalized: str = normalize_primary_address(address)
+    try:
+        connection.execute(
+            "UPDATE usable_emails SET address = ?"
+            " WHERE user_id = ? AND email_account_id = ? AND kind = 'primary'",
+            (normalized, user_id, account_id),
+        )
+    except sqlite3.IntegrityError as error:
+        raise DuplicateUsableEmailError(
+            "Usable email address already exists for this user"
+        ) from error
+    return normalized
 
 
 def is_plus_subaddress(address: str) -> bool:

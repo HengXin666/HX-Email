@@ -27,6 +27,7 @@ from hx_email.server.mail.impl.accounts import (
     update_account_remark,
     update_email_account,
 )
+from hx_email.server.mail.impl.accounts.account_helpers import InvalidPrimaryAddressError
 
 
 def register_email_account_routes(router: APIRouter, settings: Settings) -> None:
@@ -171,21 +172,26 @@ def register_email_account_routes(router: APIRouter, settings: Settings) -> None
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
         user = require_user(settings, authorization)
-        account = update_email_account(
-            settings,
-            user.id,
-            account_id,
-            email=payload.email,
-            password=payload.password,
-            client_id=payload.client_id,
-            refresh_token=payload.refresh_token,
-            group_id=payload.group_id,
-            remark=payload.remark,
-            status=payload.status,
-            provider=payload.provider,
-            imap_host=payload.imap_host,
-            imap_port=payload.imap_port,
-        )
+        try:
+            account = update_email_account(
+                settings,
+                user.id,
+                account_id,
+                email=payload.email,
+                password=payload.password,
+                client_id=payload.client_id,
+                refresh_token=payload.refresh_token,
+                group_id=payload.group_id,
+                remark=payload.remark,
+                status=payload.status,
+                provider=payload.provider,
+                imap_host=payload.imap_host,
+                imap_port=payload.imap_port,
+            )
+        except InvalidPrimaryAddressError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        except DuplicateUsableEmailError as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
         if account is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Email account not found"
