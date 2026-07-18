@@ -140,6 +140,12 @@ def _format_fetch_error(provider: str, error_msg: str) -> str:
         or "wrong password/app-password" in lowered
     )
     if provider == "gmail" and auth_failed:
+        if "oauth" in lowered or "xoauth2" in lowered:
+            return (
+                "Gmail Google OAuth 认证失败: Google 拒绝了当前 OAuth 凭证。"
+                "请在邮箱账号的凭证页面使用 Google 重新授权。"
+                f"原始错误: {error_msg}"
+            )
         return (
             "Gmail IMAP 认证失败: Google 拒绝了当前保存的 App Password。"
             "请在 Google Account > Security > 2-Step Verification > App passwords "

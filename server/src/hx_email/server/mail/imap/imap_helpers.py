@@ -31,6 +31,34 @@ _IMAP_TENANTS: tuple[str, ...] = ("consumers", "common")
 _OUTLOOK_PROVIDERS: frozenset[str] = frozenset({"outlook", "hotmail"})
 _OUTLOOK_IMAP_SERVERS: tuple[str, ...] = ("outlook.live.com", "outlook.office365.com")
 
+
+class IMAPAuthRejectedError(RuntimeError):
+    """IMAP XOAUTH2 auth rejected or OAuth-authenticated connection refused."""
+
+
+def describe_imap_auth_error(
+    error: str,
+    host: str,
+    use_xoauth2: bool,
+) -> tuple[str, bool]:
+    lowered: str = error.lower()
+    if "authenticated but not connected" in lowered:
+        return (
+            f"OAuth auth OK but IMAP server {host} refused connection. "
+            "Check account access and IMAP availability.",
+            True,
+        )
+    auth_failed: bool = any(
+        marker in lowered
+        for marker in ("authenticationfailed", "authentication failed", "invalid credentials")
+    )
+    if use_xoauth2 and auth_failed:
+        return (f"OAuth XOAUTH2 authentication rejected: {error}", True)
+    if auth_failed or "login failed" in lowered:
+        return (f"IMAP login failed (wrong password/app-password): {error}", False)
+    return (error, False)
+
+
 # ── MIME helpers ─────────────────────────────────────────────────────────
 
 

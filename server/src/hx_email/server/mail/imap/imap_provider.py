@@ -12,6 +12,8 @@ from hx_email.server.mail import EmailAccountMailbox, MailboxMessage
 from hx_email.server.mail.google_oauth import get_google_access_token
 from hx_email.server.mail.imap.imap_helpers import (
     _OUTLOOK_PROVIDERS,
+    IMAPAuthRejectedError,
+    describe_imap_auth_error,
     try_get_imap_token,
 )
 from hx_email.server.mail.imap.impl.fetch_batch import (
@@ -25,10 +27,6 @@ from hx_email.server.mail.imap.impl.outlook_fallback import imap_fetch_outlook_f
 from hx_email.server.mail.imap.impl.proxy import imap_connect_via_proxy, load_group_proxy
 
 logger = logging.getLogger(__name__)
-
-
-class IMAPAuthRejectedError(RuntimeError):
-    """IMAP XOAUTH2 auth rejected — token valid but server refused connection."""
 
 
 class IMAPMailboxProvider:
@@ -125,6 +123,7 @@ class IMAPMailboxProvider:
                     self._settings, client_id, refresh_token, proxy_url
                 )
                 tenant_used = "google"
+                username = account.primary_address
             else:
                 access_token, tenant_used = try_get_imap_token(client_id, refresh_token)
             logger.info(
@@ -278,16 +277,9 @@ class IMAPMailboxProvider:
             ssl.SSLError,
             OSError,
         ) as exc:
-            error_str = str(exc)
-            if "authenticated but not connected" in error_str.lower():
-                error_str = (
-                    f"OAuth auth OK but IMAP server {host} refused connection. "
-                    "Check: 1) IMAP/POP3 enabled; 2) account not locked; "
-                    "3) new account needs web login first; 4) try alternate IMAP server."
-                )
+            error_str, auth_rejected = describe_imap_auth_error(str(exc), host, use_xoauth2)
+            if auth_rejected:
                 raise IMAPAuthRejectedError(error_str) from exc
-            if "login failed" in error_str.lower() or "authentication failed" in error_str.lower():
-                error_str = f"IMAP login failed (wrong password/app-password): {error_str}"
             logger.warning("IMAP error %s:%d user=%s: %s", host, port, username, exc)
             raise RuntimeError(error_str) from exc
         finally:

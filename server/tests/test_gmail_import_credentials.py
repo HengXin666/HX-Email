@@ -221,3 +221,35 @@ def test_gmail_authentication_failure_returns_app_password_hint(tmp_path) -> Non
     assert "App Password" in message
     assert "不要使用 Gmail 登录密码" in message
     assert "AUTHENTICATIONFAILED" in message
+
+
+def test_gmail_oauth_failure_does_not_return_app_password_hint(tmp_path) -> None:
+    settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
+    migrate(settings)
+    error = RuntimeError(
+        "Gmail OAuth XOAUTH2 authentication rejected: "
+        "b'[AUTHENTICATIONFAILED] Invalid credentials (Failure)'"
+    )
+    client = TestClient(create_app(settings, mailbox_provider=FailingMailboxProvider(error)))
+    headers = login_admin(client, settings)
+    created = client.post(
+        f"{API}/email-accounts",
+        json={
+            "provider": "gmail",
+            "primary_address": "owner@gmail.com",
+            "display_name": "Owner",
+            "client_id": "google-client-id",
+            "refresh_token": "google-refresh-token",
+        },
+        headers=headers,
+    ).json()
+
+    result = client.post(
+        f"{API}/usable-emails/{created['primary_usable_email']['id']}/fetch-emails",
+        headers=headers,
+    )
+
+    message: str = result.json()["error"]
+    assert "Google OAuth" in message
+    assert "重新授权" in message
+    assert "App Password" not in message

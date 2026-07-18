@@ -157,6 +157,35 @@ def test_gmail_oauth_credentials_use_google_token_endpoint(tmp_path) -> None:
     assert fake.auth_mechanism == "XOAUTH2"
 
 
+def test_gmail_oauth_uses_primary_address_instead_of_stale_imap_username(tmp_path) -> None:
+    settings = Settings(data_dir=tmp_path)
+    migrate(settings)
+    with connect(settings) as conn:
+        conn.execute(
+            """
+            INSERT INTO email_accounts
+                (id, user_id, provider, primary_address, username, client_id, refresh_token)
+            VALUES (1, 1, 'gmail', 'correct@gmail.com', 'misspelled@gmail.com',
+                    'google-cid', 'google-rt')
+            """
+        )
+
+    provider = IMAPMailboxProvider(settings)
+    with (
+        patch(
+            "hx_email.server.mail.imap.imap_provider.get_google_access_token",
+            return_value="google-access-token",
+        ),
+        patch.object(provider, "_imap_fetch", return_value=[]) as imap_fetch,
+    ):
+        provider.read_messages(
+            EmailAccountMailbox(id=1, provider="gmail", primary_address="correct@gmail.com")
+        )
+
+    assert imap_fetch.call_args.args[2] == "correct@gmail.com"
+    assert imap_fetch.call_args.kwargs["use_xoauth2"] is True
+
+
 def test_parse_date_converts_imap_timestamp_to_local_timezone() -> None:
     utc_value: str = "Fri, 04 Jul 2026 08:00:00 +0000"
     pacific_value: str = "Fri, 04 Jul 2026 01:00:00 -0700"

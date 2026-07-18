@@ -147,12 +147,14 @@ def complete_google_oauth(
         cursor = connection.execute(
             """
             UPDATE email_accounts
-            SET client_id = ?, refresh_token = ?, imap_password = '', provider = 'gmail'
+            SET client_id = ?, refresh_token = ?, imap_password = '', username = ?,
+                provider = 'gmail'
             WHERE id = ? AND user_id = ?
             """,
             (
                 str(flow["client_id"]),
                 encrypt_secret(settings, refresh_token),
+                authorized_email,
                 account_id,
                 user_id,
             ),

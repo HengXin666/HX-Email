@@ -103,7 +103,8 @@ def test_google_oauth_callback_saves_matching_account_credentials(tmp_path) -> N
 
     with connect(settings) as connection:
         row = connection.execute(
-            "SELECT client_id, refresh_token, imap_password FROM email_accounts WHERE id = ?",
+            "SELECT client_id, refresh_token, imap_password, username "
+            "FROM email_accounts WHERE id = ?",
             (account_id,),
         ).fetchone()
     assert callback.status_code == 200
@@ -111,6 +112,7 @@ def test_google_oauth_callback_saves_matching_account_credentials(tmp_path) -> N
     assert row is not None
     assert row["client_id"] == "google-client-id"
     assert row["imap_password"] == ""
+    assert row["username"] == "owner@gmail.com"
     assert str(row["refresh_token"]).startswith("enc:v1:")
     assert decrypt_secret(settings, str(row["refresh_token"])) == "refresh-token"
     detail = client.get(f"{API}/email-accounts/{account_id}", headers=headers).json()
