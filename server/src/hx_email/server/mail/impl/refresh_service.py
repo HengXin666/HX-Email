@@ -124,7 +124,7 @@ def refresh_single_account(
             "message": "Missing OAuth credentials",
         }
     result = try_refresh_provider_oauth_token(
-        settings, provider, client_id_v, refresh_token_val, proxy_url=proxy_url
+        settings, provider, client_id_v, refresh_token_val, proxy_url, account_id
     )
     log_status = "success" if result["success"] else "failed"
     _insert_refresh_log(

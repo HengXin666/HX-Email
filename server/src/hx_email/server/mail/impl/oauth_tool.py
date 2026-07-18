@@ -11,7 +11,7 @@ from urllib.request import Request, urlopen
 import requests
 
 from hx_email.config import Settings
-from hx_email.security import decrypt_secret
+from hx_email.security import decrypt_secret, persist_rotated_refresh_token
 from hx_email.server.mail.google_oauth import refresh_google_token
 
 
@@ -248,8 +248,16 @@ def try_refresh_provider_oauth_token(
     client_id: str,
     refresh_token: str,
     proxy_url: str = "",
+    account_id: int | None = None,
 ) -> dict[str, object]:
     refresh_token = decrypt_secret(settings, refresh_token)
     if provider == "gmail":
         return refresh_google_token(settings, client_id, refresh_token, proxy_url)
-    return try_refresh_oauth_token(client_id, refresh_token, proxy_url=proxy_url)
+    result: dict[str, object] = try_refresh_oauth_token(
+        client_id, refresh_token, proxy_url=proxy_url
+    )
+    if account_id is not None and bool(result.get("success")):
+        persist_rotated_refresh_token(
+            settings, account_id, refresh_token, str(result.get("refresh_token") or "")
+        )
+    return result

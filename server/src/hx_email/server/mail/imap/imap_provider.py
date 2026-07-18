@@ -7,7 +7,7 @@ from typing import ClassVar
 
 from hx_email.config import Settings
 from hx_email.database import connect
-from hx_email.security import decrypt_secret
+from hx_email.security import decrypt_secret, persist_rotated_refresh_token
 from hx_email.server.mail import EmailAccountMailbox, MailboxMessage
 from hx_email.server.mail.google_oauth import get_google_access_token
 from hx_email.server.mail.imap.imap_helpers import (
@@ -125,7 +125,12 @@ class IMAPMailboxProvider:
                 tenant_used = "google"
                 username = account.primary_address
             else:
-                access_token, tenant_used = try_get_imap_token(client_id, refresh_token)
+                access_token, tenant_used, rotated_token = try_get_imap_token(
+                    client_id, refresh_token
+                )
+                persist_rotated_refresh_token(
+                    self._settings, account.id, refresh_token, rotated_token
+                )
             logger.info(
                 "IMAP token for %d (%s, tenant=%s) -> %s:%d",
                 account.id,

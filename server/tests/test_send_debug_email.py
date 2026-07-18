@@ -3,7 +3,8 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 from hx_email.app import create_app
 from hx_email.config import Settings
-from hx_email.database import migrate
+from hx_email.database import connect, migrate
+from hx_email.security import decrypt_secret
 from hx_email.server.mail.email_accounts import add_email_account
 
 API = "/api/v1"
@@ -150,7 +151,7 @@ def test_send_debug_email_uses_graph_for_outlook_oauth_credentials(tmp_path) -> 
     with (
         patch(
             "hx_email.server.mail.graph.graph_helpers.try_get_graph_token",
-            return_value=("access-token", "consumers"),
+            return_value=("access-token", "consumers", "rotated-refresh-token"),
         ) as token,
         patch("hx_email.server.mail.graph.graph_helpers.requests.post") as post,
     ):
@@ -178,3 +179,10 @@ def test_send_debug_email_uses_graph_for_outlook_oauth_credentials(tmp_path) -> 
     assert request_body["message"]["toRecipients"][0]["emailAddress"]["address"] == (
         "sender@outlook.com"
     )
+    with connect(settings) as connection:
+        stored: str = str(
+            connection.execute(
+                "SELECT refresh_token FROM email_accounts WHERE id = ?", (account.id,)
+            ).fetchone()["refresh_token"]
+        )
+    assert decrypt_secret(settings, stored) == "rotated-refresh-token"

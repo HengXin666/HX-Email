@@ -4,6 +4,7 @@ from unittest.mock import Mock, patch
 
 from hx_email.config import Settings
 from hx_email.database import connect, migrate
+from hx_email.security import decrypt_secret
 from hx_email.server.mail import EmailAccountMailbox
 from hx_email.server.mail.graph.graph_client import GraphMailProvider
 from hx_email.server.mail.graph.graph_helpers import build_proxies
@@ -36,7 +37,11 @@ def test_graph_provider_uses_group_proxy_for_token_and_messages(tmp_path) -> Non
 
     token_response = Mock()
     token_response.status_code = 200
-    token_response.json.return_value = {"access_token": "token", "expires_in": 3600}
+    token_response.json.return_value = {
+        "access_token": "token",
+        "refresh_token": "rotated-refresh-token",
+        "expires_in": 3600,
+    }
     messages_response = Mock()
     messages_response.status_code = 200
     messages_response.json.return_value = {"value": []}
@@ -60,3 +65,10 @@ def test_graph_provider_uses_group_proxy_for_token_and_messages(tmp_path) -> Non
     assert result.succeeded is True
     assert post.call_args.kwargs["proxies"] == expected_proxies
     assert get.call_args.kwargs["proxies"] == expected_proxies
+    with connect(settings) as connection:
+        stored: str = str(
+            connection.execute("SELECT refresh_token FROM email_accounts WHERE id = 1").fetchone()[
+                "refresh_token"
+            ]
+        )
+    assert decrypt_secret(settings, stored) == "rotated-refresh-token"

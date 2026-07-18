@@ -4,6 +4,7 @@ from unittest.mock import Mock, patch
 
 from hx_email.config import Settings
 from hx_email.database import connect, migrate
+from hx_email.security import decrypt_secret
 from hx_email.server.mail.impl.oauth_tool import try_refresh_oauth_token
 from hx_email.server.mail.impl.refresh_service import (
     refresh_selected_accounts,
@@ -37,7 +38,34 @@ def test_refresh_single_account_passes_group_proxy_to_token_refresh(tmp_path) ->
         result = refresh_single_account(settings, 1, EmptyMailboxProvider())
 
     assert result["success"] is True
-    assert refresh.call_args.kwargs["proxy_url"] == "http://127.0.0.1:2334"
+    assert refresh.call_args.args[4] == "http://127.0.0.1:2334"
+
+
+def test_refresh_single_account_persists_rotated_microsoft_refresh_token(tmp_path) -> None:
+    settings = Settings(data_dir=tmp_path)
+    migrate(settings)
+    _insert_proxy_account(settings)
+
+    with patch(
+        "hx_email.server.mail.impl.oauth_tool.try_refresh_oauth_token",
+        return_value={
+            "success": True,
+            "message": "ok",
+            "error_detail": "",
+            "refresh_token": "rotated-refresh-token",
+        },
+    ):
+        result = refresh_single_account(settings, 1, EmptyMailboxProvider())
+
+    with connect(settings) as connection:
+        stored: str = str(
+            connection.execute("SELECT refresh_token FROM email_accounts WHERE id = 1").fetchone()[
+                "refresh_token"
+            ]
+        )
+    assert result["success"] is True
+    assert stored.startswith("enc:v1:")
+    assert decrypt_secret(settings, stored) == "rotated-refresh-token"
 
 
 def test_refresh_selected_accounts_passes_group_proxy_to_token_refresh(tmp_path) -> None:

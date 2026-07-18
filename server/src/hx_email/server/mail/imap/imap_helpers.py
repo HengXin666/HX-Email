@@ -10,14 +10,9 @@ import time
 from email.header import decode_header
 from email.utils import parsedate_to_datetime
 from threading import Lock
-from typing import TYPE_CHECKING
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
-
-if TYPE_CHECKING:
-    pass
-
 
 logger = logging.getLogger(__name__)
 
@@ -224,7 +219,9 @@ def extract_text_and_html(msg: email.message.Message) -> tuple[str, str]:
 # ── OAuth token helpers ──────────────────────────────────────────────────
 
 
-def get_imap_token(client_id: str, refresh_token: str, *, tenant: str = "consumers") -> str:
+def get_imap_token(
+    client_id: str, refresh_token: str, *, tenant: str = "consumers"
+) -> tuple[str, str]:
     """Get an IMAP-specific access token with caching (60s TTL)."""
     cache_key: str = (
         f"{tenant}:{client_id}:{hashlib.sha256(refresh_token.encode()).hexdigest()[:16]}"
@@ -234,7 +231,7 @@ def get_imap_token(client_id: str, refresh_token: str, *, tenant: str = "consume
         if cached:
             token, expires = cached
             if time.monotonic() < expires:
-                return token
+                return token, ""
     token_url: str = _IMAP_TOKEN_URL_TEMPLATE.format(tenant=tenant)
     body: bytes = urlencode(
         {
@@ -260,9 +257,16 @@ def get_imap_token(client_id: str, refresh_token: str, *, tenant: str = "consume
                 raise RuntimeError(f"OAuth 令牌无效 (tenant={tenant}): {error} — {desc[:200]}")
             expires_in = int(str(data.get("expires_in", 3599)))
             ttl = max(0, expires_in - 60)
+            rotated_token: str = str(data.get("refresh_token") or "")
             with _IMAP_TOKEN_LOCK:
                 _IMAP_TOKEN_CACHE[cache_key] = (access_token, time.monotonic() + ttl)
-            return access_token
+                if rotated_token:
+                    rotated_hash: str = hashlib.sha256(rotated_token.encode()).hexdigest()[:16]
+                    _IMAP_TOKEN_CACHE[f"{tenant}:{client_id}:{rotated_hash}"] = (
+                        access_token,
+                        time.monotonic() + ttl,
+                    )
+            return access_token, rotated_token
     except HTTPError as exc:
         try:
             err_data: dict[str, object] = json.loads(exc.read().decode())
@@ -280,13 +284,13 @@ def get_imap_token(client_id: str, refresh_token: str, *, tenant: str = "consume
         raise RuntimeError(f"获取 IMAP 令牌网络错误 (tenant={tenant}): {exc}") from exc
 
 
-def try_get_imap_token(client_id: str, refresh_token: str) -> tuple[str, str]:
+def try_get_imap_token(client_id: str, refresh_token: str) -> tuple[str, str, str]:
     """Try to get an IMAP token, falling through tenants."""
     last_error: RuntimeError | None = None
     for tenant in _IMAP_TENANTS:
         try:
-            token: str = get_imap_token(client_id, refresh_token, tenant=tenant)
-            return token, tenant
+            token, rotated_token = get_imap_token(client_id, refresh_token, tenant=tenant)
+            return token, tenant, rotated_token
         except RuntimeError as exc:
             last_error = exc
             logger.debug("IMAP token failed for tenant=%s: %s", tenant, exc)

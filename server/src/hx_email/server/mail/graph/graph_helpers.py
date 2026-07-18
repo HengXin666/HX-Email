@@ -37,7 +37,7 @@ def get_graph_token(
     *,
     tenant: str = "consumers",
     proxy_url: str = "",
-) -> str:
+) -> tuple[str, str]:
     """Get a Microsoft Graph API access token with caching (60s TTL)."""
     token_hash: str = hashlib.sha256(refresh_token.encode()).hexdigest()[:16]
     cache_key: str = f"{tenant}:{proxy_url}:{client_id}:{token_hash}"
@@ -46,7 +46,7 @@ def get_graph_token(
         if cached:
             token, expires = cached
             if time.monotonic() < expires:
-                return token
+                return token, ""
 
     try:
         response = requests.post(
@@ -75,24 +75,31 @@ def get_graph_token(
             )
         expires_in = int(str(data.get("expires_in", 3599)))
         ttl = max(0, expires_in - 60)
+        rotated_token: str = str(data.get("refresh_token") or "")
         with _GRAPH_TOKEN_LOCK:
             _GRAPH_TOKEN_CACHE[cache_key] = (access_token, time.monotonic() + ttl)
-        return access_token
+            if rotated_token:
+                rotated_hash: str = hashlib.sha256(rotated_token.encode()).hexdigest()[:16]
+                rotated_key: str = f"{tenant}:{proxy_url}:{client_id}:{rotated_hash}"
+                _GRAPH_TOKEN_CACHE[rotated_key] = (access_token, time.monotonic() + ttl)
+        return access_token, rotated_token
     except RuntimeError:
         raise
     except Exception as exc:
         raise RuntimeError(f"Graph token network error (tenant={tenant}): {exc}") from exc
 
 
-def try_get_graph_token(client_id: str, refresh_token: str, proxy_url: str = "") -> tuple[str, str]:
+def try_get_graph_token(
+    client_id: str, refresh_token: str, proxy_url: str = ""
+) -> tuple[str, str, str]:
     """Try to get a Graph API token, falling through tenants. Returns (token, tenant)."""
     last_error: RuntimeError | None = None
     for tenant in _GRAPH_TENANTS:
         try:
-            token: str = get_graph_token(
+            token, rotated_token = get_graph_token(
                 client_id, refresh_token, tenant=tenant, proxy_url=proxy_url
             )
-            return token, tenant
+            return token, tenant, rotated_token
         except RuntimeError as exc:
             last_error = exc
             logger.debug("Graph token failed for tenant=%s: %s", tenant, exc)

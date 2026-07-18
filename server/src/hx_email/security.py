@@ -71,6 +71,24 @@ def decrypt_secret(settings: Settings, value: str) -> str:
         ) from error
 
 
+def persist_rotated_refresh_token(
+    settings: Settings,
+    account_id: int,
+    current_token: str,
+    rotated_token: str,
+) -> bool:
+    normalized: str = rotated_token.strip()
+    if not normalized or normalized == current_token.strip():
+        return False
+    with sqlite3.connect(settings.database_path) as connection:
+        cursor = connection.execute(
+            "UPDATE email_accounts SET refresh_token = ? "
+            "WHERE id = ? AND provider IN ('outlook', 'hotmail')",
+            (encrypt_secret(settings, normalized), account_id),
+        )
+    return cursor.rowcount == 1
+
+
 def decode_legacy_base64(value: str) -> str:
     if not value:
         return ""

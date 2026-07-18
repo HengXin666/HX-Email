@@ -1,4 +1,5 @@
 from hx_email.config import Settings
+from hx_email.security import persist_rotated_refresh_token
 from hx_email.server.mail.graph import graph_helpers
 from hx_email.server.mail.imap.impl.proxy import load_group_proxy
 from hx_email.server.mail.impl.sending.credentials import SendCredentials
@@ -14,8 +15,14 @@ def deliver_debug_email(
 ) -> None:
     if credentials.credential_strategy == "outlook_graph_send_mail":
         proxy_url: str = load_group_proxy(settings, credentials.email_account_id)
-        access_token, _tenant = graph_helpers.try_get_graph_token(
+        access_token, _tenant, rotated_token = graph_helpers.try_get_graph_token(
             credentials.client_id, credentials.refresh_token, proxy_url
+        )
+        persist_rotated_refresh_token(
+            settings,
+            credentials.email_account_id,
+            credentials.refresh_token,
+            rotated_token,
         )
         graph_helpers.graph_send_mail(
             access_token,

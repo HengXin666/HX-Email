@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from hx_email.config import Settings
 from hx_email.database import connect, migrate
+from hx_email.security import decrypt_secret
 from hx_email.server.mail import EmailAccountMailbox
 from hx_email.server.mail.imap.imap_helpers import parse_date
 from hx_email.server.mail.imap.imap_provider import IMAPMailboxProvider
@@ -84,7 +85,7 @@ def test_imap_provider_fetches_latest_message_ids_first_like_reference_project(t
     with (
         patch(
             "hx_email.server.mail.imap.imap_provider.try_get_imap_token",
-            return_value=("token", "consumers"),
+            return_value=("token", "consumers", ""),
         ),
         patch("hx_email.server.mail.imap.imap_provider.imaplib.IMAP4_SSL", return_value=fake),
     ):
@@ -157,6 +158,39 @@ def test_gmail_oauth_credentials_use_google_token_endpoint(tmp_path) -> None:
     assert fake.auth_mechanism == "XOAUTH2"
 
 
+def test_outlook_imap_persists_rotated_refresh_token(tmp_path) -> None:
+    settings = Settings(data_dir=tmp_path)
+    migrate(settings)
+    with connect(settings) as conn:
+        conn.execute(
+            """
+            INSERT INTO email_accounts
+                (id, user_id, provider, primary_address, client_id, refresh_token)
+            VALUES (1, 1, 'outlook', 'owner@outlook.com', 'client-id', 'old-refresh-token')
+            """
+        )
+    provider = IMAPMailboxProvider(settings)
+
+    with (
+        patch(
+            "hx_email.server.mail.imap.imap_provider.try_get_imap_token",
+            return_value=("access-token", "consumers", "rotated-refresh-token"),
+        ),
+        patch.object(provider, "_imap_fetch", return_value=[]),
+    ):
+        provider.read_messages(
+            EmailAccountMailbox(id=1, provider="outlook", primary_address="owner@outlook.com")
+        )
+
+    with connect(settings) as connection:
+        stored: str = str(
+            connection.execute("SELECT refresh_token FROM email_accounts WHERE id = 1").fetchone()[
+                "refresh_token"
+            ]
+        )
+    assert decrypt_secret(settings, stored) == "rotated-refresh-token"
+
+
 def test_gmail_oauth_uses_primary_address_instead_of_stale_imap_username(tmp_path) -> None:
     settings = Settings(data_dir=tmp_path)
     migrate(settings)
@@ -227,7 +261,7 @@ def test_imap_provider_uses_group_proxy_for_account_group(tmp_path) -> None:
     with (
         patch(
             "hx_email.server.mail.imap.imap_provider.try_get_imap_token",
-            return_value=("token", "consumers"),
+            return_value=("token", "consumers", ""),
         ),
         patch("hx_email.server.mail.imap.imap_provider.imap_connect_via_proxy", fake_proxy),
         patch("hx_email.server.mail.imap.imap_provider.imaplib.IMAP4_SSL") as direct_connect,

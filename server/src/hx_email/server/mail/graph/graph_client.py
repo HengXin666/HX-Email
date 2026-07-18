@@ -9,7 +9,7 @@ from urllib.parse import quote, urlencode
 
 from hx_email.config import Settings
 from hx_email.database import connect
-from hx_email.security import decrypt_secret
+from hx_email.security import decrypt_secret, persist_rotated_refresh_token
 from hx_email.server.mail import EmailAccountMailbox, MailboxMessage
 from hx_email.server.mail.graph.graph_helpers import (
     _GRAPH_BASE_URL,
@@ -68,7 +68,12 @@ class GraphMailProvider:
             return GraphReadResult([], False)
         proxy_url = load_group_proxy(self._settings, email_account.id)
         try:
-            access_token, _tenant = try_get_graph_token(client_id, refresh_token, proxy_url)
+            access_token, _tenant, rotated_token = try_get_graph_token(
+                client_id, refresh_token, proxy_url
+            )
+            persist_rotated_refresh_token(
+                self._settings, email_account.id, refresh_token, rotated_token
+            )
         except RuntimeError as exc:
             logger.warning("Graph token failed for account %d: %s", email_account.id, exc)
             return GraphReadResult([], False)
@@ -89,7 +94,12 @@ class GraphMailProvider:
             return None
         proxy_url = load_group_proxy(self._settings, email_account.id)
         try:
-            access_token, _tenant = try_get_graph_token(client_id, refresh_token, proxy_url)
+            access_token, _tenant, rotated_token = try_get_graph_token(
+                client_id, refresh_token, proxy_url
+            )
+            persist_rotated_refresh_token(
+                self._settings, email_account.id, refresh_token, rotated_token
+            )
         except RuntimeError as exc:
             logger.warning("Graph token failed for account %d: %s", email_account.id, exc)
             return None
