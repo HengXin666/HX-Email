@@ -44,7 +44,7 @@ export const PRESET_PLATFORMS: readonly PlatformPreset[] = [
     name: "Google",
     domain: "google.com",
     description: "Google 账号",
-    aliases: ["gmail"],
+    aliases: ["gmail", "gmail.com", "googlemail.com"],
     accentColor: "#4285f4",
     backgroundColor: "#ffffff",
   },
@@ -98,6 +98,7 @@ export const PRESET_PLATFORMS: readonly PlatformPreset[] = [
 export function getPlatformBrand(name: string): PlatformBrand {
   const trimmedName = name.trim();
   const preset = findPlatformPreset(trimmedName);
+  const senderDomain = extractDomain(trimmedName);
 
   if (preset) {
     return {
@@ -106,6 +107,16 @@ export function getPlatformBrand(name: string): PlatformBrand {
       accentColor: preset.accentColor,
       backgroundColor: preset.backgroundColor,
       fallbackText: getFallbackText(preset.name),
+    };
+  }
+
+  if (senderDomain) {
+    return {
+      label: senderDomain,
+      logoUrl: getLogoUrl(senderDomain),
+      accentColor: FALLBACK_ACCENT,
+      backgroundColor: FALLBACK_BACKGROUND,
+      fallbackText: getFallbackText(senderDomain),
     };
   }
 
@@ -121,13 +132,36 @@ export function getPlatformBrand(name: string): PlatformBrand {
 function findPlatformPreset(name: string): PlatformPreset | null {
   const normalizedName = normalizePlatformName(name);
   if (!normalizedName) return null;
+  const senderDomain = extractDomain(name);
 
   return (
     PRESET_PLATFORMS.find((preset: PlatformPreset) => {
       const names = [preset.key, preset.name, preset.domain, ...preset.aliases];
-      return names.some((candidate: string) => normalizePlatformName(candidate) === normalizedName);
+      const hasExactName = names.some(
+        (candidate: string) => normalizePlatformName(candidate) === normalizedName,
+      );
+      if (hasExactName || !senderDomain) return hasExactName;
+      const knownDomains = [preset.domain, ...preset.aliases.filter(isDomain)];
+      return knownDomains.some(
+        (domain: string) => senderDomain === domain || senderDomain.endsWith(`.${domain}`),
+      );
     }) ?? null
   );
+}
+
+function extractDomain(value: string): string | null {
+  const emailDomain = value.match(/@([a-z0-9.-]+\.[a-z]{2,})/i)?.[1];
+  if (emailDomain) return emailDomain.toLowerCase();
+  const plainValue = value
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .split("/")[0];
+  return isDomain(plainValue) ? plainValue : null;
+}
+
+function isDomain(value: string): boolean {
+  return /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\.[a-z]{2,}$/i.test(value);
 }
 
 function normalizePlatformName(name: string): string {

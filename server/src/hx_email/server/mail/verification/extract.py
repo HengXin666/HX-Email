@@ -42,6 +42,11 @@ _KW: tuple[str, ...] = (
     "your code",
     "code is",
     "短信验证码",
+    "otp",
+    "passcode",
+    "authentication code",
+    "sign-in code",
+    "login code",
 )
 
 # ── False-positive filters ───────────────────────────────────────────────
@@ -111,21 +116,32 @@ def strip_html(html: str) -> str:
 # ── Multi-tier extraction ────────────────────────────────────────────────
 
 
+def has_verification_context(content: str) -> bool:
+    """Return whether visible mail content contains verification semantics."""
+    if not content:
+        return False
+    text: str = strip_html(content) if "<" in content and ">" in content else content
+    lowered: str = text.lower()
+    return any(keyword.lower() in lowered for keyword in _KW)
+
+
 def extract_verification_code(content: str) -> str | None:
-    """Extract a verification code (Tier 1 → Tier 2 → Tier 3).
+    """Extract a verification code from mail with explicit verification context.
 
     Tier 1 — context regex: ``verification code is 123456``.
     Tier 2 — keyword proximity: scan ±100 chars around known keywords.
-    Tier 3 — fallback: global search with year/time/junk filtering.
 
     HTML is stripped first to prevent false positives from tracking
-    pixels / inline styles.
+    pixels / inline styles. Ordinary numbers without verification semantics
+    are deliberately ignored.
     """
     if not content:
         return None
 
     text: str = strip_html(content) if "<" in content and ">" in content else content
     if not text.strip():
+        return None
+    if not has_verification_context(text):
         return None
 
     # Tier 1: context-embedded regex (most specific)
@@ -151,12 +167,6 @@ def extract_verification_code(content: str) -> str | None:
                 if any(ch.isdigit() for ch in c) and not is_junk_code(c):
                     return c  # type: ignore[no-any-return]
             pos += len(kw)
-
-    # Tier 3: fallback global search
-    for c in CODE_PATTERN.findall(text):
-        c = c.upper()
-        if any(ch.isdigit() for ch in c) and not is_junk_code(c):
-            return c  # type: ignore[no-any-return]
 
     return None
 

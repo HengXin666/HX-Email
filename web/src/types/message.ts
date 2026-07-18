@@ -13,6 +13,7 @@ export interface StoredEmailMessage {
   recipient_address: string;
   subject: string;
   body: string;
+  verification_code?: string | null;
   message_id?: string;
   received_at: string;
   created_at: string;

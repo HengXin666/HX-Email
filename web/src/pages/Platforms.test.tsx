@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { ToastProvider } from "../components/ui/Toast";
 import type { Platform, PlatformBinding, UsableEmail } from "../types";
+import { getPlatformBrand } from "./impl/platform_catalog";
 import { Platforms } from "./Platforms";
 
 vi.mock("framer-motion", () => ({
@@ -153,4 +154,13 @@ test("platform page can create a standalone plus email and bind it", async () =>
   expect(refreshEmails).toHaveBeenCalled();
   expect(refreshPlatforms).toHaveBeenCalled();
   expect(await screen.findByText("owner+github@example.com")).toBeInTheDocument();
+});
+
+test("sender logos resolve nested and non-preset email domains", () => {
+  expect(getPlatformBrand("Google <no-reply@accounts.google.com>").logoUrl).toContain(
+    "domain=google.com",
+  );
+  expect(getPlatformBrand("alerts@custom-service.example").logoUrl).toContain(
+    "domain=custom-service.example",
+  );
 });

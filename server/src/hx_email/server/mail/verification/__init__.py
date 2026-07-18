@@ -23,6 +23,7 @@ from hx_email.server.mail.verification.extract import (
     LINK_PATTERN,
     extract_verification_code,
     first_match,
+    has_verification_context,
 )
 from hx_email.server.mail.verification.search import find_verification_code
 
@@ -43,6 +44,7 @@ __all__ = [
     "first_match",
     "get_verification_history",
     "get_verification_state",
+    "has_verification_context",
     "is_delivery_alias",
     "load_target",
     "load_usable_email",

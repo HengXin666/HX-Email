@@ -1133,6 +1133,7 @@ interface DetailMessage {
   subject: string;
   text: string;
   html?: string;
+  verification_code?: string | null;
   received_at?: string;
   created_at?: string;
 }
@@ -1153,6 +1154,7 @@ function mapStoredMessages(messages: StoredEmailMessage[]): DetailMessage[] {
     from_address: message.from_address || "—",
     subject: message.subject || "(无主题)",
     text: message.body || "",
+    verification_code: message.verification_code,
     received_at: message.received_at || message.created_at || "",
     created_at: message.created_at,
   }));
@@ -1605,6 +1607,7 @@ const MessagesTab: React.FC<{
   loadingMore: boolean;
   onLoadMore?: () => void;
 }> = ({ messages, total, loadingMore, onLoadMore }) => {
+  const { toast } = useToast();
   const [expandedId, setExpandedId] = React.useState<string | number | null>(null);
   const [darkMode, setDarkMode] = React.useState(true);
   if (messages.length === 0) {
@@ -1681,9 +1684,9 @@ const MessagesTab: React.FC<{
         </div>
         {messages.map((m, i) => {
           const isExpanded = expandedId === m.id;
-          const avatarColor = stringToColor(m.from_address || m.subject || "?");
           const timeValue = m.received_at || m.created_at || "";
           const timeLabel = timeValue ? formatRelativeTime(timeValue) : "";
+          const preview = getMessagePreview(m.text);
           return (
             <motion.div
               key={m.id}
@@ -1700,35 +1703,48 @@ const MessagesTab: React.FC<{
               {/* Compact card header — always visible */}
               <div className="flex items-center gap-3 px-3 py-2.5">
                 <div
-                  className="w-9 h-9 rounded-lg flex items-center justify-center text-xs font-bold shrink-0"
-                  style={{ background: avatarColor + "20", color: avatarColor }}
+                  title={m.from_address || "未知发件人"}
+                  aria-label={m.from_address || "未知发件人"}
                 >
-                  {(m.from_address || "?").slice(0, 1).toUpperCase()}
+                  <PlatformLogo name={m.from_address} size="sm" className="w-9 h-9" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
                     <div
-                      className={`font-medium truncate ${isExpanded ? "text-gh-accent" : "text-gh-text"}`}
+                      className={`flex-1 min-w-0 font-medium truncate ${isExpanded ? "text-gh-accent" : "text-gh-text"}`}
                     >
                       {m.subject || "(无主题)"}
                     </div>
+                    {m.verification_code && (
+                      <button
+                        type="button"
+                        aria-label={`复制验证码 ${m.verification_code}`}
+                        title="点击复制验证码"
+                        onClick={(event: React.MouseEvent<HTMLButtonElement>) => {
+                          event.stopPropagation();
+                          void copyText(
+                            m.verification_code || "",
+                            () => toast("验证码已复制", "success"),
+                            () => toast("验证码复制失败，请手动复制", "error"),
+                          );
+                        }}
+                        className="inline-flex items-center gap-1 rounded-md border border-gh-accent/30 bg-gh-accent/10 px-2 py-0.5 font-mono text-xs font-semibold tracking-wider text-gh-accent transition-colors hover:border-gh-accent hover:bg-gh-accent/20 focus:outline-none focus:ring-2 focus:ring-gh-accent/50 cursor-pointer shrink-0"
+                      >
+                        {m.verification_code}
+                        <IconCopy size={11} aria-hidden="true" />
+                      </button>
+                    )}
                     {timeLabel && (
                       <span className="text-[10px] text-gh-text-secondary whitespace-nowrap shrink-0">
                         {timeLabel}
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-xs text-gh-text-muted truncate">
-                      {m.from_address || "—"}
-                    </span>
-                    {m.text && !isExpanded && (
-                      <span className="text-xs text-gh-text-secondary truncate hidden sm:inline">
-                        — {m.text.slice(0, 60)}
-                        {m.text.length > 60 ? "..." : ""}
-                      </span>
-                    )}
-                  </div>
+                  {!isExpanded && (
+                    <div className="mt-0.5 truncate text-xs text-gh-text-secondary">
+                      {preview || "(无正文)"}
+                    </div>
+                  )}
                 </div>
                 <svg
                   className={`w-4 h-4 text-gh-text-muted shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`}
@@ -1797,20 +1813,14 @@ const MessagesTab: React.FC<{
 };
 
 /** Deterministic color from string for avatar backgrounds */
-function stringToColor(s: string): string {
-  const colors = [
-    "#58a6ff",
-    "#a371f7",
-    "#f0883e",
-    "#3fb950",
-    "#f85149",
-    "#d29922",
-    "#79c0ff",
-    "#bc8cff",
-  ];
-  let hash = 0;
-  for (let i = 0; i < s.length; i++) hash = ((hash << 5) - hash + s.charCodeAt(i)) | 0;
-  return colors[Math.abs(hash) % colors.length];
+function getMessagePreview(text: string): string {
+  return text
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /** Detect if text content looks like HTML */

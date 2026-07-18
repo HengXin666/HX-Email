@@ -113,6 +113,7 @@ beforeEach(() => {
         recipient_address: "owner@example.com",
         subject: "Login code",
         body: "Your code is 123456",
+        verification_code: "123456",
         received_at: "2026-07-04T10:01:00Z",
         created_at: "2026-07-04T10:01:00Z",
       },
@@ -148,6 +149,21 @@ test("email detail uses cached verification history instead of live verification
   expect(verificationHistory).toHaveBeenCalledWith(7);
   expect(readVerification).not.toHaveBeenCalled();
   expect(screen.getByText("Login code")).toBeInTheDocument();
+});
+
+test("message verification code copies without expanding the message", async () => {
+  renderAccounts();
+
+  const emailCard = screen.getByText("Owner").closest(".cursor-pointer");
+  fireEvent.click(emailCard as HTMLElement);
+
+  const codeButton = await screen.findByRole("button", { name: "复制验证码 123456" });
+  fireEvent.click(codeButton);
+
+  await waitFor(() => {
+    expect(document.execCommand).toHaveBeenCalledWith("copy");
+  });
+  expect(codeButton.closest(".cursor-pointer")?.querySelector(".rotate-180")).toBeNull();
 });
 
 test("verification button uses incremental fetch before reading cached history", async () => {

@@ -29,6 +29,7 @@ from hx_email.server.mail.usable_emails import (
 )
 from hx_email.server.mail.verification import (
     MailboxProvider,
+    extract_verification_code,
     get_verification_history,
     get_verification_state,
     read_verification,
@@ -193,7 +194,10 @@ def register_usable_email_routes(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Usable email not found"
             )
-        messages = get_stored_messages(settings, usable_email_id, limit=limit, offset=offset)
+        stored_messages = get_stored_messages(settings, usable_email_id, limit=limit, offset=offset)
+        messages: list[dict[str, object]] = [
+            message_with_verification_code(message) for message in stored_messages
+        ]
         total = get_message_count(settings, usable_email_id)
         return {"messages": messages, "total": total}
 
@@ -219,3 +223,13 @@ def register_usable_email_routes(
             settings, user.id, account_info.email_account_id, mailbox_provider
         )
         return result
+
+
+def message_with_verification_code(message: dict[str, object]) -> dict[str, object]:
+    """Attach a conservative per-message verification result for inbox rendering."""
+    subject: str = str(message.get("subject") or "")
+    body: str = str(message.get("body") or "")
+    return {
+        **message,
+        "verification_code": extract_verification_code(f"{subject}\n{body}"),
+    }

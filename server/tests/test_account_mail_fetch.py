@@ -95,6 +95,47 @@ def test_fetch_emails_uses_injected_provider_stores_cache_and_updates_refresh_ti
     assert accounts_after.json()["accounts"][0]["last_refresh_at"]
 
 
+def test_fetch_emails_only_marks_messages_with_verification_context(tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    migrate(settings)
+    provider = SequenceMailboxProvider(
+        [
+            [
+                MailboxMessage(
+                    recipient_address="owner@example.com",
+                    subject="Order shipped",
+                    body="Order 847263 has shipped and will arrive tomorrow.",
+                    from_address="shop@example.com",
+                    received_at="2026-06-25 10:00:00",
+                ),
+                MailboxMessage(
+                    recipient_address="owner@example.com",
+                    subject="Sign-in verification",
+                    body="Your verification code is 592731.",
+                    from_address="security@example.com",
+                    received_at="2026-06-25 10:01:00",
+                ),
+            ]
+        ]
+    )
+    client = TestClient(create_app(settings, mailbox_provider=provider))
+    headers = login_admin(client, settings)
+    account = create_account(client, headers)
+    primary_id = account["primary_usable_email"]["id"]
+
+    fetched = client.post(f"{API}/usable-emails/{primary_id}/fetch-emails", headers=headers)
+    messages = client.get(f"{API}/usable-emails/{primary_id}/messages", headers=headers)
+    history = client.get(f"{API}/usable-emails/{primary_id}/verification/history", headers=headers)
+
+    assert fetched.status_code == 200
+    assert fetched.json()["codes_found"] == 1
+    assert [item["verification_code"] for item in messages.json()["messages"]] == [
+        "592731",
+        None,
+    ]
+    assert [match["code"] for match in history.json()["matches"]] == ["592731"]
+
+
 def test_read_verification_fetches_latest_before_extracting_from_cached_messages(tmp_path):
     settings = Settings(data_dir=tmp_path)
     migrate(settings)
