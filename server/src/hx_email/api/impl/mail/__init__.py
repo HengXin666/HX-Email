@@ -2,6 +2,7 @@ from hx_email.api.impl.mail.account_routes import register_email_account_routes
 from hx_email.api.impl.mail.account_transfer_routes import register_account_transfer_routes
 from hx_email.api.impl.mail.actions import register_batch_routes, register_export_routes
 from hx_email.api.impl.mail.email import register_email_routes
+from hx_email.api.impl.mail.oauth import register_google_oauth_routes
 from hx_email.api.impl.mail.pool import register_mail_pool_routes
 from hx_email.api.impl.mail.refresh import (
     register_refresh_log_routes,
@@ -17,6 +18,7 @@ __all__ = [
     "register_email_account_routes",
     "register_email_routes",
     "register_export_routes",
+    "register_google_oauth_routes",
     "register_mail_pool_routes",
     "register_refresh_log_routes",
     "register_refresh_routes",

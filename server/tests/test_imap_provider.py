@@ -18,9 +18,11 @@ class FakeImapConnection:
         self.selected: list[str] = []
         self.fetch_ids: list[str] = []
         self.fetch_call_count: int = 0
+        self.auth_mechanism: str = ""
 
     def authenticate(self, mechanism: str, authobject: object) -> None:
-        _ = (mechanism, authobject)
+        _ = authobject
+        self.auth_mechanism = mechanism
 
     def login(self, username: str, password: str) -> None:
         _ = (username, password)
@@ -123,6 +125,36 @@ def test_imap_provider_fetches_only_uids_newer_than_since_uid(tmp_path) -> None:
     assert fake.fetch_ids == ["4"]
     assert fake.fetch_call_count == 1
     assert [message.subject for message in messages] == ["Newest"]
+
+
+def test_gmail_oauth_credentials_use_google_token_endpoint(tmp_path) -> None:
+    settings = Settings(data_dir=tmp_path)
+    migrate(settings)
+    with connect(settings) as conn:
+        conn.execute(
+            """
+            INSERT INTO email_accounts
+                (id, user_id, provider, primary_address, imap_host, client_id, refresh_token)
+            VALUES (1, 1, 'gmail', 'owner@gmail.com', 'imap.gmail.com', 'google-cid', 'google-rt')
+            """
+        )
+    fake = FakeImapConnection("imap.gmail.com", 993)
+
+    with (
+        patch(
+            "hx_email.server.mail.imap.imap_provider.get_google_access_token",
+            return_value="google-access-token",
+        ) as google_token,
+        patch("hx_email.server.mail.imap.imap_provider.try_get_imap_token") as microsoft_token,
+        patch("hx_email.server.mail.imap.imap_provider.imaplib.IMAP4_SSL", return_value=fake),
+    ):
+        IMAPMailboxProvider(settings).read_messages(
+            EmailAccountMailbox(id=1, provider="gmail", primary_address="owner@gmail.com"), top=1
+        )
+
+    google_token.assert_called_once()
+    microsoft_token.assert_not_called()
+    assert fake.auth_mechanism == "XOAUTH2"
 
 
 def test_parse_date_converts_imap_timestamp_to_local_timezone() -> None:

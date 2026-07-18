@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from hx_email.config import Settings
 from hx_email.database import connect
+from hx_email.security import encrypt_secret
 from hx_email.server.mail.imap.message_store import delete_messages_for_email
 
 if TYPE_CHECKING:
@@ -40,7 +41,6 @@ def update_email_account(
     imap_host: str | None = None,
     imap_port: int | None = None,
 ) -> EmailAccount | None:
-    """Update fields on an email account. Only non-None fields are changed."""
     existing = _get_email_account(settings, user_id, account_id)
     if existing is None:
         return None
@@ -58,7 +58,7 @@ def update_email_account(
             params.append(client_id)
         if refresh_token is not None:
             sets.append("refresh_token = ?")
-            params.append(refresh_token)
+            params.append(encrypt_secret(settings, refresh_token))
         if group_id is not None:
             sets.append("group_id = ?")
             params.append(group_id)

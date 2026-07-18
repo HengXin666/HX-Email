@@ -10,6 +10,10 @@ from urllib.request import Request, urlopen
 
 import requests
 
+from hx_email.config import Settings
+from hx_email.security import decrypt_secret
+from hx_email.server.mail.google_oauth import refresh_google_token
+
 
 @dataclass(frozen=True)
 class OAuthConfig:
@@ -236,3 +240,16 @@ def try_refresh_oauth_token(
             "message": "Unexpected error during token refresh",
             "error_detail": str(exc),
         }
+
+
+def try_refresh_provider_oauth_token(
+    settings: Settings,
+    provider: str,
+    client_id: str,
+    refresh_token: str,
+    proxy_url: str = "",
+) -> dict[str, object]:
+    refresh_token = decrypt_secret(settings, refresh_token)
+    if provider == "gmail":
+        return refresh_google_token(settings, client_id, refresh_token, proxy_url)
+    return try_refresh_oauth_token(client_id, refresh_token, proxy_url=proxy_url)

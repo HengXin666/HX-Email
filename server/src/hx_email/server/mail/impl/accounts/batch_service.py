@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 
 from hx_email.config import Settings
 from hx_email.database import connect
-from hx_email.security import verify_password
+from hx_email.security import decrypt_secret, verify_password
 
 EXPORT_TOKEN_TTL_MINUTES: int = 5
 
@@ -141,13 +141,13 @@ def batch_tag_action(
     return True
 
 
-def _format_export_line(account: dict[str, object]) -> str:
+def _format_export_line(settings: Settings, account: dict[str, object]) -> str:
     """Format a single account row as a text export line."""
     provider: str = str(account.get("provider", "") or "")
     address: str = str(account.get("primary_address", "") or "")
     password: str = str(account.get("imap_password", "") or "")
     client_id: str = str(account.get("client_id", "") or "")
-    refresh_token: str = str(account.get("refresh_token", "") or "")
+    refresh_token: str = decrypt_secret(settings, str(account.get("refresh_token", "") or ""))
     if provider == "outlook" or refresh_token:
         return f"{address}----{password}----{client_id}----{refresh_token}"
     if provider == "custom":
@@ -170,7 +170,7 @@ def export_all_accounts_text(settings: Settings, user_id: int) -> str:
             """,
             (user_id,),
         ).fetchall()
-    return "\n".join(_format_export_line(dict(row)) for row in rows)
+    return "\n".join(_format_export_line(settings, dict(row)) for row in rows)
 
 
 def export_selected_accounts_text(settings: Settings, user_id: int, group_ids: list[int]) -> str:
@@ -189,7 +189,7 @@ def export_selected_accounts_text(settings: Settings, user_id: int, group_ids: l
             """,
             (user_id, *group_ids),
         ).fetchall()
-    return "\n".join(_format_export_line(dict(row)) for row in rows)
+    return "\n".join(_format_export_line(settings, dict(row)) for row in rows)
 
 
 def verify_export_password(settings: Settings, user_id: int, password: str) -> str | None:

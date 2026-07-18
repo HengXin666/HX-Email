@@ -3,6 +3,7 @@ from typing import Any
 
 from hx_email.config import Settings
 from hx_email.database import connect
+from hx_email.security import decrypt_secret, encrypt_secret
 
 
 class DataImportConflictError(ValueError):
@@ -63,6 +64,8 @@ def export_core_data(settings: Settings, user_id: int) -> dict[str, object]:
             """,
             user_id,
         )
+    for account in email_accounts:
+        account["refresh_token"] = decrypt_secret(settings, str(account.get("refresh_token") or ""))
     return {
         "version": 1,
         "email_accounts": email_accounts,
@@ -83,7 +86,7 @@ def import_core_data(
         with connect(settings) as connection:
             group_ids = import_groups(connection, user_id, payload)
             tag_ids = import_tags(connection, user_id, payload)
-            account_ids = import_email_accounts(connection, user_id, payload)
+            account_ids = import_email_accounts(settings, connection, user_id, payload)
             email_ids = import_usable_emails(connection, user_id, payload, account_ids, group_ids)
             import_usable_email_tags(connection, payload, email_ids, tag_ids)
             platform_ids = import_platforms(connection, user_id, payload)
@@ -124,7 +127,10 @@ def import_tags(
 
 
 def import_email_accounts(
-    connection: sqlite3.Connection, user_id: int, payload: dict[str, Any]
+    settings: Settings,
+    connection: sqlite3.Connection,
+    user_id: int,
+    payload: dict[str, Any],
 ) -> dict[int, int]:
     ids: dict[int, int] = {}
     for account in payload.get("email_accounts", []):
@@ -147,7 +153,7 @@ def import_email_accounts(
                 account.get("username", ""),
                 account.get("imap_password", ""),
                 account.get("client_id", ""),
-                account.get("refresh_token", ""),
+                encrypt_secret(settings, str(account.get("refresh_token", ""))),
                 account.get("status", "active"),
             ),
         )

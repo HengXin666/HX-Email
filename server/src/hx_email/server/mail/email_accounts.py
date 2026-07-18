@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from hx_email.config import Settings
 from hx_email.database import connect
+from hx_email.security import decrypt_secret, encrypt_secret
 from hx_email.server.auth import require_inserted_id
 from hx_email.server.mail.impl.accounts.account_helpers import (
     DuplicateUsableEmailError,
@@ -81,7 +82,7 @@ def add_email_account(
                     username,
                     imap_password,
                     client_id,
-                    refresh_token,
+                    encrypt_secret(settings, refresh_token),
                     group_id,
                 ),
             )
@@ -176,7 +177,7 @@ def deactivate_email_account(
         username=account["username"],
         imap_password=account["imap_password"],
         client_id=account["client_id"],
-        refresh_token=account["refresh_token"],
+        refresh_token=decrypt_secret(settings, str(account["refresh_token"] or "")),
         group_id=account["group_id"],
         remark=account["remark"] or "",
         telegram_enabled=bool(account["telegram_enabled"]),
@@ -222,7 +223,7 @@ def get_email_account(settings: Settings, user_id: int, account_id: int) -> Emai
         username=account["username"],
         imap_password=account["imap_password"],
         client_id=account["client_id"],
-        refresh_token=account["refresh_token"],
+        refresh_token=decrypt_secret(settings, str(account["refresh_token"] or "")),
         group_id=account["group_id"],
         remark=account["remark"] or "",
         telegram_enabled=bool(account["telegram_enabled"]),

@@ -2,12 +2,11 @@ import sqlite3
 from pathlib import Path
 
 from hx_email.config import Settings
-from hx_email.security import hash_password
+from hx_email.security import hash_password, migrate_stored_secrets
 
 
 def column_exists(connection: sqlite3.Connection, table: str, column: str) -> bool:
-    rows = connection.execute(f"PRAGMA table_info({table})").fetchall()
-    return any(row[1] == column for row in rows)
+    return any(row[1] == column for row in connection.execute(f"PRAGMA table_info({table})"))
 
 
 def connect(settings: Settings) -> sqlite3.Connection:
@@ -297,4 +296,5 @@ def migrate(settings: Settings) -> Path:
         if not column_exists(connection, "groups", "proxy_url"):
             connection.execute("ALTER TABLE groups ADD COLUMN proxy_url TEXT NOT NULL DEFAULT ''")
         connection.execute("PRAGMA user_version = 8")
+        migrate_stored_secrets(settings, connection)
     return database_path

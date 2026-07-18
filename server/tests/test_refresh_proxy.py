@@ -31,7 +31,7 @@ def test_refresh_single_account_passes_group_proxy_to_token_refresh(tmp_path) ->
     _insert_proxy_account(settings)
 
     with patch(
-        "hx_email.server.mail.impl.refresh_service.try_refresh_oauth_token",
+        "hx_email.server.mail.impl.refresh_service.try_refresh_provider_oauth_token",
         return_value={"success": True, "message": "ok", "error_detail": ""},
     ) as refresh:
         result = refresh_single_account(settings, 1, EmptyMailboxProvider())
@@ -46,7 +46,7 @@ def test_refresh_selected_accounts_passes_group_proxy_to_token_refresh(tmp_path)
     _insert_proxy_account(settings)
 
     with patch(
-        "hx_email.server.mail.impl.refresh_service.try_refresh_oauth_token",
+        "hx_email.server.mail.impl.refresh_service.try_refresh_provider_oauth_token",
         return_value={"success": True, "message": "ok", "error_detail": ""},
     ) as refresh:
         events = list(refresh_selected_accounts(settings, [1], EmptyMailboxProvider()))

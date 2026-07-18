@@ -3,6 +3,7 @@ from sqlite3 import Row
 
 from hx_email.config import Settings
 from hx_email.database import connect
+from hx_email.security import decrypt_secret
 from hx_email.server.mail.impl.sending.router import get_email_server
 
 
@@ -64,19 +65,19 @@ def resolve_send_credentials(
         return CredentialResolution(False, None, None)
     if row["account_id"] is None:
         return CredentialResolution(True, None, build_unlinked_problem(row))
-    credentials = build_credentials(row)
+    credentials = build_credentials(settings, row)
     if credentials is not None:
         return CredentialResolution(True, credentials, None)
     return CredentialResolution(True, None, build_missing_config_problem(row))
 
 
-def build_credentials(row: Row) -> SendCredentials | None:
+def build_credentials(settings: Settings, row: Row) -> SendCredentials | None:
     provider: str = str(row["provider"] or "").strip().lower()
     smtp_host, smtp_port = infer_smtp_server(row)
     username: str = str(row["username"] or "").strip() or str(row["primary_address"] or "").strip()
     password: str = str(row["imap_password"] or "").strip()
     client_id: str = str(row["client_id"] or "").strip()
-    refresh_token: str = str(row["refresh_token"] or "").strip()
+    refresh_token: str = decrypt_secret(settings, str(row["refresh_token"] or "")).strip()
     if provider == "outlook" and client_id and refresh_token:
         return SendCredentials(
             usable_email_id=int(row["usable_email_id"]),

@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     data_dir: Path = REPOSITORY_ROOT / "data"
     admin_username: str = "admin"
     admin_password: str = "admin"
+    secret_key: str = ""
 
     @property
     def database_path(self) -> Path:

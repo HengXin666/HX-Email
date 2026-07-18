@@ -50,6 +50,7 @@ import type {
 } from "../types";
 import { copyToClipboard } from "../utils/clipboard";
 import { formatDateTimeFull, formatRelativeTime } from "../utils/time";
+import { GoogleOAuthControls } from "./impl/GoogleOAuthControls";
 import { PlatformLogo } from "./impl/PlatformLogo";
 
 const COLORS = [
@@ -2365,7 +2366,7 @@ const EmailSettingsModal: React.FC<{
         setCredentialAccount(acc);
         setCredPwd(acc.imap_password || "");
         setCredCid(acc.client_id || "");
-        setCredRtk(acc.refresh_token || "");
+        setCredRtk("");
         setCredStatus(acc.status || "active");
         setRemark(acc.remark || "");
       })
@@ -2491,6 +2492,17 @@ const EmailSettingsModal: React.FC<{
   };
 
   const isOutlook = settingsAccount?.provider === "outlook";
+  const isGmail = settingsAccount?.provider === "gmail";
+
+  const handleGoogleAuthorized = async (): Promise<void> => {
+    if (!email?.email_account_id) return;
+    const refreshedAccount = await api.getEmailAccount(email.email_account_id);
+    setCredentialAccount(refreshedAccount);
+    setCredPwd(refreshedAccount.imap_password || "");
+    setCredCid(refreshedAccount.client_id || "");
+    setCredRtk("");
+    await Promise.all([refreshAccounts(), refreshEmails()]);
+  };
 
   return (
     <Modal
@@ -2703,6 +2715,14 @@ const EmailSettingsModal: React.FC<{
             <>
               {email.email_account_id ? (
                 <>
+                  {isGmail && (
+                    <GoogleOAuthControls
+                      accountId={email.email_account_id}
+                      email={email.address}
+                      onAuthorized={handleGoogleAuthorized}
+                    />
+                  )}
+
                   {/* 状态 */}
                   <Select
                     label="状态"
@@ -2783,6 +2803,12 @@ const EmailSettingsModal: React.FC<{
                             <label className="text-xs font-medium text-gh-text-muted block mb-1.5">
                               Refresh Token（不填写则不更新）
                             </label>
+                            {(settingsAccount?.has_refresh_token ||
+                              settingsAccount?.refresh_token) && (
+                              <div className="mb-1.5 inline-flex items-center gap-1 text-[11px] text-gh-success">
+                                <IconCheck size={11} /> Refresh Token 已安全保存，页面不会回显
+                              </div>
+                            )}
                             <textarea
                               value={credRtk}
                               onChange={(e) => setCredRtk(e.target.value)}

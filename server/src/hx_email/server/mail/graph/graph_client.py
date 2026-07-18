@@ -9,6 +9,7 @@ from urllib.parse import quote, urlencode
 
 from hx_email.config import Settings
 from hx_email.database import connect
+from hx_email.security import decrypt_secret
 from hx_email.server.mail import EmailAccountMailbox, MailboxMessage
 from hx_email.server.mail.graph.graph_helpers import (
     _GRAPH_BASE_URL,
@@ -62,6 +63,7 @@ class GraphMailProvider:
         if row is None:
             return GraphReadResult([], False)
         client_id, refresh_token = self._extract_credentials(row)
+        refresh_token = decrypt_secret(self._settings, refresh_token)
         if not client_id or not refresh_token:
             return GraphReadResult([], False)
         proxy_url = load_group_proxy(self._settings, email_account.id)
@@ -82,6 +84,7 @@ class GraphMailProvider:
         if row is None:
             return None
         client_id, refresh_token = self._extract_credentials(row)
+        refresh_token = decrypt_secret(self._settings, refresh_token)
         if not client_id or not refresh_token:
             return None
         proxy_url = load_group_proxy(self._settings, email_account.id)

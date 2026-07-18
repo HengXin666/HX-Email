@@ -116,7 +116,7 @@ def serialize_email_account(account: EmailAccount) -> dict[str, object]:
         "username": account.username,
         "imap_password": imap_password,
         "client_id": account.client_id,
-        "refresh_token": account.refresh_token,
+        "refresh_token": "",
         "has_imap_password": bool(imap_password),
         "has_refresh_token": bool(account.refresh_token),
         "group_id": account.group_id,

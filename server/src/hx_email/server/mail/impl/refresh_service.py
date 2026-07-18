@@ -8,10 +8,8 @@ from typing import Any, cast
 
 from hx_email.config import Settings
 from hx_email.database import connect
-from hx_email.server.mail.impl.oauth_tool import try_refresh_oauth_token
+from hx_email.server.mail.impl.oauth_tool import try_refresh_provider_oauth_token
 from hx_email.server.mail.verification import MailboxProvider
-
-REFRESH_TIMEOUT: int = 15
 
 
 def sse_event(event: str, data: object) -> str:
@@ -76,7 +74,8 @@ def refresh_single_account(
     with connect(settings) as connection:
         row = connection.execute(
             """
-            SELECT ea.id, ea.primary_address, ea.client_id, ea.refresh_token, ea.status,
+            SELECT ea.id, ea.primary_address, ea.provider, ea.client_id,
+                   ea.refresh_token, ea.status,
                    g.proxy_url
             FROM email_accounts ea
             LEFT JOIN groups g ON g.id = ea.group_id
@@ -87,6 +86,7 @@ def refresh_single_account(
     if row is None:
         return {"account_id": account_id, "success": False, "message": "Account not found"}
     email: str = row["primary_address"]
+    provider: str = row["provider"] or ""
     client_id_v: str = row["client_id"] or ""
     refresh_token_val: str = row["refresh_token"] or ""
     proxy_url: str = row["proxy_url"] or ""
@@ -123,7 +123,9 @@ def refresh_single_account(
             "email": email,
             "message": "Missing OAuth credentials",
         }
-    result = try_refresh_oauth_token(client_id_v, refresh_token_val, proxy_url=proxy_url)
+    result = try_refresh_provider_oauth_token(
+        settings, provider, client_id_v, refresh_token_val, proxy_url=proxy_url
+    )
     log_status = "success" if result["success"] else "failed"
     _insert_refresh_log(
         settings,
@@ -150,7 +152,8 @@ def _fetch_active_accounts(
     with connect(settings) as connection:
         rows = connection.execute(
             """
-            SELECT ea.id, ea.primary_address, ea.client_id, ea.refresh_token, g.proxy_url
+            SELECT ea.id, ea.primary_address, ea.provider, ea.client_id, ea.refresh_token,
+                   g.proxy_url
             FROM email_accounts ea
             LEFT JOIN groups g ON g.id = ea.group_id
             WHERE ea.status = 'active' AND ea.refresh_token != ''
@@ -161,6 +164,7 @@ def _fetch_active_accounts(
         {
             "id": row["id"],
             "email": row["primary_address"],
+            "provider": row["provider"],
             "client_id": row["client_id"],
             "refresh_token": row["refresh_token"],
             "proxy_url": row["proxy_url"] or "",
@@ -172,9 +176,7 @@ def _fetch_active_accounts(
 def _refresh_account_batch(
     settings: Settings,
     accounts: list[dict[str, object]],
-    mailbox_provider: MailboxProvider,
 ) -> Generator[str, None, None]:
-    """Yield SSE events while refreshing a batch of accounts."""
     total = len(accounts)
     yield sse_event("start", {"total": total})
     success_count = 0
@@ -185,8 +187,9 @@ def _refresh_account_batch(
         started_at = _now_iso()
         cid: str = str(account.get("client_id", ""))
         rt: str = str(account.get("refresh_token", ""))
+        provider: str = str(account.get("provider", ""))
         proxy_url: str = str(account.get("proxy_url", ""))
-        result = try_refresh_oauth_token(cid, rt, proxy_url=proxy_url)
+        result = try_refresh_provider_oauth_token(settings, provider, cid, rt, proxy_url=proxy_url)
         log_status = "success" if result["success"] else "failed"
         _insert_refresh_log(
             settings,
@@ -221,9 +224,8 @@ def refresh_all_accounts(
     settings: Settings,
     mailbox_provider: MailboxProvider,
 ) -> Generator[str, None, None]:
-    """SSE generator: refresh all active email accounts."""
     accounts = _fetch_active_accounts(settings)
-    yield from _refresh_account_batch(settings, accounts, mailbox_provider)
+    yield from _refresh_account_batch(settings, accounts)
 
 
 def refresh_selected_accounts(
@@ -231,12 +233,12 @@ def refresh_selected_accounts(
     account_ids: list[int],
     mailbox_provider: MailboxProvider,
 ) -> Generator[str, None, None]:
-    """SSE generator: refresh only selected account IDs."""
     with connect(settings) as connection:
         placeholders = ",".join("?" for _ in account_ids)
         rows = connection.execute(
             f"""
-            SELECT ea.id, ea.primary_address, ea.client_id, ea.refresh_token, g.proxy_url
+            SELECT ea.id, ea.primary_address, ea.provider, ea.client_id,
+                   ea.refresh_token, g.proxy_url
             FROM email_accounts ea
             LEFT JOIN groups g ON g.id = ea.group_id
             WHERE ea.id IN ({placeholders})
@@ -250,13 +252,14 @@ def refresh_selected_accounts(
         {
             "id": row["id"],
             "email": row["primary_address"],
+            "provider": row["provider"],
             "client_id": row["client_id"],
             "refresh_token": row["refresh_token"],
             "proxy_url": row["proxy_url"] or "",
         }
         for row in rows
     ]
-    yield from _refresh_account_batch(settings, accounts, mailbox_provider)
+    yield from _refresh_account_batch(settings, accounts)
 
 
 def refresh_failed_accounts(
@@ -267,7 +270,8 @@ def refresh_failed_accounts(
     with connect(settings) as connection:
         rows = connection.execute(
             """
-            SELECT ea.id, ea.primary_address, ea.client_id, ea.refresh_token, g.proxy_url
+            SELECT ea.id, ea.primary_address, ea.provider, ea.client_id,
+                   ea.refresh_token, g.proxy_url
             FROM email_accounts ea
             LEFT JOIN groups g ON g.id = ea.group_id
             INNER JOIN (
@@ -286,10 +290,11 @@ def refresh_failed_accounts(
         {
             "id": row["id"],
             "email": row["primary_address"],
+            "provider": row["provider"],
             "client_id": row["client_id"],
             "refresh_token": row["refresh_token"],
             "proxy_url": row["proxy_url"] or "",
         }
         for row in rows
     ]
-    yield from _refresh_account_batch(settings, accounts, mailbox_provider)
+    yield from _refresh_account_batch(settings, accounts)

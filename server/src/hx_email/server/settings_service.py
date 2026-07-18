@@ -5,6 +5,7 @@ from typing import Any
 
 from hx_email.config import Settings
 from hx_email.database import connect
+from hx_email.security import ENCRYPTED_PREFIX, decrypt_secret, encrypt_secret
 
 VERSION: str = "0.2.0"
 PROJECT_REPOSITORY_URL: str = "https://github.com/HengXin666/HX-Email"
@@ -74,6 +75,7 @@ SENSITIVE_KEYS: frozenset[str] = frozenset(
         "login_password",
         "watchtower_token",
         "email_notification_smtp_password",
+        "google_oauth_client_secret",
     }
 )
 
@@ -106,13 +108,17 @@ def get_setting(settings: Settings, key: str, default: str = "") -> str:
         return default
     value: str = str(row["value"])
     if key in SENSITIVE_KEYS:
-        return decode_value(value)
+        return (
+            decrypt_secret(settings, value)
+            if value.startswith(ENCRYPTED_PREFIX)
+            else decode_value(value)
+        )
     return value
 
 
 def set_setting(settings: Settings, key: str, value: str) -> None:
     """Write a single setting, encoding sensitive values transparently."""
-    stored: str = encode_value(value) if key in SENSITIVE_KEYS else value
+    stored: str = encrypt_secret(settings, value) if key in SENSITIVE_KEYS else value
     with connect(settings) as connection:
         connection.execute(
             """
@@ -133,7 +139,13 @@ def get_all_settings(settings: Settings) -> dict[str, str]:
         key: str = row["key"]
         value: str = str(row["value"])
         if key in SETTINGS_DEFAULTS:
-            result[key] = decode_value(value) if key in SENSITIVE_KEYS else value
+            result[key] = (
+                decrypt_secret(settings, value)
+                if key in SENSITIVE_KEYS and value.startswith(ENCRYPTED_PREFIX)
+                else decode_value(value)
+                if key in SENSITIVE_KEYS
+                else value
+            )
     return result
 
 
@@ -144,7 +156,9 @@ def update_settings(settings: Settings, updates: dict[str, Any]) -> None:
             if key not in SETTINGS_DEFAULTS:
                 continue
             str_value: str = str(value) if not isinstance(value, str) else value
-            stored: str = encode_value(str_value) if key in SENSITIVE_KEYS else str_value
+            stored: str = (
+                encrypt_secret(settings, str_value) if key in SENSITIVE_KEYS else str_value
+            )
             connection.execute(
                 """
                 INSERT INTO system_settings (key, value)

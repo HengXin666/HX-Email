@@ -33,6 +33,9 @@ const verificationHistory = vi.fn();
 const listBindings = vi.fn();
 const fetchEmails = vi.fn();
 const updateEmailAccount = vi.fn();
+const getGoogleOAuthConfig = vi.fn();
+const prepareGoogleOAuth = vi.fn();
+const saveGoogleOAuthConfig = vi.fn();
 
 const primaryEmail: UsableEmail = {
   id: 7,
@@ -66,6 +69,9 @@ vi.mock("../api/client", () => ({
     listPoolEntries: (...args: unknown[]) => listPoolEntries(...args),
     readVerification: (...args: unknown[]) => readVerification(...args),
     updateEmailAccount: (...args: unknown[]) => updateEmailAccount(...args),
+    getGoogleOAuthConfig: (...args: unknown[]) => getGoogleOAuthConfig(...args),
+    prepareGoogleOAuth: (...args: unknown[]) => prepareGoogleOAuth(...args),
+    saveGoogleOAuthConfig: (...args: unknown[]) => saveGoogleOAuthConfig(...args),
     verificationHistory: (...args: unknown[]) => verificationHistory(...args),
   },
   streamRefresh: vi.fn(),
@@ -129,6 +135,20 @@ beforeEach(() => {
     messages_stored: 0,
     codes_found: 0,
     error: "",
+  });
+  getGoogleOAuthConfig.mockResolvedValue({
+    client_id: "google-client-id",
+    redirect_uri: "http://localhost:8000/api/v1/google-oauth/callback",
+    has_client_secret: true,
+  });
+  prepareGoogleOAuth.mockResolvedValue({
+    authorization_url: "https://accounts.google.com/o/oauth2/v2/auth?state=test",
+    state: "test",
+  });
+  saveGoogleOAuthConfig.mockResolvedValue({
+    client_id: "google-client-id",
+    redirect_uri: "http://localhost:8000/api/v1/google-oauth/callback",
+    has_client_secret: true,
   });
 });
 
@@ -216,5 +236,37 @@ test("settings credential tab uses account detail provider when list cache misse
   });
   expect(await screen.findByDisplayValue("outlook-password")).toBeInTheDocument();
   expect(screen.getByDisplayValue("client-id-from-detail")).toBeInTheDocument();
-  expect(screen.getByDisplayValue("refresh-token-from-detail")).toBeInTheDocument();
+  expect(screen.getByText("Refresh Token 已安全保存，页面不会回显")).toBeInTheDocument();
+  expect(screen.queryByDisplayValue("refresh-token-from-detail")).not.toBeInTheDocument();
+});
+
+test("gmail credential tab starts one-click Google authorization", async () => {
+  const openPopup = vi.spyOn(window, "open").mockReturnValue(null);
+  renderAccounts();
+
+  fireEvent.click(screen.getByTitle("设置"));
+  fireEvent.click(screen.getByRole("button", { name: "凭证" }));
+  fireEvent.click(await screen.findByRole("button", { name: "使用 Google 授权" }));
+
+  await waitFor(() => {
+    expect(prepareGoogleOAuth).toHaveBeenCalledWith(3);
+  });
+  expect(openPopup).toHaveBeenCalledWith(
+    expect.stringContaining("accounts.google.com"),
+    "hx-google-oauth",
+    expect.any(String),
+  );
+  openPopup.mockRestore();
+});
+
+test("gmail OAuth setup explains Cloud requirements and testing expiry", async () => {
+  renderAccounts();
+
+  fireEvent.click(screen.getByTitle("设置"));
+  fireEvent.click(screen.getByRole("button", { name: "凭证" }));
+
+  expect(await screen.findByText("1. 创建 Google Cloud 项目")).toBeInTheDocument();
+  expect(screen.getByText("https://mail.google.com/")).toBeInTheDocument();
+  expect(screen.getByText(/Testing 模式.*7 天/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "复制回调地址" })).toBeInTheDocument();
 });

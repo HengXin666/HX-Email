@@ -1,7 +1,30 @@
-import type { TokenConfig, TokenExchangeResult, TokenPrepareResult } from "../../types";
+import type {
+  GoogleOAuthConfig,
+  GoogleOAuthPrepareResult,
+  TokenConfig,
+  TokenExchangeResult,
+  TokenPrepareResult,
+} from "../../types";
 import { request } from "../core";
 
 export const tokenApi = {
+  getGoogleOAuthConfig: () => request<GoogleOAuthConfig>("/google-oauth/config"),
+
+  saveGoogleOAuthConfig: (data: {
+    client_id: string;
+    client_secret: string;
+    redirect_uri: string;
+  }) =>
+    request<GoogleOAuthConfig>("/google-oauth/config", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+
+  prepareGoogleOAuth: (accountId: number) =>
+    request<GoogleOAuthPrepareResult>(`/email-accounts/${accountId}/google-oauth/prepare`, {
+      method: "POST",
+    }),
+
   getTokenToolConfig: () =>
     request<{ success: boolean; data: TokenConfig }>("/token-tool/config").then((r) => r.data),
 

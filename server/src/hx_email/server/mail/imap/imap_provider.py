@@ -3,14 +3,13 @@ from __future__ import annotations
 import imaplib
 import logging
 import ssl
-from typing import TYPE_CHECKING, ClassVar
-
-if TYPE_CHECKING:
-    pass
+from typing import ClassVar
 
 from hx_email.config import Settings
 from hx_email.database import connect
+from hx_email.security import decrypt_secret
 from hx_email.server.mail import EmailAccountMailbox, MailboxMessage
+from hx_email.server.mail.google_oauth import get_google_access_token
 from hx_email.server.mail.imap.imap_helpers import (
     _OUTLOOK_PROVIDERS,
     try_get_imap_token,
@@ -107,7 +106,7 @@ class IMAPMailboxProvider:
         username: str = (row["username"] or "").strip() or account.primary_address
         password: str = (row["imap_password"] or "").strip()
         client_id: str = (row["client_id"] or "").strip()
-        refresh_token: str = (row["refresh_token"] or "").strip()
+        refresh_token: str = decrypt_secret(self._settings, str(row["refresh_token"] or "")).strip()
         if (
             not password
             and refresh_token
@@ -121,7 +120,13 @@ class IMAPMailboxProvider:
                 "IMAP proxy=%s account=%d (%s)", proxy_url, account.id, account.primary_address
             )
         if client_id and refresh_token:
-            access_token, tenant_used = try_get_imap_token(client_id, refresh_token)
+            if account.provider == "gmail":
+                access_token = get_google_access_token(
+                    self._settings, client_id, refresh_token, proxy_url
+                )
+                tenant_used = "google"
+            else:
+                access_token, tenant_used = try_get_imap_token(client_id, refresh_token)
             logger.info(
                 "IMAP token for %d (%s, tenant=%s) -> %s:%d",
                 account.id,
@@ -246,7 +251,6 @@ class IMAPMailboxProvider:
             uids: list[bytes] = uid_bytes.split()
             uids = filter_uids_since(uids, since_uid)
             total = len(uids)
-            # Paginate: newest first, slice by skip/top
             start_idx = max(0, total - skip - top)
             end_idx = total - skip
             if start_idx >= end_idx:

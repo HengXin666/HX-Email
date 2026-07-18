@@ -6,6 +6,7 @@ from hx_email.api.impl.mail import (
     register_email_account_routes,
     register_email_routes,
     register_export_routes,
+    register_google_oauth_routes,
     register_mail_pool_routes,
     register_refresh_log_routes,
     register_refresh_routes,
@@ -32,6 +33,7 @@ def register_mail_routes(
     register_send_email_routes(router, settings)
     register_email_routes(router, settings, mailbox_provider)
     register_token_tool_routes(router, settings)
+    register_google_oauth_routes(router, settings)
     register_refresh_routes(router, settings, mailbox_provider)
     register_refresh_log_routes(router, settings)
     # Parameterized {account_id} routes — registered LAST

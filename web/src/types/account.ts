@@ -57,3 +57,14 @@ export interface TokenExchangeResult {
   granted_scope: string;
   requested_scope: string;
 }
+
+export interface GoogleOAuthConfig {
+  client_id: string;
+  redirect_uri: string;
+  has_client_secret: boolean;
+}
+
+export interface GoogleOAuthPrepareResult {
+  authorization_url: string;
+  state: string;
+}

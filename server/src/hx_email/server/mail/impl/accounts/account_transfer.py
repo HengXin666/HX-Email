@@ -4,6 +4,7 @@ from sqlite3 import Connection, Row
 
 from hx_email.config import Settings
 from hx_email.database import connect
+from hx_email.security import decrypt_secret, encrypt_secret
 from hx_email.server.mail.email_accounts import (
     DuplicateUsableEmailError,
     add_email_account,
@@ -135,7 +136,7 @@ def export_account_text(settings: Settings, user_id: int) -> str:
             """,
             (user_id,),
         ).fetchall()
-    return "\n".join(format_account_line(row) for row in rows)
+    return "\n".join(format_account_line(settings, row) for row in rows)
 
 
 def save_oauth_credentials(
@@ -152,7 +153,7 @@ def save_oauth_credentials(
             SET provider = 'outlook', client_id = ?, refresh_token = ?
             WHERE id = ? AND user_id = ?
             """,
-            (client_id, refresh_token, account_id, user_id),
+            (client_id, encrypt_secret(settings, refresh_token), account_id, user_id),
         )
     return cursor.rowcount > 0
 
@@ -265,7 +266,7 @@ def update_account_credentials(
                 parsed.address,
                 parsed.password,
                 parsed.client_id,
-                parsed.refresh_token,
+                encrypt_secret(settings, parsed.refresh_token),
                 account_id,
                 user_id,
             ),
@@ -284,12 +285,12 @@ def reactivate_account_emails(connection: Connection, user_id: int, account_id: 
     )
 
 
-def format_account_line(row: Row) -> str:
+def format_account_line(settings: Settings, row: Row) -> str:
     provider: str = str(row["provider"] or "")
     address: str = str(row["primary_address"] or "")
     password: str = str(row["imap_password"] or "")
     client_id: str = str(row["client_id"] or "")
-    refresh_token: str = str(row["refresh_token"] or "")
+    refresh_token: str = decrypt_secret(settings, str(row["refresh_token"] or ""))
     if provider == "outlook" or refresh_token:
         return f"{address}----{password}----{client_id}----{refresh_token}"
     if provider == "custom":
