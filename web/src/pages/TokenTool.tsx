@@ -207,6 +207,10 @@ export const TokenTool: React.FC = () => {
     }
   };
 
+  const handleGoogleChanged = async (): Promise<void> => {
+    await Promise.all([refreshAccounts(), refreshEmails(), loadInitial()]);
+  };
+
   const patchConfig = (key: keyof TokenConfig, value: string | boolean) => {
     setConfig((current) => ({ ...current, [key]: value }));
   };
@@ -331,7 +335,7 @@ export const TokenTool: React.FC = () => {
 
   const renderPageToken = () =>
     provider === "google" ? (
-      <GoogleTokenWorkspace accounts={gmailAccounts} onChanged={loadInitial} />
+      <GoogleTokenWorkspace accounts={gmailAccounts} onChanged={handleGoogleChanged} />
     ) : (
       <div className="space-y-5">
         <Card className="p-5">

@@ -3,7 +3,7 @@ import React from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { ToastProvider } from "../components/ui/Toast";
-import type { EmailAccount, UsableEmail } from "../types";
+import type { EmailAccount, SSERefreshEvent, UsableEmail } from "../types";
 import { Accounts } from "./Accounts";
 
 vi.mock("framer-motion", () => ({
@@ -37,6 +37,10 @@ const getGoogleOAuthConfig = vi.fn();
 const prepareGoogleOAuth = vi.fn();
 const saveGoogleOAuthConfig = vi.fn();
 const createEmailAccount = vi.fn();
+const listEmailAccounts = vi.fn();
+const streamRefresh = vi.fn();
+const refreshAccounts = vi.fn();
+const refreshEmails = vi.fn();
 
 const primaryEmail: UsableEmail = {
   id: 7,
@@ -74,9 +78,10 @@ vi.mock("../api/client", () => ({
     prepareGoogleOAuth: (...args: unknown[]) => prepareGoogleOAuth(...args),
     saveGoogleOAuthConfig: (...args: unknown[]) => saveGoogleOAuthConfig(...args),
     createEmailAccount: (...args: unknown[]) => createEmailAccount(...args),
+    listEmailAccounts: (...args: unknown[]) => listEmailAccounts(...args),
     verificationHistory: (...args: unknown[]) => verificationHistory(...args),
   },
-  streamRefresh: vi.fn(),
+  streamRefresh: (...args: unknown[]) => streamRefresh(...args),
 }));
 
 vi.mock("../store/AppContext", () => ({
@@ -90,8 +95,8 @@ vi.mock("../store/AppContext", () => ({
     createGroup: vi.fn(),
     deleteGroup: vi.fn(),
     organizeEmail: vi.fn(),
-    refreshAccounts: vi.fn(),
-    refreshEmails: vi.fn(),
+    refreshAccounts,
+    refreshEmails,
     updateGroup: vi.fn(),
   }),
 }));
@@ -153,6 +158,7 @@ beforeEach(() => {
     has_client_secret: true,
   });
   createEmailAccount.mockResolvedValue(account);
+  listEmailAccounts.mockResolvedValue([account]);
 });
 
 afterEach(() => {
@@ -314,4 +320,33 @@ test("adding Gmail defaults to the Google one-click authorization path", async (
       display_name: "owner@gmail.com",
     });
   });
+});
+
+test("refresh all closes progress and reports the completed SSE summary", async () => {
+  streamRefresh.mockImplementation(
+    async (
+      _url: string,
+      _body: object | undefined,
+      onProgress: ((event: SSERefreshEvent) => void) | undefined,
+    ): Promise<void> => {
+      onProgress?.({ type: "start", total: 7 });
+      onProgress?.({
+        type: "progress",
+        current: 3,
+        total: 7,
+        email: "three@example.com",
+        success: true,
+      });
+      onProgress?.({ type: "complete", total: 7, success: 6, failed: 1 });
+    },
+  );
+  renderAccounts();
+
+  fireEvent.click(screen.getByRole("button", { name: "刷新全部" }));
+  fireEvent.click(await screen.findByRole("button", { name: "确认刷新 (1)" }));
+
+  expect(await screen.findByText("刷新完成: 成功 6, 失败 1")).toBeInTheDocument();
+  expect(screen.queryByText("正在刷新 Token...")).not.toBeInTheDocument();
+  expect(refreshAccounts).toHaveBeenCalledOnce();
+  expect(refreshEmails).toHaveBeenCalledOnce();
 });

@@ -92,6 +92,27 @@ async function requestText(path: string, init: RequestInit = {}): Promise<string
   return res.text();
 }
 
+function parseRefreshEvent(record: string): SSERefreshEvent | null {
+  const lines: string[] = record.split("\n");
+  const eventLine: string | undefined = lines.find((line: string) => line.startsWith("event:"));
+  const eventType: string = eventLine?.slice(6).trim() ?? "";
+  if (eventType !== "start" && eventType !== "progress" && eventType !== "complete") {
+    return null;
+  }
+  const dataText: string = lines
+    .filter((line: string) => line.startsWith("data:"))
+    .map((line: string) => line.slice(5).trimStart())
+    .join("\n");
+  if (!dataText) return null;
+  try {
+    const data: unknown = JSON.parse(dataText);
+    if (typeof data !== "object" || data === null || Array.isArray(data)) return null;
+    return { ...(data as Record<string, unknown>), type: eventType } as SSERefreshEvent;
+  } catch {
+    return null;
+  }
+}
+
 async function streamRefresh(
   url: string,
   body?: object,
@@ -123,29 +144,18 @@ async function streamRefresh(
     }
     if (done) {
       buffer += decoder.decode();
-      const remaining = buffer.trim();
-      if (remaining.startsWith("data: ")) {
-        try {
-          const data: SSERefreshEvent = JSON.parse(remaining.slice(6));
-          onProgress?.(data);
-        } catch {
-          // skip malformed final line
-        }
-      }
-      break;
     }
-    const lines = buffer.split("\n");
-    buffer = lines.pop() || "";
-    for (const line of lines) {
-      if (line.startsWith("data: ")) {
-        try {
-          const data: SSERefreshEvent = JSON.parse(line.slice(6));
-          onProgress?.(data);
-        } catch {
-          // skip malformed SSE lines
-        }
-      }
+    buffer = buffer.replace(/\r\n/g, "\n");
+    const records: string[] = buffer.split("\n\n");
+    buffer = records.pop() ?? "";
+    for (const record of records) {
+      const event: SSERefreshEvent | null = parseRefreshEvent(record);
+      if (event) onProgress?.(event);
     }
+    if (!done) continue;
+    const finalEvent: SSERefreshEvent | null = parseRefreshEvent(buffer.trim());
+    if (finalEvent) onProgress?.(finalEvent);
+    break;
   }
 }
 

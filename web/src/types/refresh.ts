@@ -26,11 +26,11 @@ export interface RefreshStats {
 }
 
 export interface SSERefreshEvent {
-  type: "progress" | "complete";
+  type: "start" | "progress" | "complete";
   current?: number;
   total?: number;
   email?: string;
   status?: string;
-  success?: number;
+  success?: boolean | number;
   failed?: number;
 }

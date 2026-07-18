@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { beforeEach, expect, test, vi } from "vitest";
 import { ToastProvider } from "../components/ui/Toast";
@@ -7,17 +7,21 @@ import { TokenTool } from "./TokenTool";
 const getGoogleOAuthConfig = vi.fn();
 const getTokenToolConfig = vi.fn();
 const listTokenToolAccounts = vi.fn();
+const createEmailAccount = vi.fn();
+const refreshAccounts = vi.fn();
+const refreshEmails = vi.fn();
 
 vi.mock("../api/client", () => ({
   api: {
     getGoogleOAuthConfig: (...args: unknown[]) => getGoogleOAuthConfig(...args),
     getTokenToolConfig: (...args: unknown[]) => getTokenToolConfig(...args),
     listTokenToolAccounts: (...args: unknown[]) => listTokenToolAccounts(...args),
+    createEmailAccount: (...args: unknown[]) => createEmailAccount(...args),
   },
 }));
 
 vi.mock("../store/AppContext", () => ({
-  useApp: () => ({ refreshAccounts: vi.fn(), refreshEmails: vi.fn() }),
+  useApp: () => ({ refreshAccounts, refreshEmails }),
 }));
 
 beforeEach(() => {
@@ -37,6 +41,14 @@ beforeEach(() => {
     redirect_uri: "http://localhost/api/v1/google-oauth/callback",
     has_client_secret: true,
   });
+  createEmailAccount.mockResolvedValue({
+    id: 8,
+    provider: "gmail",
+    primary_address: "new-owner@gmail.com",
+    display_name: "new-owner@gmail.com",
+    status: "active",
+    usable_emails: [],
+  });
 });
 
 test("token tool restores Google provider and shows the aligned guide", async () => {
@@ -54,4 +66,30 @@ test("token tool restores Google provider and shows the aligned guide", async ()
   expect(await screen.findByText("Google OAuth 一键授权")).toBeInTheDocument();
   expect(screen.getByRole("combobox", { name: "Gmail 账号" })).toHaveTextContent("owner@gmail.com");
   expect(getGoogleOAuthConfig).toHaveBeenCalled();
+});
+
+test("creating a Gmail account refreshes the account and usable-email workspaces", async () => {
+  window.localStorage.setItem("hx_token_tool_active_tab", "page-token");
+  listTokenToolAccounts.mockResolvedValue([]);
+
+  render(
+    <ToastProvider>
+      <TokenTool />
+    </ToastProvider>,
+  );
+
+  fireEvent.change(await screen.findByRole("textbox", { name: "Gmail 地址" }), {
+    target: { value: "new-owner@gmail.com" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "创建并继续授权" }));
+
+  await waitFor(() => {
+    expect(createEmailAccount).toHaveBeenCalledWith({
+      provider: "gmail",
+      primary_address: "new-owner@gmail.com",
+      display_name: "new-owner@gmail.com",
+    });
+  });
+  expect(refreshAccounts).toHaveBeenCalledOnce();
+  expect(refreshEmails).toHaveBeenCalledOnce();
 });
