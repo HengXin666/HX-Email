@@ -41,6 +41,13 @@ export interface TokenConfig {
   prompt_consent: boolean;
 }
 
+export interface TokenToolAccount {
+  id: number;
+  email: string;
+  status: string;
+  provider: "outlook" | "gmail";
+}
+
 export interface TokenPrepareResult {
   authorize_url: string;
   authorization_url: string;

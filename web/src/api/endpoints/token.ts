@@ -4,6 +4,7 @@ import type {
   TokenConfig,
   TokenExchangeResult,
   TokenPrepareResult,
+  TokenToolAccount,
 } from "../../types";
 import { request } from "../core";
 
@@ -37,7 +38,7 @@ export const tokenApi = {
   listTokenToolAccounts: () =>
     request<{
       success: boolean;
-      data: Array<{ id: number; email: string; status: string }>;
+      data: TokenToolAccount[];
     }>("/token-tool/accounts").then((r) => r.data),
 
   prepareTokenTool: (data: TokenConfig) =>

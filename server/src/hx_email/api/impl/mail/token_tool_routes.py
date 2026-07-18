@@ -30,6 +30,7 @@ class TokenAccount(BaseModel):
     id: int
     email: str
     status: str
+    provider: str
 
 
 DEFAULT_SCOPE: str = "offline_access https://outlook.office.com/IMAP.AccessAsUser.All"
@@ -60,7 +61,7 @@ def register_token_tool_routes(router: APIRouter, settings: Settings) -> None:
         user = require_user(settings, authorization)
         return {
             "success": True,
-            "data": [account.model_dump() for account in list_outlook_accounts(settings, user.id)],
+            "data": [account.model_dump() for account in list_token_accounts(settings, user.id)],
         }
 
     @router.post("/token-tool/prepare")
@@ -238,19 +239,24 @@ def set_setting(settings: Settings, key: str, value: str) -> None:
         )
 
 
-def list_outlook_accounts(settings: Settings, user_id: int) -> list[TokenAccount]:
+def list_token_accounts(settings: Settings, user_id: int) -> list[TokenAccount]:
     with connect(settings) as connection:
         rows = connection.execute(
             """
-            SELECT id, primary_address, status
+            SELECT id, primary_address, status, provider
             FROM email_accounts
-            WHERE user_id = ? AND provider = 'outlook'
+            WHERE user_id = ? AND provider IN ('outlook', 'gmail')
             ORDER BY id
             """,
             (user_id,),
         ).fetchall()
     return [
-        TokenAccount(id=row["id"], email=row["primary_address"], status=row["status"])
+        TokenAccount(
+            id=row["id"],
+            email=row["primary_address"],
+            status=row["status"],
+            provider=row["provider"],
+        )
         for row in rows
     ]
 

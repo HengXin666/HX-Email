@@ -36,6 +36,7 @@ const updateEmailAccount = vi.fn();
 const getGoogleOAuthConfig = vi.fn();
 const prepareGoogleOAuth = vi.fn();
 const saveGoogleOAuthConfig = vi.fn();
+const createEmailAccount = vi.fn();
 
 const primaryEmail: UsableEmail = {
   id: 7,
@@ -72,6 +73,7 @@ vi.mock("../api/client", () => ({
     getGoogleOAuthConfig: (...args: unknown[]) => getGoogleOAuthConfig(...args),
     prepareGoogleOAuth: (...args: unknown[]) => prepareGoogleOAuth(...args),
     saveGoogleOAuthConfig: (...args: unknown[]) => saveGoogleOAuthConfig(...args),
+    createEmailAccount: (...args: unknown[]) => createEmailAccount(...args),
     verificationHistory: (...args: unknown[]) => verificationHistory(...args),
   },
   streamRefresh: vi.fn(),
@@ -150,6 +152,7 @@ beforeEach(() => {
     redirect_uri: "http://localhost:8000/api/v1/google-oauth/callback",
     has_client_secret: true,
   });
+  createEmailAccount.mockResolvedValue(account);
 });
 
 afterEach(() => {
@@ -285,5 +288,30 @@ test("settings can update the primary email address", async () => {
       3,
       expect.objectContaining({ email: "corrected@gmail.com" }),
     );
+  });
+});
+
+test("adding Gmail defaults to the Google one-click authorization path", async () => {
+  renderAccounts();
+
+  fireEvent.click(screen.getByTitle("添加邮箱"));
+  fireEvent.click(screen.getByRole("combobox", { name: "服务商" }));
+  fireEvent.keyDown(await screen.findByRole("option", { name: "Google Gmail" }), { key: "Enter" });
+
+  expect(screen.getByText("Google 一键授权")).toBeInTheDocument();
+  expect(screen.getByRole("textbox", { name: "Gmail 地址" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "创建并继续授权" })).toBeInTheDocument();
+  expect(screen.queryByText("凭证信息（每行一个账户）")).not.toBeInTheDocument();
+
+  fireEvent.change(screen.getByRole("textbox", { name: "Gmail 地址" }), {
+    target: { value: "owner@gmail.com" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "创建并继续授权" }));
+  await waitFor(() => {
+    expect(createEmailAccount).toHaveBeenCalledWith({
+      provider: "gmail",
+      primary_address: "owner@gmail.com",
+      display_name: "owner@gmail.com",
+    });
   });
 });

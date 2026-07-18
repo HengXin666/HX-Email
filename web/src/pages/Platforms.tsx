@@ -11,7 +11,7 @@ import {
   IconTrash,
 } from "../components/icons";
 import { Topbar } from "../components/layout";
-import { Badge, Button, Card, Input, Modal } from "../components/ui/Primitives";
+import { Badge, Button, Card, Input, Modal, Select } from "../components/ui/Primitives";
 import { useToast } from "../components/ui/Toast";
 import { useApp } from "../store/AppContext";
 import type { BindingStatus, Platform, PlatformBinding, UsableEmail } from "../types";
@@ -453,29 +453,16 @@ const PlatformEmailModal: React.FC<{
             <div className="text-sm font-medium text-gh-text truncate">{platform.name}</div>
           </div>
         )}
-        <div>
-          <label
-            htmlFor="platform-existing-email"
-            className="text-xs font-medium text-gh-text-muted block mb-1.5"
-          >
-            已有邮箱
-          </label>
-          <select
-            id="platform-existing-email"
-            value={usableEmailId}
-            onChange={(event) =>
-              setUsableEmailId(event.target.value ? Number(event.target.value) : "")
-            }
-            className="w-full bg-gh-canvas-inset border border-gh-border rounded-md px-3 py-1.5 text-sm text-gh-text focus:outline-none focus:border-gh-accent"
-          >
-            <option value="">不选择</option>
-            {emails.map((email) => (
-              <option key={email.id} value={email.id}>
-                {email.address}
-              </option>
-            ))}
-          </select>
-        </div>
+        <Select
+          id="platform-existing-email"
+          label="已有邮箱"
+          value={usableEmailId}
+          onChange={(value) => setUsableEmailId(value ? Number(value) : "")}
+          options={[
+            { value: "", label: "不选择" },
+            ...emails.map((email) => ({ value: email.id, label: email.address })),
+          ]}
+        />
         <Input
           label="新邮箱地址"
           type="email"
@@ -489,26 +476,13 @@ const PlatformEmailModal: React.FC<{
           onChange={(event) => setLabel(event.target.value)}
           placeholder="GitHub login"
         />
-        <div>
-          <label
-            htmlFor="platform-binding-status"
-            className="text-xs font-medium text-gh-text-muted block mb-1.5"
-          >
-            绑定状态
-          </label>
-          <select
-            id="platform-binding-status"
-            value={status}
-            onChange={(event) => setStatus(event.target.value as BindingStatus)}
-            className="w-full bg-gh-canvas-inset border border-gh-border rounded-md px-3 py-1.5 text-sm text-gh-text focus:outline-none focus:border-gh-accent"
-          >
-            {BINDING_STATUS_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        <Select
+          id="platform-binding-status"
+          label="绑定状态"
+          value={status}
+          onChange={(value) => setStatus(value as BindingStatus)}
+          options={BINDING_STATUS_OPTIONS}
+        />
         <div>
           <label className="text-xs font-medium text-gh-text-muted block mb-1.5">绑定备注</label>
           <textarea

@@ -51,6 +51,7 @@ import type {
 import { copyToClipboard } from "../utils/clipboard";
 import { formatDateTimeFull, formatRelativeTime } from "../utils/time";
 import { GoogleOAuthControls } from "./impl/GoogleOAuthControls";
+import { GoogleOAuthCreatePath } from "./impl/GoogleOAuthCreatePath";
 import { PlatformLogo } from "./impl/PlatformLogo";
 
 const COLORS = [
@@ -2009,19 +2010,15 @@ const BindingsTab: React.FC<{ bindings: any[]; emailId: number }> = ({ bindings,
       >
         <div className="space-y-3">
           <div>
-            <label className="text-xs font-medium text-gh-text-muted block mb-1.5">选择平台</label>
-            <select
+            <Select
+              label="选择平台"
               value={selPlatform}
-              onChange={(e) => setSelPlatform(e.target.value ? Number(e.target.value) : "")}
-              className="w-full bg-gh-canvas-inset border border-gh-border rounded-md px-3 py-1.5 text-sm text-gh-text focus:outline-none focus:border-gh-accent"
-            >
-              <option value="">请选择...</option>
-              {platforms.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => setSelPlatform(value ? Number(value) : "")}
+              options={[
+                { value: "", label: "请选择..." },
+                ...platforms.map((platform) => ({ value: platform.id, label: platform.name })),
+              ]}
+            />
             {selectedPlatform && (
               <div className="mt-2 flex items-center gap-2 rounded-lg border border-gh-border bg-gh-canvas-subtle px-3 py-2">
                 <PlatformLogo name={selectedPlatform.name} size="sm" />
@@ -2051,6 +2048,7 @@ const AddEmailModal: React.FC<{
   const { toast } = useToast();
   const [groupId, setGroupId] = useState<number | "">("");
   const [provider, setProvider] = useState("outlook");
+  const [gmailMethod, setGmailMethod] = useState<"oauth" | "app-password">("oauth");
   const [customImapHost, setCustomImapHost] = useState("");
   const [customImapPort, setCustomImapPort] = useState("993");
   const [credentialText, setCredentialText] = useState("");
@@ -2068,6 +2066,7 @@ const AddEmailModal: React.FC<{
   const reset = () => {
     setGroupId("");
     setProvider("outlook");
+    setGmailMethod("oauth");
     setCustomImapHost("");
     setCustomImapPort("993");
     setCredentialText("");
@@ -2110,6 +2109,8 @@ const AddEmailModal: React.FC<{
   };
 
   const isOutlook = provider === "outlook";
+  const isGmail = provider === "gmail";
+  const isGmailOAuth = isGmail && gmailMethod === "oauth";
   const isCustom = provider === "custom";
   const hasResult = result !== null;
   const totalProcessed = (result?.imported ?? 0) + (result?.skipped ?? 0) + (result?.failed ?? 0);
@@ -2125,9 +2126,11 @@ const AddEmailModal: React.FC<{
           <Button variant="ghost" onClick={handleClose}>
             {hasResult ? "关闭" : "取消"}
           </Button>
-          <Button variant="primary" onClick={handleSave} loading={loading} disabled={loading}>
-            {hasResult ? "继续导入" : "导入"}
-          </Button>
+          {!isGmailOAuth && (
+            <Button variant="primary" onClick={handleSave} loading={loading} disabled={loading}>
+              {hasResult ? "继续导入" : "导入"}
+            </Button>
+          )}
         </>
       }
     >
@@ -2193,41 +2196,57 @@ const AddEmailModal: React.FC<{
         )}
 
         {/* 分组 */}
-        <div>
-          <label className="text-xs font-medium text-gh-text-muted block mb-1.5">分组</label>
-          <select
-            value={groupId}
-            onChange={(e) => setGroupId(e.target.value ? Number(e.target.value) : "")}
-            className="w-full bg-gh-canvas-inset border border-gh-border rounded-md px-3 py-1.5 text-sm text-gh-text focus:outline-none focus:border-gh-accent"
-          >
-            <option value="">无分组</option>
-            {groups.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.name}
-              </option>
-            ))}
-          </select>
-        </div>
+        <Select
+          label="分组"
+          value={groupId}
+          onChange={(value) => setGroupId(value ? Number(value) : "")}
+          options={[
+            { value: "", label: "无分组" },
+            ...groups.map((group) => ({ value: group.id, label: group.name })),
+          ]}
+        />
 
         {/* 服务商 */}
-        <div>
-          <label className="text-xs font-medium text-gh-text-muted block mb-1.5">服务商</label>
-          <select
-            value={provider}
-            onChange={(e) => setProvider(e.target.value)}
-            className="w-full bg-gh-canvas-inset border border-gh-border rounded-md px-3 py-1.5 text-sm text-gh-text focus:outline-none focus:border-gh-accent"
-          >
-            <option value="outlook">Outlook</option>
-            <option value="auto">自动识别</option>
-            <option value="gmail">Gmail</option>
-            <option value="yahoo">Yahoo</option>
-            <option value="qq">QQ邮箱</option>
-            <option value="163">163邮箱</option>
-            <option value="126">126邮箱</option>
-            <option value="aliyun">阿里邮箱</option>
-            <option value="custom">自定义 IMAP</option>
-          </select>
-        </div>
+        <Select
+          label="服务商"
+          value={provider}
+          onChange={(value) => {
+            setProvider(value);
+            setResult(null);
+          }}
+          options={[
+            { value: "outlook", label: "Microsoft Outlook" },
+            { value: "gmail", label: "Google Gmail" },
+            { value: "auto", label: "自动识别" },
+            { value: "yahoo", label: "Yahoo" },
+            { value: "qq", label: "QQ 邮箱" },
+            { value: "163", label: "163 邮箱" },
+            { value: "126", label: "126 邮箱" },
+            { value: "aliyun", label: "阿里邮箱" },
+            { value: "custom", label: "自定义 IMAP" },
+          ]}
+        />
+
+        {isGmail && (
+          <Select
+            label="Gmail 接入方式"
+            value={gmailMethod}
+            onChange={(value) => setGmailMethod(value as "oauth" | "app-password")}
+            options={[
+              { value: "oauth", label: "Google 一键授权（推荐）" },
+              { value: "app-password", label: "App Password 批量导入" },
+            ]}
+          />
+        )}
+
+        {isGmailOAuth && (
+          <GoogleOAuthCreatePath
+            groupId={groupId || null}
+            onChanged={async () => {
+              await Promise.all([refreshAccounts(), refreshEmails()]);
+            }}
+          />
+        )}
 
         {isCustom && (
           <div className="grid grid-cols-2 gap-3">
@@ -2247,37 +2266,41 @@ const AddEmailModal: React.FC<{
         )}
 
         {/* 凭证输入 */}
-        <div>
-          <label className="text-xs font-medium text-gh-text-muted block mb-1.5">
-            凭证信息（每行一个账户）
-          </label>
-          <textarea
-            value={credentialText}
-            onChange={(e) => setCredentialText(e.target.value)}
-            className="w-full min-h-40 bg-gh-canvas-inset border border-gh-border rounded-md px-3 py-2 text-sm text-gh-text font-mono focus:outline-none focus:border-gh-accent"
-            placeholder={
-              isOutlook
-                ? "邮箱----密码----client_id----refresh_token"
-                : "邮箱----IMAP授权码/应用密码"
-            }
-          />
-          <p className="text-xs text-gh-text-secondary mt-1.5">
-            {isOutlook
-              ? "Outlook 格式：邮箱----密码----client_id----refresh_token"
-              : "格式：邮箱----IMAP授权码/应用密码"}
-          </p>
-        </div>
+        {!isGmailOAuth && (
+          <div>
+            <label className="text-xs font-medium text-gh-text-muted block mb-1.5">
+              凭证信息（每行一个账户）
+            </label>
+            <textarea
+              value={credentialText}
+              onChange={(e) => setCredentialText(e.target.value)}
+              className="w-full min-h-40 bg-gh-canvas-inset border border-gh-border rounded-md px-3 py-2 text-sm text-gh-text font-mono focus:outline-none focus:border-gh-accent"
+              placeholder={
+                isOutlook
+                  ? "邮箱----密码----client_id----refresh_token"
+                  : "邮箱----IMAP授权码/应用密码"
+              }
+            />
+            <p className="text-xs text-gh-text-secondary mt-1.5">
+              {isOutlook
+                ? "Outlook 格式：邮箱----密码----client_id----refresh_token"
+                : "格式：邮箱----IMAP授权码/应用密码"}
+            </p>
+          </div>
+        )}
 
         {/* 导入到邮箱池 */}
-        <label className="flex items-center gap-2 text-sm text-gh-text-secondary cursor-pointer">
-          <input
-            type="checkbox"
-            checked={addToPool}
-            onChange={(e) => setAddToPool(e.target.checked)}
-            className="w-4 h-4 rounded border-gh-border bg-gh-canvas-inset text-gh-accent focus:ring-gh-accent/30"
-          />
-          导入到邮箱池
-        </label>
+        {!isGmailOAuth && (
+          <label className="flex items-center gap-2 text-sm text-gh-text-secondary cursor-pointer">
+            <input
+              type="checkbox"
+              checked={addToPool}
+              onChange={(e) => setAddToPool(e.target.checked)}
+              className="w-4 h-4 rounded border-gh-border bg-gh-canvas-inset text-gh-accent focus:ring-gh-accent/30"
+            />
+            导入到邮箱池
+          </label>
+        )}
       </div>
     </Modal>
   );

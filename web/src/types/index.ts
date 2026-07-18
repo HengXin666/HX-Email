@@ -6,6 +6,7 @@ export type {
   TokenConfig,
   TokenExchangeResult,
   TokenPrepareResult,
+  TokenToolAccount,
 } from "./account";
 export type { AuditLogEntry } from "./audit";
 export type { AuthResponse, User } from "./auth";

@@ -386,6 +386,15 @@ def test_token_tool_config_callback_accounts_and_create_flow(tmp_path):
         },
         headers=headers,
     )
+    gmail = client.post(
+        "/api/v1/email-accounts",
+        json={
+            "provider": "gmail",
+            "primary_address": "created@gmail.com",
+            "display_name": "Gmail",
+        },
+        headers=headers,
+    )
     accounts = client.get("/api/v1/token-tool/accounts", headers=headers)
 
     assert config.status_code == 200
@@ -405,7 +414,14 @@ def test_token_tool_config_callback_accounts_and_create_flow(tmp_path):
             "id": created.json()["data"]["account_id"],
             "email": "created@outlook.com",
             "status": "active",
-        }
+            "provider": "outlook",
+        },
+        {
+            "id": gmail.json()["id"],
+            "email": "created@gmail.com",
+            "status": "active",
+            "provider": "gmail",
+        },
     ]
 
 

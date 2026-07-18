@@ -25,7 +25,7 @@ import {
   IconZap,
 } from "../components/icons";
 import { Topbar } from "../components/layout";
-import { Button, Card, Input } from "../components/ui/Primitives";
+import { Button, Card, Input, Select } from "../components/ui/Primitives";
 import { useToast } from "../components/ui/Toast";
 import { useApp } from "../store/AppContext";
 import { copyToClipboard } from "../utils/clipboard";
@@ -521,21 +521,15 @@ const TempMailTab: React.FC<TabProps> = ({ settings, setSetting, toast }) => {
             )}
 
             {domains.length > 0 && (
-              <div>
-                <label className="text-xs font-medium text-gh-text-muted">默认域名</label>
-                <select
-                  value={settings.temp_mail_default_domain || ""}
-                  onChange={(e) => setSetting("temp_mail_default_domain", e.target.value)}
-                  className="mt-1.5 w-full bg-gh-canvas-inset border border-gh-border rounded-md px-3 py-1.5 text-sm text-gh-text focus:outline-none focus:border-gh-accent"
-                >
-                  <option value="">自动选择</option>
-                  {domains.map((d) => (
-                    <option key={d} value={d}>
-                      {d}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <Select
+                label="默认域名"
+                value={settings.temp_mail_default_domain || ""}
+                onChange={(value) => setSetting("temp_mail_default_domain", value)}
+                options={[
+                  { value: "", label: "自动选择" },
+                  ...domains.map((domain) => ({ value: domain, label: domain })),
+                ]}
+              />
             )}
 
             <div className="pt-2 border-t border-gh-border">

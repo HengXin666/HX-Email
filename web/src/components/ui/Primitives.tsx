@@ -1,6 +1,7 @@
+import * as RadixSelect from "@radix-ui/react-select";
 import { AnimatePresence, motion } from "framer-motion";
 import React from "react";
-import { IconX } from "../icons";
+import { IconCheck, IconChevronDown, IconX } from "../icons";
 import { Spinner } from "./Spinner";
 
 interface ModalProps {
@@ -270,7 +271,10 @@ interface SelectProps {
   disabled?: boolean;
   className?: string;
   selectClassName?: string;
+  placeholder?: string;
 }
+
+const EMPTY_SELECT_VALUE = "__hx_empty_select_value__";
 
 export const Select: React.FC<SelectProps> = ({
   label,
@@ -281,6 +285,7 @@ export const Select: React.FC<SelectProps> = ({
   disabled = false,
   className = "",
   selectClassName = "",
+  placeholder,
 }) => {
   const generatedId = React.useId();
   const selectId = id ?? `select-${generatedId}`;
@@ -292,35 +297,53 @@ export const Select: React.FC<SelectProps> = ({
           {label}
         </label>
       )}
-      <div className="relative group/select">
-        <select
+      <RadixSelect.Root
+        value={String(value) || EMPTY_SELECT_VALUE}
+        disabled={disabled}
+        onValueChange={(nextValue) => onChange(nextValue === EMPTY_SELECT_VALUE ? "" : nextValue)}
+      >
+        <RadixSelect.Trigger
           id={selectId}
-          value={value}
-          disabled={disabled}
-          onChange={(e) => onChange(e.target.value)}
-          className={`w-full appearance-none rounded-lg border border-gh-border bg-gh-canvas-inset px-3 py-2 pr-9 text-sm text-gh-text shadow-inner shadow-black/10 transition-all duration-150 cursor-pointer hover:border-gh-text-muted hover:bg-gh-border/20 focus:outline-none focus:border-gh-accent focus:ring-2 focus:ring-gh-accent/25 disabled:cursor-not-allowed disabled:opacity-55 ${selectClassName}`}
+          className={`group/select flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg border border-gh-border bg-gh-canvas-inset px-3 py-2 text-left text-sm text-gh-text shadow-inner shadow-black/10 transition-colors duration-150 hover:border-gh-text-muted hover:bg-gh-border/20 focus:outline-none focus:ring-2 focus:ring-gh-accent/40 disabled:cursor-not-allowed disabled:opacity-55 ${selectClassName}`}
         >
-          {options.map((opt) => (
-            <option key={opt.value} value={opt.value} disabled={opt.disabled}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-        <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-gh-text-muted transition-colors group-hover/select:text-gh-text-secondary">
-          <svg
-            width="13"
-            height="13"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+          <RadixSelect.Value placeholder={placeholder} />
+          <RadixSelect.Icon className="shrink-0 text-gh-text-muted transition-transform group-data-[state=open]/select:rotate-180">
+            <IconChevronDown size={13} />
+          </RadixSelect.Icon>
+        </RadixSelect.Trigger>
+        <RadixSelect.Portal>
+          <RadixSelect.Content
+            position="popper"
+            sideOffset={5}
+            collisionPadding={8}
+            className="z-[100] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-lg border border-gh-border bg-gh-canvas-subtle text-gh-text shadow-2xl shadow-black/40 data-[state=open]:animate-in"
           >
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </div>
-      </div>
+            <RadixSelect.ScrollUpButton className="flex h-7 items-center justify-center text-gh-text-muted">
+              <IconChevronDown size={13} className="rotate-180" />
+            </RadixSelect.ScrollUpButton>
+            <RadixSelect.Viewport className="max-h-72 p-1">
+              {options.map((option) => (
+                <RadixSelect.Item
+                  key={option.value}
+                  value={String(option.value) || EMPTY_SELECT_VALUE}
+                  disabled={option.disabled}
+                  className="relative flex cursor-pointer select-none items-center rounded-md py-2 pl-8 pr-3 text-sm outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-45 data-[highlighted]:bg-gh-accent/15 data-[highlighted]:text-gh-accent"
+                >
+                  <span className="absolute left-2 flex h-4 w-4 items-center justify-center text-gh-accent">
+                    <RadixSelect.ItemIndicator>
+                      <IconCheck size={13} />
+                    </RadixSelect.ItemIndicator>
+                  </span>
+                  <RadixSelect.ItemText>{option.label}</RadixSelect.ItemText>
+                </RadixSelect.Item>
+              ))}
+            </RadixSelect.Viewport>
+            <RadixSelect.ScrollDownButton className="flex h-7 items-center justify-center text-gh-text-muted">
+              <IconChevronDown size={13} />
+            </RadixSelect.ScrollDownButton>
+          </RadixSelect.Content>
+        </RadixSelect.Portal>
+      </RadixSelect.Root>
     </div>
   );
 };
