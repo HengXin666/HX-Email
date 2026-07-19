@@ -7,7 +7,7 @@ from hx_email.config import Settings
 from hx_email.database import connect, migrate
 from hx_email.security import decrypt_secret
 from hx_email.server.mail import EmailAccountMailbox
-from hx_email.server.mail.imap.imap_helpers import parse_date
+from hx_email.server.mail.imap.imap_helpers import IMAPAuthRejectedError, parse_date
 from hx_email.server.mail.imap.imap_provider import IMAPMailboxProvider
 
 
@@ -189,6 +189,41 @@ def test_outlook_imap_persists_rotated_refresh_token(tmp_path) -> None:
             ]
         )
     assert decrypt_secret(settings, stored) == "rotated-refresh-token"
+
+
+def test_outlook_host_fallback_applies_to_legacy_imap_provider(tmp_path) -> None:
+    settings = Settings(data_dir=tmp_path)
+    migrate(settings)
+    with connect(settings) as conn:
+        conn.execute(
+            """
+            INSERT INTO email_accounts
+                (id, user_id, provider, primary_address, imap_host, client_id, refresh_token)
+            VALUES (1, 1, 'imap', 'owner@outlook.com', 'outlook.office365.com', 'cid', 'rt')
+            """
+        )
+    provider = IMAPMailboxProvider(settings)
+    calls: list[str] = []
+
+    def fetch(host: str, *args: object, **kwargs: object) -> list[object]:
+        _ = (args, kwargs)
+        calls.append(host)
+        if host == "outlook.office365.com":
+            raise IMAPAuthRejectedError("OAuth auth OK but IMAP server refused connection")
+        return []
+
+    with (
+        patch(
+            "hx_email.server.mail.imap.imap_provider.try_get_imap_token",
+            return_value=("token", "consumers", ""),
+        ),
+        patch.object(provider, "_imap_fetch", side_effect=fetch),
+    ):
+        provider.read_messages(
+            EmailAccountMailbox(id=1, provider="imap", primary_address="owner@outlook.com")
+        )
+
+    assert calls == ["outlook.office365.com", "outlook.live.com"]
 
 
 def test_gmail_oauth_uses_primary_address_instead_of_stale_imap_username(tmp_path) -> None:

@@ -1,5 +1,7 @@
 from pydantic import BaseModel, ConfigDict
 
+from hx_email.config import MICROSOFT_MAIL_SCOPE
+
 
 class Credentials(BaseModel):
     username: str
@@ -102,7 +104,7 @@ class AccountTextImport(BaseModel):
 class TokenToolPrepare(BaseModel):
     client_id: str
     redirect_uri: str
-    scope: str = "offline_access https://outlook.office.com/IMAP.AccessAsUser.All"
+    scope: str = MICROSOFT_MAIL_SCOPE
     tenant: str = "consumers"
     prompt_consent: bool = True
 
@@ -124,9 +126,10 @@ class TokenToolSave(BaseModel):
 class TokenToolConfigWrite(BaseModel):
     client_id: str = ""
     redirect_uri: str = ""
-    scope: str = "offline_access https://outlook.office.com/IMAP.AccessAsUser.All"
+    scope: str = MICROSOFT_MAIL_SCOPE
     tenant: str = "consumers"
     prompt_consent: bool = True
+    mode: str = "graph"
 
 
 class SettingsUpdate(BaseModel):

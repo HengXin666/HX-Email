@@ -11,6 +11,7 @@ from hx_email.security import decrypt_secret, persist_rotated_refresh_token
 from hx_email.server.mail import EmailAccountMailbox, MailboxMessage
 from hx_email.server.mail.google_oauth import get_google_access_token
 from hx_email.server.mail.imap.imap_helpers import (
+    _OUTLOOK_IMAP_SERVERS,
     _OUTLOOK_PROVIDERS,
     IMAPAuthRejectedError,
     describe_imap_auth_error,
@@ -139,7 +140,7 @@ class IMAPMailboxProvider:
                 imap_host,
                 imap_port,
             )
-            if account.provider in _OUTLOOK_PROVIDERS:
+            if account.provider in _OUTLOOK_PROVIDERS or imap_host in _OUTLOOK_IMAP_SERVERS:
                 return imap_fetch_outlook_fallback(
                     self._imap_fetch,
                     imap_host,

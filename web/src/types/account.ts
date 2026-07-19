@@ -39,6 +39,7 @@ export interface TokenConfig {
   scope: string;
   tenant: string;
   prompt_consent: boolean;
+  mode?: "imap" | "graph";
 }
 
 export interface TokenToolAccount {

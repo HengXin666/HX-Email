@@ -400,7 +400,7 @@ def test_token_tool_config_callback_accounts_and_create_flow(tmp_path):
     assert config.status_code == 200
     assert config.json()["data"]["tenant"] == "consumers"
     assert config.json()["data"]["scope"] == (
-        "offline_access https://outlook.office.com/IMAP.AccessAsUser.All"
+        "offline_access https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/Mail.Send"
     )
     assert saved_config.status_code == 200
     assert prepared.status_code == 200

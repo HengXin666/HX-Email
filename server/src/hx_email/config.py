@@ -4,6 +4,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPOSITORY_ROOT: Path = Path(__file__).resolve().parents[3]
 ENV_FILE_PATH: Path = REPOSITORY_ROOT / ".env"
+MICROSOFT_MAIL_SCOPE: str = (
+    "offline_access https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/Mail.Send"
+)
 
 
 class Settings(BaseSettings):

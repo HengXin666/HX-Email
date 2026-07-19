@@ -8,7 +8,7 @@ export const refreshApi = {
       message: string;
       account_id: number;
       email: string;
-      status: string;
+      status?: string;
     }>(`/email-accounts/${id}/refresh`, { method: "POST" }),
 
   retryRefreshAccount: (id: number) =>

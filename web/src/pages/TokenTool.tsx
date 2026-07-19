@@ -23,16 +23,21 @@ import { GoogleTokenApiGuide, GoogleTokenGuide } from "./impl/GoogleTokenGuides"
 import { GoogleTokenWorkspace } from "./impl/GoogleTokenWorkspace";
 
 const SCOPE_PRESETS = {
-  graph: ["offline_access", "https://graph.microsoft.com/.default"],
+  graph: [
+    "offline_access",
+    "https://graph.microsoft.com/Mail.Read",
+    "https://graph.microsoft.com/Mail.Send",
+  ],
   imap: ["offline_access", "https://outlook.office.com/IMAP.AccessAsUser.All"],
 };
 
 const DEFAULT_CONFIG: TokenConfig = {
   client_id: "",
   redirect_uri: "",
-  scope: SCOPE_PRESETS.imap.join(" "),
+  scope: SCOPE_PRESETS.graph.join(" "),
   tenant: "consumers",
   prompt_consent: true,
+  mode: "graph",
 };
 
 type TokenToolTab = "guide" | "page-token" | "api-doc";
@@ -200,6 +205,7 @@ export const TokenTool: React.FC = () => {
         redirect_uri: remoteConfig.redirect_uri || defaultRedirectUri(),
         scope: normalizeScope(remoteConfig.scope || DEFAULT_CONFIG.scope),
         tenant: "consumers",
+        mode: remoteConfig.mode === "imap" ? "imap" : "graph",
       });
       setAccounts(remoteAccounts);
     } catch (err: any) {
@@ -216,7 +222,11 @@ export const TokenTool: React.FC = () => {
   };
 
   const setScopePreset = (preset: keyof typeof SCOPE_PRESETS) => {
-    patchConfig("scope", SCOPE_PRESETS[preset].join(" "));
+    setConfig((current) => ({
+      ...current,
+      scope: SCOPE_PRESETS[preset].join(" "),
+      mode: preset,
+    }));
   };
 
   const addScope = () => {
@@ -238,6 +248,7 @@ export const TokenTool: React.FC = () => {
         redirect_uri: saved.redirect_uri || defaultRedirectUri(),
         scope: normalizeScope(saved.scope || DEFAULT_CONFIG.scope),
         tenant: "consumers",
+        mode: saved.mode === "imap" ? "imap" : "graph",
       });
       toast("配置已保存", "success");
     } catch (err: any) {
@@ -363,10 +374,18 @@ export const TokenTool: React.FC = () => {
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-gh-text-muted">Scope 预设</label>
               <div className="flex gap-2">
-                <Button variant="secondary" size="sm" onClick={() => setScopePreset("imap")}>
+                <Button
+                  variant={config.mode === "imap" ? "primary" : "secondary"}
+                  size="sm"
+                  onClick={() => setScopePreset("imap")}
+                >
                   IMAP
                 </Button>
-                <Button variant="secondary" size="sm" onClick={() => setScopePreset("graph")}>
+                <Button
+                  variant={config.mode === "graph" ? "primary" : "secondary"}
+                  size="sm"
+                  onClick={() => setScopePreset("graph")}
+                >
                   Graph 邮件
                 </Button>
               </div>
@@ -407,7 +426,8 @@ export const TokenTool: React.FC = () => {
               </Button>
             </div>
             <div className="mt-2 text-xs text-gh-text-secondary">
-              默认使用参考项目的 IMAP 预设：offline_access + IMAP.AccessAsUser.All。
+              默认使用 Graph 邮件预设：offline_access + Mail.Read + Mail.Send；旧 Token
+              需要重新授权后才能发信。
             </div>
           </div>
 
@@ -559,7 +579,7 @@ Authorization: Bearer <token>
 {
   "client_id": "<azure app client id>",
   "redirect_uri": "${defaultRedirectUri()}",
-  "scope": "offline_access https://outlook.office.com/IMAP.AccessAsUser.All",
+  "scope": "offline_access https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/Mail.Send",
   "tenant": "consumers",
   "prompt_consent": true
 }`}</CodeBlock>
@@ -572,7 +592,7 @@ Authorization: Bearer <token>
     "authorize_url": "https://login.microsoftonline.com/...",
     "authorization_url": "https://login.microsoftonline.com/...",
     "state": "...",
-    "scope": "offline_access https://outlook.office.com/IMAP.AccessAsUser.All"
+    "scope": "offline_access https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/Mail.Send"
   }
 }`}</CodeBlock>
           </div>

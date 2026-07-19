@@ -83,7 +83,7 @@ def persist_rotated_refresh_token(
     with sqlite3.connect(settings.database_path) as connection:
         cursor = connection.execute(
             "UPDATE email_accounts SET refresh_token = ? "
-            "WHERE id = ? AND provider IN ('outlook', 'hotmail')",
+            "WHERE id = ? AND provider IN ('outlook', 'hotmail', 'gmail')",
             (encrypt_secret(settings, normalized), account_id),
         )
     return cursor.rowcount == 1

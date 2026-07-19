@@ -93,6 +93,21 @@ def build_credentials(settings: Settings, row: Row) -> SendCredentials | None:
             security="https",
             credential_strategy="outlook_graph_send_mail",
         )
+    if provider == "gmail" and client_id and refresh_token:
+        return SendCredentials(
+            usable_email_id=int(row["usable_email_id"]),
+            email_account_id=int(row["account_id"]),
+            provider=provider,
+            from_address=str(row["usable_address"] or "").strip() or username,
+            username=username,
+            password="",
+            client_id=client_id,
+            refresh_token=refresh_token,
+            smtp_host="smtp.gmail.com",
+            smtp_port=587,
+            security="starttls",
+            credential_strategy="gmail_oauth_smtp",
+        )
     if not password and not client_id and refresh_token:
         password = refresh_token
     if not smtp_host or not username or not password:

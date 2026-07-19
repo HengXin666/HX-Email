@@ -8,7 +8,7 @@ from hx_email.server.mail.impl.sending.credentials import (
 )
 from hx_email.server.mail.impl.sending.delivery import deliver_debug_email
 
-CREDENTIAL_POLICY = "Uses the selected usable email account SMTP-compatible credentials."
+CREDENTIAL_POLICY = "Uses the selected account provider-native OAuth or SMTP credentials."
 
 
 @dataclass(frozen=True)
@@ -128,8 +128,22 @@ def build_delivery_error(
         smtp_host=credentials.smtp_host,
         smtp_port=credentials.smtp_port,
         security=credentials.security,
-        actions=("Check the provider app password and SMTP access settings.",),
+        actions=delivery_error_actions(credentials),
     )
+
+
+def delivery_error_actions(credentials: SendCredentials) -> tuple[str, ...]:
+    if credentials.credential_strategy == "gmail_oauth_smtp":
+        return (
+            "在 Google OAuth 页面重新授权该账号, 并确认已授予完整 Gmail 邮件权限。",
+            "确认 Google OAuth Client ID、Client Secret 和账号地址匹配。",
+        )
+    if credentials.credential_strategy == "outlook_graph_send_mail":
+        return (
+            "在 Token 工具选择 Graph 邮件预设 (Mail.Read + Mail.Send)。",
+            "保存新配置后强制重新授权该 Microsoft 账号; 旧 refresh token 不会自动获得新权限。",
+        )
+    return ("检查服务商应用专用密码、SMTP 地址、端口和 SMTP 开关。",)
 
 
 def build_input_error(code: str, message: str, usable_email_id: int) -> SendDebugEmailResult:

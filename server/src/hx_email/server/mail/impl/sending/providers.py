@@ -1,3 +1,4 @@
+import base64
 import smtplib
 from email.mime.text import MIMEText
 from typing import TYPE_CHECKING
@@ -24,8 +25,21 @@ class SmtpEmailServerBase(EmailServerBase):
             return
         with smtplib.SMTP(credentials.smtp_host, credentials.smtp_port, timeout=15) as server:
             server.starttls()
-            server.login(credentials.username, credentials.password)
+            if credentials.credential_strategy == "gmail_oauth_smtp":
+                authenticate_xoauth2(server, credentials.username, credentials.password)
+            else:
+                server.login(credentials.username, credentials.password)
             server.send_message(message)
+
+
+def authenticate_xoauth2(server: smtplib.SMTP, username: str, access_token: str) -> None:
+    auth_bytes: bytes = f"user={username}\x01auth=Bearer {access_token}\x01\x01".encode()
+    auth_value: str = base64.b64encode(auth_bytes).decode("ascii")
+    result: tuple[int, bytes] = server.docmd("AUTH", f"XOAUTH2 {auth_value}")
+    code: int = result[0]
+    response: bytes = result[1]
+    if code != 235:
+        raise smtplib.SMTPAuthenticationError(code, response)
 
 
 class OutlookEmailServer(SmtpEmailServerBase):

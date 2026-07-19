@@ -5,7 +5,10 @@ from unittest.mock import Mock, patch
 from hx_email.config import Settings
 from hx_email.database import connect, migrate
 from hx_email.security import decrypt_secret
-from hx_email.server.mail.impl.oauth_tool import try_refresh_oauth_token
+from hx_email.server.mail.impl.oauth_tool import (
+    try_refresh_oauth_token,
+    try_refresh_provider_oauth_token,
+)
 from hx_email.server.mail.impl.refresh_service import (
     refresh_selected_accounts,
     refresh_single_account,
@@ -81,6 +84,62 @@ def test_refresh_selected_accounts_passes_group_proxy_to_token_refresh(tmp_path)
 
     assert any("progress" in event for event in events)
     assert refresh.call_args.kwargs["proxy_url"] == "http://127.0.0.1:2334"
+
+
+def test_refresh_selected_accounts_skips_password_provider(tmp_path) -> None:
+    settings = Settings(data_dir=tmp_path)
+    migrate(settings)
+    _insert_proxy_account(settings)
+    with connect(settings) as connection:
+        connection.execute(
+            """
+            INSERT INTO email_accounts
+                (id, user_id, provider, primary_address, status, client_id,
+                 refresh_token)
+            VALUES (2, 1, '163', 'password@example.com', 'active', '', 'app-password')
+            """
+        )
+
+    with patch(
+        "hx_email.server.mail.impl.refresh_service.try_refresh_provider_oauth_token",
+        return_value={"success": True, "message": "ok", "error_detail": ""},
+    ) as refresh:
+        events = list(refresh_selected_accounts(settings, [1, 2], EmptyMailboxProvider()))
+
+    assert refresh.call_count == 1
+    assert '"total": 1' in events[0]
+
+
+def test_google_refresh_persists_rotated_refresh_token(tmp_path) -> None:
+    settings = Settings(data_dir=tmp_path)
+    migrate(settings)
+    with connect(settings) as connection:
+        connection.execute(
+            """
+            INSERT INTO email_accounts
+                (id, user_id, provider, primary_address, status, client_id,
+                 refresh_token)
+            VALUES (1, 1, 'gmail', 'owner@gmail.com', 'active', 'google-client', 'old-token')
+            """
+        )
+
+    with patch(
+        "hx_email.server.mail.impl.oauth_tool.refresh_google_token",
+        return_value={
+            "success": True,
+            "message": "ok",
+            "error_detail": "",
+            "refresh_token": "rotated-google-token",
+        },
+    ):
+        result = try_refresh_provider_oauth_token(
+            settings, "gmail", "google-client", "old-token", account_id=1
+        )
+
+    with connect(settings) as connection:
+        stored = str(connection.execute("SELECT refresh_token FROM email_accounts").fetchone()[0])
+    assert result["success"] is True
+    assert decrypt_secret(settings, stored) == "rotated-google-token"
 
 
 def _insert_proxy_account(settings: Settings) -> None:

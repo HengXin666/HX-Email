@@ -252,7 +252,12 @@ def try_refresh_provider_oauth_token(
 ) -> dict[str, object]:
     refresh_token = decrypt_secret(settings, refresh_token)
     if provider == "gmail":
-        return refresh_google_token(settings, client_id, refresh_token, proxy_url)
+        google_result = refresh_google_token(settings, client_id, refresh_token, proxy_url)
+        if account_id is not None and bool(google_result.get("success")):
+            persist_rotated_refresh_token(
+                settings, account_id, refresh_token, str(google_result.get("refresh_token") or "")
+            )
+        return google_result
     result: dict[str, object] = try_refresh_oauth_token(
         client_id, refresh_token, proxy_url=proxy_url
     )

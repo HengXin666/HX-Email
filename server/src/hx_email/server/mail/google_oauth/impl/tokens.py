@@ -99,21 +99,7 @@ def get_google_access_token(
         if cached is not None and time.monotonic() < cached[1]:
             return cached[0]
 
-    client_secret: str = get_setting(settings, "google_oauth_client_secret", "")
-    response = requests.post(
-        GOOGLE_TOKEN_URL,
-        data=_token_payload(
-            client_id,
-            client_secret,
-            "refresh_token",
-            refresh_token=refresh_token,
-        ),
-        timeout=20,
-        proxies=_proxies(proxy_url),
-    )
-    if response.status_code != 200:
-        raise RuntimeError(f"Google OAuth refresh failed: {response.text[:300]}")
-    data: dict[str, Any] = response.json()
+    data = _request_google_refresh(settings, client_id, refresh_token, proxy_url)
     access_token: str = str(data.get("access_token") or "")
     if not access_token:
         raise RuntimeError("Google OAuth refresh returned no access token")
@@ -123,6 +109,24 @@ def get_google_access_token(
     return access_token
 
 
+def _request_google_refresh(
+    settings: Settings,
+    client_id: str,
+    refresh_token: str,
+    proxy_url: str,
+) -> dict[str, Any]:
+    client_secret: str = get_setting(settings, "google_oauth_client_secret", "")
+    response = requests.post(
+        GOOGLE_TOKEN_URL,
+        data=_token_payload(client_id, client_secret, "refresh_token", refresh_token=refresh_token),
+        timeout=20,
+        proxies=_proxies(proxy_url),
+    )
+    if response.status_code != 200:
+        raise RuntimeError(f"Google OAuth refresh failed: {response.text[:300]}")
+    return dict(response.json())
+
+
 def refresh_google_token(
     settings: Settings,
     client_id: str,
@@ -130,12 +134,19 @@ def refresh_google_token(
     proxy_url: str = "",
 ) -> dict[str, object]:
     try:
-        get_google_access_token(settings, client_id, refresh_token, proxy_url)
-        return {
+        data = _request_google_refresh(settings, client_id, refresh_token, proxy_url)
+        access_token: str = str(data.get("access_token") or "")
+        if not access_token:
+            raise RuntimeError("Google OAuth refresh returned no access token")
+        result: dict[str, object] = {
             "success": True,
             "message": "Google token refreshed successfully",
             "error_detail": "",
         }
+        rotated_token: str = str(data.get("refresh_token") or "")
+        if rotated_token:
+            result["refresh_token"] = rotated_token
+        return result
     except RuntimeError as error:
         return {
             "success": False,

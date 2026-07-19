@@ -10,6 +10,7 @@ from typing import Any
 
 import requests
 
+from hx_email.config import MICROSOFT_MAIL_SCOPE
 from hx_email.server.mail import MailboxMessage
 
 logger = logging.getLogger(__name__)
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 _GRAPH_TOKEN_CACHE: dict[str, tuple[str, float]] = {}
 _GRAPH_TOKEN_LOCK: Lock = Lock()
 _GRAPH_TOKEN_URL: str = "https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token"
-_GRAPH_SCOPE: str = "https://graph.microsoft.com/.default offline_access"
+_GRAPH_SCOPE: str = MICROSOFT_MAIL_SCOPE
 _GRAPH_TENANTS: tuple[str, ...] = ("consumers", "common")
 
 _GRAPH_BASE_URL: str = "https://graph.microsoft.com/v1.0"

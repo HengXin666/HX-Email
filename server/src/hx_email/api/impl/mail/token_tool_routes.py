@@ -11,7 +11,7 @@ from hx_email.api.schemas import (
     TokenToolPrepare,
     TokenToolSave,
 )
-from hx_email.config import Settings
+from hx_email.config import MICROSOFT_MAIL_SCOPE, Settings
 from hx_email.database import connect
 from hx_email.server.mail.impl.accounts.account_transfer import (
     create_oauth_account,
@@ -33,7 +33,8 @@ class TokenAccount(BaseModel):
     provider: str
 
 
-DEFAULT_SCOPE: str = "offline_access https://outlook.office.com/IMAP.AccessAsUser.All"
+DEFAULT_SCOPE: str = MICROSOFT_MAIL_SCOPE
+LEGACY_DEFAULT_SCOPE: str = "offline_access https://outlook.office.com/IMAP.AccessAsUser.All"
 DEFAULT_REDIRECT_URI: str = "http://localhost:8000/token-tool/callback"
 
 
@@ -199,12 +200,17 @@ def resolve_exchange_input(payload: TokenToolExchange) -> tuple[str, str]:
 
 
 def load_config(settings: Settings) -> dict[str, object]:
+    stored_scope: str = get_setting(settings, "oauth_tool_scope", DEFAULT_SCOPE)
+    scope: str = DEFAULT_SCOPE if stored_scope == LEGACY_DEFAULT_SCOPE else stored_scope
+    stored_mode: str = get_setting(settings, "oauth_tool_mode", "")
+    mode: str = stored_mode if stored_mode in {"imap", "graph"} else infer_scope_mode(scope)
     return {
         "client_id": get_setting(settings, "oauth_tool_client_id", ""),
         "redirect_uri": get_setting(settings, "oauth_tool_redirect_uri", DEFAULT_REDIRECT_URI),
-        "scope": get_setting(settings, "oauth_tool_scope", DEFAULT_SCOPE),
+        "scope": scope,
         "tenant": get_setting(settings, "oauth_tool_tenant", "consumers"),
         "prompt_consent": get_setting(settings, "oauth_tool_prompt_consent", "true") == "true",
+        "mode": mode,
     }
 
 
@@ -216,6 +222,14 @@ def save_config(settings: Settings, payload: TokenToolConfigWrite) -> None:
     set_setting(
         settings, "oauth_tool_prompt_consent", "true" if payload.prompt_consent else "false"
     )
+    mode: str = (
+        payload.mode if payload.mode in {"imap", "graph"} else infer_scope_mode(payload.scope)
+    )
+    set_setting(settings, "oauth_tool_mode", mode)
+
+
+def infer_scope_mode(scope: str) -> str:
+    return "imap" if "IMAP.AccessAsUser.All" in scope else "graph"
 
 
 def get_setting(settings: Settings, key: str, default: str) -> str:

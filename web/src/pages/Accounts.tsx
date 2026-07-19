@@ -67,6 +67,28 @@ const COLORS = [
 
 const MESSAGE_PAGE_SIZE = 30;
 
+const EmailProviderIcon: React.FC<{
+  provider?: string;
+  address?: string;
+  kind?: UsableEmail["kind"];
+  size?: "sm" | "md";
+}> = ({ provider, address, kind, size = "md" }) => {
+  const normalizedProvider = (provider || "").toLowerCase();
+  const knownProvider = ["gmail", "google", "outlook", "hotmail", "microsoft"].includes(
+    normalizedProvider,
+  );
+  const providerName = knownProvider
+    ? normalizedProvider
+    : address || (kind === "temp" ? "temp-mail" : "email");
+  return (
+    <PlatformLogo
+      name={providerName}
+      size={size === "sm" ? "sm" : "md"}
+      className="w-full h-full border-0 rounded-lg"
+    />
+  );
+};
+
 // ========== 左侧：分组栏 ==========
 const GroupSidebar: React.FC<{
   selectedGroupId: number | null;
@@ -689,9 +711,10 @@ const EmailCard: React.FC<{
     setRefreshing(true);
     try {
       const res = await api.refreshAccount(email.email_account_id!);
+      const refreshStatus = res.status || (res.success ? "success" : "failed");
       toast(
-        `刷新完成: ${res.email} - ${res.status}`,
-        res.status === "success" ? "success" : "error",
+        `刷新完成: ${res.email || email.address} - ${res.message || refreshStatus}`,
+        refreshStatus === "success" ? "success" : refreshStatus === "skipped" ? "info" : "error",
       );
       onRefreshAccount?.();
     } catch (err: any) {
@@ -885,23 +908,27 @@ const EmailCard: React.FC<{
         <div className="flex items-start gap-2">
           {onToggleBulkSelect ? (
             <div className="shrink-0 pt-1" onClick={(e) => e.stopPropagation()}>
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={!!selectedForBulk}
-                onChange={onToggleBulkSelect}
+                onChange={() => onToggleBulkSelect()}
                 title="选择此邮箱用于批量操作"
-                className="w-3.5 h-3.5 rounded border-gh-border bg-gh-canvas-inset text-gh-accent focus:ring-gh-accent/30 cursor-pointer"
+                className="gap-0"
               />
             </div>
           ) : null}
           <div
-            className="w-9 h-9 rounded-lg flex items-center justify-center text-sm font-semibold shrink-0"
+            className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 bg-gh-canvas-inset border border-gh-border"
             style={{
               background: (email.group?.color || "#58a6ff") + "20",
               color: email.group?.color || "#58a6ff",
             }}
           >
-            {email.address.slice(0, 1).toUpperCase()}
+            <EmailProviderIcon
+              provider={email.provider}
+              address={email.address}
+              kind={email.kind}
+              size="sm"
+            />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5 mb-1 min-w-0">
@@ -1387,13 +1414,17 @@ const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
       >
         <div className="flex items-start gap-3">
           <div
-            className="w-12 h-12 rounded-xl flex items-center justify-center text-lg font-bold shrink-0"
+            className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 bg-gh-canvas-inset border border-gh-border"
             style={{
               background: (email.group?.color || "#58a6ff") + "20",
               color: email.group?.color || "#58a6ff",
             }}
           >
-            {email.address.slice(0, 1).toUpperCase()}
+            <EmailProviderIcon
+              provider={email.provider}
+              address={email.address}
+              kind={email.kind}
+            />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
@@ -2291,15 +2322,12 @@ const AddEmailModal: React.FC<{
 
         {/* 导入到邮箱池 */}
         {!isGmailOAuth && (
-          <label className="flex items-center gap-2 text-sm text-gh-text-secondary cursor-pointer">
-            <input
-              type="checkbox"
-              checked={addToPool}
-              onChange={(e) => setAddToPool(e.target.checked)}
-              className="w-4 h-4 rounded border-gh-border bg-gh-canvas-inset text-gh-accent focus:ring-gh-accent/30"
-            />
-            导入到邮箱池
-          </label>
+          <Checkbox
+            label="导入到邮箱池"
+            checked={addToPool}
+            onChange={setAddToPool}
+            labelClassName="text-sm text-gh-text-secondary"
+          />
         )}
       </div>
     </Modal>

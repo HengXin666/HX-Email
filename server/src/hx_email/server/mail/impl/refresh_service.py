@@ -1,5 +1,3 @@
-"""Token refresh domain logic for email accounts."""
-
 from __future__ import annotations
 
 import json
@@ -13,7 +11,6 @@ from hx_email.server.mail.verification import MailboxProvider
 
 
 def sse_event(event: str, data: object) -> str:
-    """Format a single SSE event string."""
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
@@ -33,7 +30,6 @@ def _insert_refresh_log(
     started_at: str | None = None,
     completed_at: str | None = None,
 ) -> int:
-    """Insert a refresh_log row and return its id."""
     now = completed_at or _now_iso()
     with connect(settings) as connection:
         cursor = connection.execute(
@@ -67,9 +63,6 @@ def refresh_single_account(
     account_id: int,
     mailbox_provider: MailboxProvider,
 ) -> dict[str, object]:
-    """Refresh the OAuth2 token for a single email account.
-    Logs the result to refresh_logs and returns a status dict.
-    """
     started_at = _now_iso()
     with connect(settings) as connection:
         row = connection.execute(
@@ -106,6 +99,13 @@ def refresh_single_account(
             "success": False,
             "email": email,
             "message": "Account is not active",
+        }
+    if provider not in ("outlook", "gmail"):
+        return {
+            "account_id": account_id,
+            "success": True,
+            "email": email,
+            "message": "Password-based account does not require token refresh",
         }
     if not client_id_v or not refresh_token_val:
         _insert_refresh_log(
@@ -148,7 +148,6 @@ def refresh_single_account(
 def _fetch_active_accounts(
     settings: Settings,
 ) -> list[dict[str, object]]:
-    """Return all active email accounts with OAuth credentials."""
     with connect(settings) as connection:
         rows = connection.execute(
             """
@@ -156,7 +155,8 @@ def _fetch_active_accounts(
                    g.proxy_url
             FROM email_accounts ea
             LEFT JOIN groups g ON g.id = ea.group_id
-            WHERE ea.status = 'active' AND ea.refresh_token != ''
+            WHERE ea.status = 'active'
+              AND ea.provider IN ('outlook', 'gmail') AND ea.refresh_token != ''
             ORDER BY ea.id
             """
         ).fetchall()
@@ -237,13 +237,13 @@ def refresh_selected_accounts(
         placeholders = ",".join("?" for _ in account_ids)
         rows = connection.execute(
             f"""
-            SELECT ea.id, ea.primary_address, ea.provider, ea.client_id,
-                   ea.refresh_token, g.proxy_url
+            SELECT ea.id, ea.primary_address, ea.provider, ea.client_id, ea.refresh_token,
+                   g.proxy_url
             FROM email_accounts ea
             LEFT JOIN groups g ON g.id = ea.group_id
             WHERE ea.id IN ({placeholders})
               AND ea.status = 'active'
-              AND ea.refresh_token != ''
+              AND ea.provider IN ('outlook', 'gmail') AND ea.refresh_token != ''
             ORDER BY ea.id
             """,
             tuple(account_ids),
@@ -266,12 +266,11 @@ def refresh_failed_accounts(
     settings: Settings,
     mailbox_provider: MailboxProvider,
 ) -> Generator[str, None, None]:
-    """SSE generator: refresh accounts whose last refresh_log is 'failed'."""
     with connect(settings) as connection:
         rows = connection.execute(
             """
-            SELECT ea.id, ea.primary_address, ea.provider, ea.client_id,
-                   ea.refresh_token, g.proxy_url
+            SELECT ea.id, ea.primary_address, ea.provider, ea.client_id, ea.refresh_token,
+                   g.proxy_url
             FROM email_accounts ea
             LEFT JOIN groups g ON g.id = ea.group_id
             INNER JOIN (
@@ -281,7 +280,7 @@ def refresh_failed_accounts(
             ) latest ON ea.id = latest.account_id
             INNER JOIN refresh_logs rl ON rl.id = latest.max_id
             WHERE ea.status = 'active'
-              AND ea.refresh_token != ''
+              AND ea.provider IN ('outlook', 'gmail') AND ea.refresh_token != ''
               AND rl.status = 'failed'
             ORDER BY ea.id
             """
