@@ -29,6 +29,7 @@ from hx_email.api.impl.workspace_routes import register_workspace_routes
 from hx_email.config import Settings
 from hx_email.server.data_transfer import (
     DataImportConflictError,
+    DataImportInvalidError,
     export_core_data,
     import_core_data,
 )
@@ -195,3 +196,7 @@ def register_data_transfer_routes(router: APIRouter, settings: Settings) -> None
             return import_core_data(settings, user.id, payload)
         except DataImportConflictError as error:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+        except DataImportInvalidError as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)
+            ) from error

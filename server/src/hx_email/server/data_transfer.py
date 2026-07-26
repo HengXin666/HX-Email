@@ -10,6 +10,22 @@ class DataImportConflictError(ValueError):
     pass
 
 
+class DataImportInvalidError(ValueError):
+    """Payload 内部引用不一致 (tag/binding 指向不存在的邮箱/平台/标签)."""
+
+
+def resolve_ref(ids: dict[int, int], old_id: object, entity: str) -> int:
+    try:
+        new_id = ids.get(int(str(old_id)))
+    except (TypeError, ValueError) as error:
+        raise DataImportInvalidError(
+            f"Import payload has invalid {entity} id: {old_id!r}"
+        ) from error
+    if new_id is None:
+        raise DataImportInvalidError(f"Import payload references unknown {entity} id: {old_id!r}")
+    return new_id
+
+
 def export_core_data(settings: Settings, user_id: int) -> dict[str, object]:
     with connect(settings) as connection:
         email_accounts = rows(
@@ -17,7 +33,8 @@ def export_core_data(settings: Settings, user_id: int) -> dict[str, object]:
             """
             SELECT id, provider, primary_address, display_name,
                    imap_host, imap_port, username, imap_password,
-                   client_id, refresh_token, status
+                   client_id, refresh_token, status,
+                   group_id, remark, telegram_enabled
             FROM email_accounts
             WHERE user_id = ?
             ORDER BY id
@@ -35,7 +52,9 @@ def export_core_data(settings: Settings, user_id: int) -> dict[str, object]:
             user_id,
         )
         groups = rows(
-            connection, "SELECT id, name, color FROM groups WHERE user_id = ? ORDER BY id", user_id
+            connection,
+            "SELECT id, name, color, proxy_url FROM groups WHERE user_id = ? ORDER BY id",
+            user_id,
         )
         tags = rows(
             connection, "SELECT id, name, color FROM tags WHERE user_id = ? ORDER BY id", user_id
@@ -86,7 +105,7 @@ def import_core_data(
         with connect(settings) as connection:
             group_ids = import_groups(connection, user_id, payload)
             tag_ids = import_tags(connection, user_id, payload)
-            account_ids = import_email_accounts(settings, connection, user_id, payload)
+            account_ids = import_email_accounts(settings, connection, user_id, payload, group_ids)
             email_ids = import_usable_emails(connection, user_id, payload, account_ids, group_ids)
             import_usable_email_tags(connection, payload, email_ids, tag_ids)
             platform_ids = import_platforms(connection, user_id, payload)
@@ -106,8 +125,8 @@ def import_groups(
     ids: dict[int, int] = {}
     for group in payload.get("groups", []):
         cursor = connection.execute(
-            "INSERT INTO groups (user_id, name, color) VALUES (?, ?, ?)",
-            (user_id, group["name"], group.get("color", "#58a6ff")),
+            "INSERT INTO groups (user_id, name, color, proxy_url) VALUES (?, ?, ?, ?)",
+            (user_id, group["name"], group.get("color", "#58a6ff"), group.get("proxy_url", "")),
         )
         ids[int(group["id"])] = inserted_id(cursor)
     return ids
@@ -131,17 +150,20 @@ def import_email_accounts(
     connection: sqlite3.Connection,
     user_id: int,
     payload: dict[str, Any],
+    group_ids: dict[int, int],
 ) -> dict[int, int]:
     ids: dict[int, int] = {}
     for account in payload.get("email_accounts", []):
+        old_group_id = account.get("group_id")
         cursor = connection.execute(
             """
             INSERT INTO email_accounts (
                 user_id, provider, primary_address, display_name,
                 imap_host, imap_port, username, imap_password,
-                client_id, refresh_token, status
+                client_id, refresh_token, status,
+                group_id, remark, telegram_enabled
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 user_id,
@@ -155,6 +177,9 @@ def import_email_accounts(
                 account.get("client_id", ""),
                 encrypt_secret(settings, str(account.get("refresh_token", ""))),
                 account.get("status", "active"),
+                group_ids.get(int(old_group_id)) if old_group_id is not None else None,
+                account.get("remark", ""),
+                1 if account.get("telegram_enabled") else 0,
             ),
         )
         ids[int(account["id"])] = inserted_id(cursor)
@@ -203,7 +228,10 @@ def import_usable_email_tags(
     for link in payload.get("usable_email_tags", []):
         connection.execute(
             "INSERT INTO usable_email_tags (usable_email_id, tag_id) VALUES (?, ?)",
-            (email_ids[int(link["usable_email_id"])], tag_ids[int(link["tag_id"])]),
+            (
+                resolve_ref(email_ids, link.get("usable_email_id"), "usable_email"),
+                resolve_ref(tag_ids, link.get("tag_id"), "tag"),
+            ),
         )
 
 
@@ -235,8 +263,8 @@ def import_platform_bindings(
             """,
             (
                 user_id,
-                email_ids[int(binding["usable_email_id"])],
-                platform_ids[int(binding["platform_id"])],
+                resolve_ref(email_ids, binding.get("usable_email_id"), "usable_email"),
+                resolve_ref(platform_ids, binding.get("platform_id"), "platform"),
                 binding.get("status", "active"),
                 binding.get("notes", ""),
             ),
