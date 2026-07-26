@@ -26,3 +26,15 @@ web/test-results/
 # 参考项目
 ref/
 .vscode/
+
+# Local dumps / browser captures (may contain account emails, tenant IDs)
+tmp/
+.playwright-cli/
+
+# Tampermonkey: keep only the public userscript + docs checker
+# Secrets / per-tenant app IDs must never be committed
+tampermonkey/KEYS.md
+tampermonkey/azure-app.json
+tampermonkey/*.local.*
+tampermonkey/.temp-execution-*.js
+.claude/skills/playwright-skill/.temp-execution-*.js
