@@ -1,12 +1,9 @@
 from urllib.parse import parse_qs, urlparse
 
-import pytest
 from fastapi.testclient import TestClient
 from hx_email.app import create_app
 from hx_email.config import Settings
 from hx_email.database import migrate
-
-LEGACY_CONTRACT_REASON: str = "Legacy API contract drift baselined during quality-gate adoption"
 
 
 def register_user(client: TestClient, username: str) -> dict[str, object]:
@@ -16,7 +13,6 @@ def register_user(client: TestClient, username: str) -> dict[str, object]:
     ).json()
 
 
-@pytest.mark.xfail(reason=LEGACY_CONTRACT_REASON, strict=True)
 def test_adding_email_account_creates_primary_usable_email_in_current_workspace(tmp_path):
     settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
     migrate(settings)
@@ -70,6 +66,9 @@ def test_adding_email_account_creates_primary_usable_email_in_current_workspace(
             "label": "Alice IMAP",
             "kind": "primary",
             "status": "active",
+            "group": None,
+            "email_account_id": alice_create.json()["id"],
+            "last_refresh_at": None,
         }
     ]
     assert bob_workbench.json()["usable_emails"] == [
@@ -79,11 +78,13 @@ def test_adding_email_account_creates_primary_usable_email_in_current_workspace(
             "label": "Bob Outlook",
             "kind": "primary",
             "status": "active",
+            "group": None,
+            "email_account_id": bob_create.json()["id"],
+            "last_refresh_at": None,
         }
     ]
 
 
-@pytest.mark.xfail(reason=LEGACY_CONTRACT_REASON, strict=True)
 def test_deactivating_email_account_deactivates_primary_usable_email(tmp_path):
     settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
     migrate(settings)
@@ -122,12 +123,14 @@ def test_deactivating_email_account_deactivates_primary_usable_email(tmp_path):
     assert detail_before.json()["status"] == "active"
     assert deactivate.status_code == 200
     assert deactivate.json()["status"] == "inactive"
-    assert workbench_after.json() == {"usable_emails": []}
+    # 停用后仍出现在列表 (status=inactive), 供前端展示/重新激活
+    assert [
+        (email["address"], email["status"]) for email in workbench_after.json()["usable_emails"]
+    ] == [("owner@example.com", "inactive")]
     assert detail_after.status_code == 200
     assert detail_after.json()["status"] == "inactive"
 
 
-@pytest.mark.xfail(reason=LEGACY_CONTRACT_REASON, strict=True)
 def test_email_account_can_manage_real_alias_usable_emails(tmp_path):
     settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
     migrate(settings)
@@ -192,14 +195,17 @@ def test_email_account_can_manage_real_alias_usable_emails(tmp_path):
     ]
     assert deactivate_alias.status_code == 200
     assert deactivate_alias.json()["status"] == "inactive"
-    assert [email["address"] for email in workbench_after.json()["usable_emails"]] == [
-        "owner@example.com",
-        "alias-one@example.com",
-        "alias-two@example.com",
+    # 停用的别名排在最后且 status=inactive, 其余保持 active
+    assert [
+        (email["address"], email["status"]) for email in workbench_after.json()["usable_emails"]
+    ] == [
+        ("owner@example.com", "active"),
+        ("alias-one@example.com", "active"),
+        ("alias-two@example.com", "active"),
+        ("alias-three@example.com", "inactive"),
     ]
 
 
-@pytest.mark.xfail(reason=LEGACY_CONTRACT_REASON, strict=True)
 def test_email_accounts_can_be_listed_for_current_workspace(tmp_path):
     settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
     migrate(settings)
@@ -223,16 +229,14 @@ def test_email_accounts_can_be_listed_for_current_workspace(tmp_path):
     response = client.get("/api/v1/email-accounts", headers=headers)
 
     assert response.status_code == 200
-    assert response.json()["email_accounts"][0]["primary_address"] == "owner@example.com"
-    assert [
-        email["address"] for email in response.json()["email_accounts"][0]["usable_emails"]
-    ] == [
+    assert response.json()["accounts"][0]["primary_address"] == "owner@example.com"
+    assert [email["address"] for email in response.json()["accounts"][0]["usable_emails"]] == [
         "owner@example.com",
         "alias@example.com",
     ]
+    assert response.json()["pagination"]["total_count"] == 1
 
 
-@pytest.mark.xfail(reason=LEGACY_CONTRACT_REASON, strict=True)
 def test_importing_reference_account_text_supports_imap_and_outlook(tmp_path):
     settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
     migrate(settings)
@@ -262,18 +266,17 @@ def test_importing_reference_account_text_supports_imap_and_outlook(tmp_path):
 
     assert imported.status_code == 201
     assert imported.json()["imported"] == 4
-    assert [account["provider"] for account in accounts.json()["email_accounts"]] == [
+    assert [account["provider"] for account in accounts.json()["accounts"]] == [
         "gmail",
         "qq",
         "custom",
         "outlook",
     ]
-    assert accounts.json()["email_accounts"][3]["has_refresh_token"] is True
+    assert accounts.json()["accounts"][3]["has_refresh_token"] is True
     assert "person@gmail.com----gmail-app-pass----gmail" in exported.text
     assert "person@outlook.com----unused-pass----client-id----refresh-token" in exported.text
 
 
-@pytest.mark.xfail(reason=LEGACY_CONTRACT_REASON, strict=True)
 def test_outlook_two_segment_import_is_rejected(tmp_path):
     settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
     migrate(settings)
@@ -293,7 +296,7 @@ def test_outlook_two_segment_import_is_rejected(tmp_path):
     assert imported.status_code == 201
     assert imported.json()["imported"] == 0
     assert imported.json()["failed"] == 1
-    assert "Outlook accounts must use" in imported.json()["errors"][0]["error"]
+    assert "Outlook needs 4-field OAuth" in imported.json()["errors"][0]["error"]
 
 
 def test_token_tool_prepare_and_save_updates_outlook_credentials(tmp_path):
@@ -425,7 +428,6 @@ def test_token_tool_config_callback_accounts_and_create_flow(tmp_path):
     ]
 
 
-@pytest.mark.xfail(reason=LEGACY_CONTRACT_REASON, strict=True)
 def test_deactivating_email_account_deactivates_aliases_without_cross_user_leaks(tmp_path):
     settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
     migrate(settings)
@@ -475,8 +477,50 @@ def test_deactivating_email_account_deactivates_aliases_without_cross_user_leaks
     assert alice_account.status_code == 201
     assert bob_account.status_code == 201
     assert deactivate.status_code == 200
-    assert alice_workbench.json() == {"usable_emails": []}
-    assert [email["address"] for email in bob_workbench.json()["usable_emails"]] == [
-        "bob@example.com",
-        "shared-alias@example.com",
+    # Alice 的主邮箱和别名一起停用; Bob 的同名别名不受影响 (无跨用户泄漏)
+    assert [
+        (email["address"], email["status"]) for email in alice_workbench.json()["usable_emails"]
+    ] == [
+        ("alice@example.com", "inactive"),
+        ("shared-alias@example.com", "inactive"),
     ]
+    assert [
+        (email["address"], email["status"]) for email in bob_workbench.json()["usable_emails"]
+    ] == [
+        ("bob@example.com", "active"),
+        ("shared-alias@example.com", "active"),
+    ]
+
+
+def test_outlook_mode_rejects_imap_format_lines_instead_of_corrupting_credentials(tmp_path):
+    settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
+    migrate(settings)
+    client = TestClient(create_app(settings))
+    session = client.post(
+        "/api/v1/auth/login",
+        json={"username": "admin", "password": "admin"},
+    ).json()
+    headers = {"Authorization": f"Bearer {session['access_token']}"}
+
+    # custom 5 段 IMAP 行在 outlook 模式下曾被静默解析为
+    # client_id="custom", refresh_token="imap.custom.test----1993" 的损坏凭据
+    imported = client.post(
+        "/api/v1/email-accounts/import",
+        json={
+            "text": "\n".join(
+                [
+                    "person@custom.test----pass----custom----imap.custom.test----1993",
+                    "person2@custom.test----pass----imap.other.test----993",
+                ]
+            ),
+            "provider": "outlook",
+        },
+        headers=headers,
+    )
+
+    assert imported.status_code == 201
+    assert imported.json()["imported"] == 0
+    assert imported.json()["failed"] == 2
+    assert all("IMAP-format line" in e["error"] for e in imported.json()["errors"])
+    accounts = client.get("/api/v1/email-accounts", headers=headers)
+    assert accounts.json()["accounts"] == []

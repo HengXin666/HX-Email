@@ -162,6 +162,9 @@ def _import_outlook(settings: Settings, user_id: int, lines: list[str], strategy
         if not ln or ln.startswith("#"): continue
         parts = [p.strip() for p in ln.split("----")]
         if len(parts) < 4: fld += 1; errors.append({"error": "need 4-field OAuth"}); continue
+        # 第3段是 "custom" 或形似主机名 => 这是 IMAP 行, 不能当 client_id/refresh_token 吞掉
+        if parts[2].lower() == "custom" or _like_host(parts[2]):
+            fld += 1; errors.append({"email": parts[0], "error": "IMAP-format line, not Outlook OAuth (choose provider=custom/auto)"}); continue
         email = _sanitize(parts[0], 320); pwd = _sanitize(parts[1], 500)
         cid = _sanitize(parts[2], 200); rtk = _sanitize("----".join(parts[3:]), 4096)
         if not email or not cid or not rtk: fld += 1; errors.append({"email": email, "error": "cid/rtk required"}); continue
