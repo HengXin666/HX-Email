@@ -20,6 +20,7 @@ from hx_email.server.mail.temp_mail import (
     TempMailboxNotFoundError,
     TempMailMessage,
     TempMailProvider,
+    TempMailProviderError,
     archive_temp_mailbox,
     create_cf_temp_mailbox,
     extract_codes,
@@ -53,6 +54,14 @@ def register_temp_mail_routes(
             )
         except DuplicateUsableEmailError as error:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+        except MissingTempMailProviderError as error:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)
+            ) from error
+        except TempMailProviderError as error:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY, detail=str(error)
+            ) from error
         return serialize_temp_mailbox(mailbox)
 
     @router.post("/temp-mail/{usable_email_id}/archive")
@@ -106,6 +115,10 @@ def register_temp_mail_routes(
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)
             ) from error
+        except TempMailProviderError as error:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY, detail=str(error)
+            ) from error
         if detail is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found")
         return detail
@@ -146,6 +159,10 @@ def register_temp_mail_routes(
         except MissingTempMailProviderError as error:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)
+            ) from error
+        except TempMailProviderError as error:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY, detail=str(error)
             ) from error
 
     register_temp_mail_read_routes(router, settings, temp_mail_providers)
@@ -218,3 +235,5 @@ def load_temp_messages(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)
         ) from error
+    except TempMailProviderError as error:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(error)) from error

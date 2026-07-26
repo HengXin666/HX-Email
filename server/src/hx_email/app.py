@@ -8,6 +8,7 @@ from hx_email.config import Settings
 from hx_email.database import migrate
 from hx_email.server.mail.graph.fallback_provider import FallbackMailProvider
 from hx_email.server.mail.impl.email_fetch_service import start_background_fetch
+from hx_email.server.mail.impl.temp_mail import CFWorkerTempMailProvider
 from hx_email.server.mail.temp_mail import TempMailProvider
 from hx_email.server.mail.verification import MailboxProvider
 
@@ -102,12 +103,17 @@ def create_app(
     resolved_mailbox_provider: MailboxProvider = mailbox_provider or FallbackMailProvider(
         resolved_settings
     )
+    resolved_temp_mail_providers: dict[str, TempMailProvider] = (
+        temp_mail_providers
+        if temp_mail_providers is not None
+        else {"cf": CFWorkerTempMailProvider(resolved_settings)}
+    )
     app = FastAPI(title="HX Email", version="1.0.0", description=API_DESCRIPTION)
     register_routes(
         app,
         resolved_settings,
         resolved_mailbox_provider,
-        temp_mail_providers or {},
+        resolved_temp_mail_providers,
     )
     install_openapi_schema(app)
 

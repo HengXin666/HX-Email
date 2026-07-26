@@ -23,6 +23,7 @@ from hx_email.api.impl.plugins import (
     register_plugin_config_routes,
     register_plugin_crud_routes,
 )
+from hx_email.api.impl.settings.cf_worker_sync import register_cf_worker_sync_route
 from hx_email.api.impl.settings.settings_routes import register_settings_routes
 from hx_email.api.impl.settings.settings_test_routes import register_settings_test_routes
 from hx_email.api.impl.temp_mail_routes import register_temp_mail_routes
@@ -64,6 +65,7 @@ def register_routes(
     register_notification_routes(api, settings)
     register_settings_routes(api, settings)
     register_settings_test_routes(api, settings)
+    register_cf_worker_sync_route(api, settings)
     register_data_transfer_routes(api, settings)
     register_pool_admin_routes(api, settings)
     register_audit_routes(api, settings)

@@ -404,10 +404,22 @@ const serializePrefixRules = (rules: PrefixRules): string => {
    Tab 2: 临时邮箱
    ═══════════════════════════════════════════ */
 
+const parseDomainList = (json: string | undefined): string[] => {
+  try {
+    const parsed: unknown = JSON.parse(json || "[]");
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((d): d is string => typeof d === "string" && d.length > 0);
+  } catch {
+    return [];
+  }
+};
+
 const TempMailTab: React.FC<TabProps> = ({ settings, setSetting, toast }) => {
   const [syncLoading, setSyncLoading] = useState(false);
   const [syncResult, setSyncResult] = useState<{ success: boolean; message: string } | null>(null);
-  const [domains, setDomains] = useState<string[]>([]);
+  const [domains, setDomains] = useState<string[]>(() =>
+    parseDomainList(settings.cf_worker_domains),
+  );
 
   /* prefix rules synced via temp_mail_prefix_rules JSON */
   const [prefixRules, setPrefixRules] = useState<PrefixRules>(() =>
@@ -429,9 +441,8 @@ const TempMailTab: React.FC<TabProps> = ({ settings, setSetting, toast }) => {
 
   const handleSyncDomains = async () => {
     const workerUrl = settings.cf_worker_base_url || "";
-    const adminKey = settings.cf_worker_admin_key || "";
-    if (!workerUrl || !adminKey) {
-      toast("请先填写 Worker URL 和 Admin Key", "error");
+    if (!workerUrl) {
+      toast("请先填写 Worker URL", "error");
       return;
     }
     setSyncLoading(true);
@@ -439,14 +450,20 @@ const TempMailTab: React.FC<TabProps> = ({ settings, setSetting, toast }) => {
     try {
       const res = await api.syncCFDomains({
         worker_url: workerUrl,
-        admin_key: adminKey,
         custom_auth: settings.cf_worker_custom_auth || "",
       });
-      setSyncResult({ success: res.success, message: res.message });
-      if (res.domains?.length) setDomains(res.domains);
-      toast(res.message, res.success ? "success" : "error");
+      const message = res.message || (res.success ? "域名同步成功" : "域名同步失败");
+      setSyncResult({ success: res.success, message });
+      if (res.success && res.domains?.length) {
+        setDomains(res.domains);
+        setSetting("cf_worker_domains", JSON.stringify(res.domains));
+        if (res.default_domain && !settings.temp_mail_default_domain) {
+          setSetting("temp_mail_default_domain", res.default_domain);
+        }
+      }
+      toast(message, res.success ? "success" : "error");
     } catch (err: any) {
-      setSyncResult({ success: false, message: err.message });
+      setSyncResult({ success: false, message: err.message || "域名同步失败" });
     } finally {
       setSyncLoading(false);
     }

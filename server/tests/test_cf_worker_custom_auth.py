@@ -44,44 +44,65 @@ def test_custom_auth_round_trips_and_is_encrypted_at_rest(tmp_path) -> None:
     assert "secret-pass-1" not in str(row["value"])
 
 
-def test_sync_domains_sends_custom_auth_and_admin_headers(tmp_path) -> None:
+def test_sync_domains_uses_open_api_and_sends_custom_auth(tmp_path) -> None:
     client, _settings, headers = make_client(tmp_path)
     client.put(
         f"{API}/settings",
         json={
             "cf_worker_base_url": "https://worker.example.workers.dev",
-            "cf_worker_admin_key": "admin-key",
             "cf_worker_custom_auth": "custom-pass",
         },
         headers=headers,
     )
 
     with patch(
-        "hx_email.api.impl.settings.settings_test_routes._json_get",
-        return_value=(200, '{"domains": ["@a.com", "@b.com"]}'),
+        "hx_email.api.impl.settings.cf_worker_sync._json_get",
+        return_value=(200, '{"domains": ["@a.com", "@b.com"], "defaultDomains": ["@a.com"]}'),
     ) as json_get:
         response = client.post(f"{API}/settings/cf-worker-sync-domains", json={}, headers=headers)
 
     assert response.status_code == 200
-    assert response.json() == {"success": True, "domains": ["@a.com", "@b.com"]}
+    body = response.json()
+    assert body["success"] is True
+    assert body["domains"] == ["@a.com", "@b.com"]
+    assert body["default_domain"] == "@a.com"
+    assert body["message"]
     url, sent_headers = json_get.call_args[0][0], json_get.call_args[0][1]
-    assert url == "https://worker.example.workers.dev/admin/domains"
-    assert sent_headers["Authorization"] == "Bearer admin-key"
+    assert url == "https://worker.example.workers.dev/open_api/settings"
     assert sent_headers["x-custom-auth"] == "custom-pass"
+    # Cloudflare bot protection (error 1010) blocks the default urllib UA
+    assert sent_headers["User-Agent"].startswith("Mozilla/5.0")
+
+
+def test_sync_domains_persists_domains_and_default_domain(tmp_path) -> None:
+    client, _settings, headers = make_client(tmp_path)
+
+    with patch(
+        "hx_email.api.impl.settings.cf_worker_sync._json_get",
+        return_value=(200, '{"domains": ["@a.com", "@b.com"], "defaultDomains": ["@b.com"]}'),
+    ):
+        client.post(
+            f"{API}/settings/cf-worker-sync-domains",
+            json={"worker_url": "https://w.example.dev"},
+            headers=headers,
+        )
+
+    fetched = client.get(f"{API}/settings", headers=headers).json()
+    assert fetched["cf_worker_domains"] == '["@a.com", "@b.com"]'
+    assert fetched["cf_worker_default_domain"] == "@b.com"
 
 
 def test_sync_domains_payload_overrides_stored_custom_auth(tmp_path) -> None:
     client, _settings, headers = make_client(tmp_path)
 
     with patch(
-        "hx_email.api.impl.settings.settings_test_routes._json_get",
-        return_value=(200, '{"domains": []}'),
+        "hx_email.api.impl.settings.cf_worker_sync._json_get",
+        return_value=(200, '{"domains": ["@a.com"]}'),
     ) as json_get:
         client.post(
             f"{API}/settings/cf-worker-sync-domains",
             json={
                 "worker_url": "https://w.example.dev",
-                "admin_key": "k",
                 "custom_auth": "unsaved-pass",
             },
             headers=headers,
@@ -95,8 +116,8 @@ def test_sync_domains_omits_custom_auth_header_when_unset(tmp_path) -> None:
     client, _settings, headers = make_client(tmp_path)
 
     with patch(
-        "hx_email.api.impl.settings.settings_test_routes._json_get",
-        return_value=(200, '{"domains": []}'),
+        "hx_email.api.impl.settings.cf_worker_sync._json_get",
+        return_value=(200, '{"domains": ["@a.com"]}'),
     ) as json_get:
         client.post(
             f"{API}/settings/cf-worker-sync-domains",
@@ -106,3 +127,57 @@ def test_sync_domains_omits_custom_auth_header_when_unset(tmp_path) -> None:
 
     sent_headers = json_get.call_args[0][1]
     assert "x-custom-auth" not in sent_headers
+
+
+def test_sync_domains_reports_http_error_with_message(tmp_path) -> None:
+    client, _settings, headers = make_client(tmp_path)
+
+    with patch(
+        "hx_email.api.impl.settings.cf_worker_sync._json_get",
+        return_value=(401, '{"error": "unauthorized"}'),
+    ):
+        response = client.post(
+            f"{API}/settings/cf-worker-sync-domains",
+            json={"worker_url": "https://w.example.dev"},
+            headers=headers,
+        )
+
+    body = response.json()
+    assert body["success"] is False
+    assert "HTTP 401" in body["message"]
+
+
+def test_sync_domains_reports_empty_domains_with_message(tmp_path) -> None:
+    client, _settings, headers = make_client(tmp_path)
+
+    with patch(
+        "hx_email.api.impl.settings.cf_worker_sync._json_get",
+        return_value=(200, '{"domains": []}'),
+    ):
+        response = client.post(
+            f"{API}/settings/cf-worker-sync-domains",
+            json={"worker_url": "https://w.example.dev"},
+            headers=headers,
+        )
+
+    body = response.json()
+    assert body["success"] is False
+    assert body["message"]
+
+
+def test_sync_domains_reports_non_json_with_message(tmp_path) -> None:
+    client, _settings, headers = make_client(tmp_path)
+
+    with patch(
+        "hx_email.api.impl.settings.cf_worker_sync._json_get",
+        return_value=(200, "<html>not json</html>"),
+    ):
+        response = client.post(
+            f"{API}/settings/cf-worker-sync-domains",
+            json={"worker_url": "https://w.example.dev"},
+            headers=headers,
+        )
+
+    body = response.json()
+    assert body["success"] is False
+    assert body["message"]

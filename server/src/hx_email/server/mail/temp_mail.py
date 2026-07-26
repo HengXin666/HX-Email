@@ -71,6 +71,10 @@ class MissingTempMailProviderError(ValueError):
     pass
 
 
+class TempMailProviderError(RuntimeError):
+    """Raised when a remote temp mail provider request fails (network/HTTP/payload)."""
+
+
 class TempMailboxNotFoundError(ValueError):
     pass
 

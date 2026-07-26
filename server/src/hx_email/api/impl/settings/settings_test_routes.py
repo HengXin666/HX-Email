@@ -1,4 +1,4 @@
-"""Settings test/validate endpoints (Telegram, Email, Webhook, AI, Cron, CF Worker)."""
+"""Settings test/validate endpoints (Telegram, Email, Webhook, AI, Cron)."""
 
 import json
 import smtplib
@@ -9,7 +9,6 @@ from email.mime.text import MIMEText
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Header, HTTPException, status
-from pydantic import BaseModel
 
 from hx_email.api.dependencies import require_user
 from hx_email.api.schemas import (
@@ -31,12 +30,6 @@ except ImportError:
     _croniter_cls = None
     CroniterBadCronError = ValueError
     HAS_CRONITER = False
-
-
-class CFWorkerSyncRequest(BaseModel):
-    worker_url: str = ""
-    admin_key: str = ""
-    custom_auth: str = ""
 
 
 def _http_error_body(exc: urllib.error.HTTPError) -> str:
@@ -61,18 +54,6 @@ def _json_post(
         opener = urllib.request.build_opener()
     try:
         with opener.open(req, timeout=timeout) as resp:
-            return resp.status, resp.read().decode("utf-8", errors="replace")
-    except urllib.error.HTTPError as exc:
-        return exc.code, _http_error_body(exc)
-
-
-def _json_get(
-    url: str, headers: dict[str, str] | None = None, timeout: int = 15
-) -> tuple[int, str]:
-    """Helper: GET JSON and return (status, body)."""
-    req = urllib.request.Request(url, headers=headers or {})
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.status, resp.read().decode("utf-8", errors="replace")
     except urllib.error.HTTPError as exc:
         return exc.code, _http_error_body(exc)
@@ -255,34 +236,5 @@ def register_settings_test_routes(router: APIRouter, settings: Settings) -> None
             result: dict[str, Any] = json.loads(body_text)
             content: str = result["choices"][0]["message"]["content"]
             return {"success": True, "code": content.strip(), "raw": result}
-        except Exception as exc:
-            return {"success": False, "error": str(exc)}
-
-    @router.post("/settings/cf-worker-sync-domains")
-    def cf_worker_sync_domains(
-        payload: CFWorkerSyncRequest,
-        authorization: Annotated[str | None, Header()] = None,
-    ) -> dict[str, object]:
-        """Fetch domains from a Cloudflare Worker admin endpoint."""
-        require_user(settings, authorization)
-        worker_url: str = payload.worker_url or get_setting(settings, "cf_worker_base_url")
-        admin_key: str = payload.admin_key or get_setting(settings, "cf_worker_admin_key")
-        custom_auth: str = payload.custom_auth or get_setting(settings, "cf_worker_custom_auth")
-        if not worker_url:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="worker_url is required"
-            )
-        headers: dict[str, str] = {}
-        if admin_key:
-            headers["Authorization"] = f"Bearer {admin_key}"
-        if custom_auth:
-            # Worker deployed with PASSWORDS (custom auth) requires this on every request
-            headers["x-custom-auth"] = custom_auth
-        url: str = f"{worker_url.rstrip('/')}/admin/domains"
-        try:
-            _status_code, body = _json_get(url, headers, timeout=15)
-            result: dict[str, Any] = json.loads(body)
-            domains: object = result.get("domains", result)
-            return {"success": True, "domains": domains}
         except Exception as exc:
             return {"success": False, "error": str(exc)}

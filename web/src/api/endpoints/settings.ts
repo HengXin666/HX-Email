@@ -40,7 +40,7 @@ export const settingsApi = {
     }),
 
   syncCFDomains: (data: Record<string, unknown>) =>
-    request<{ success: boolean; domains: string[]; message: string }>(
+    request<{ success: boolean; domains?: string[]; default_domain?: string; message?: string }>(
       "/settings/cf-worker-sync-domains",
       { method: "POST", body: JSON.stringify(data) },
     ),
