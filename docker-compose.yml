@@ -1,0 +1,55 @@
+# HX-Email 一键部署 (Linux 推荐, host 网络模式)
+#
+#   docker compose up -d --build
+#   打开 http://127.0.0.1:8080  (默认账号 admin / admin, 生产环境请先改 .env)
+#
+# 为什么用 host 网络: 系统里的代理 (分组代理 / Telegram 代理) 经常填
+# 127.0.0.1:7890 这类"宿主机本地代理" (Clash / V2Ray 等)。桥接网络下容器内的
+# 127.0.0.1 指向容器自身, 这类代理会全部失效; host 网络让容器与宿主机共享
+# 网络栈, 127.0.0.1:xxx 直接可用, 无需改任何配置。
+#
+# 端口/账号可在 .env 中覆盖 (参考 .env.example):
+#   HX_EMAIL_HTTP_PORT     Web 界面端口 (默认 8080)
+#   HX_EMAIL_BACKEND_PORT  后端端口, 仅监听 127.0.0.1 (默认 18090)
+#
+# Mac / Windows (Docker Desktop 不支持 host 网络的旧版本) 请改用:
+#   docker compose -f docker-compose.bridge.yml up -d --build
+
+name: hx-email
+
+services:
+  backend:
+    build: ./server
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      HX_EMAIL_DATA_DIR: /data
+      HX_EMAIL_ADMIN_USERNAME: ${HX_EMAIL_ADMIN_USERNAME:-admin}
+      HX_EMAIL_ADMIN_PASSWORD: ${HX_EMAIL_ADMIN_PASSWORD:-admin}
+      HX_EMAIL_SECRET_KEY: ${HX_EMAIL_SECRET_KEY:-}
+      # host 网络下后端只监听回环, 避免绕过 nginx 暴露到局域网
+      HX_EMAIL_BIND_HOST: 127.0.0.1
+      HX_EMAIL_BACKEND_PORT: ${HX_EMAIL_BACKEND_PORT:-18090}
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import os,urllib.request; urllib.request.urlopen("http://127.0.0.1:"+os.environ.get("HX_EMAIL_BACKEND_PORT","18090")+"/healthz")
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  frontend:
+    build: ./web
+    network_mode: host
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      LISTEN_PORT: ${HX_EMAIL_HTTP_PORT:-8080}
+      API_TARGET: http://127.0.0.1:${HX_EMAIL_BACKEND_PORT:-18090}

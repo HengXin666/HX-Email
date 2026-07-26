@@ -1,0 +1,8 @@
+node_modules/
+dist/
+e2e/
+playwright-report/
+test-results/
+*.tsbuildinfo
+Dockerfile
+.dockerignore

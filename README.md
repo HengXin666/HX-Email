@@ -87,6 +87,36 @@ The frontend uses React + TypeScript + Tailwind and starts in dark mode. Its
 entry screen follows the login-card direction from `ref/HX-ANiMe` while keeping
 the task-1 scope to a usable route shell.
 
+## Docker 一键部署
+
+Linux (推荐, host 网络模式):
+
+```bash
+docker compose up -d --build
+```
+
+打开 `http://127.0.0.1:8080`,默认账号 `admin` / `admin`(生产环境请先在
+`.env` 中修改 `HX_EMAIL_ADMIN_*` 与 `HX_EMAIL_SECRET_KEY`)。
+
+**代理兼容说明**:系统中的分组代理 / Telegram 代理经常填
+`http://127.0.0.1:7890` 这类宿主机本地代理(Clash / V2Ray 等)。默认
+compose 使用 host 网络模式,容器与宿主机共享网络栈,这类代理填写
+`127.0.0.1:xxx` 可直接生效。后端仅监听 `127.0.0.1`,只有 nginx 前端
+(`HX_EMAIL_HTTP_PORT`,默认 8080)对外暴露。
+
+Mac / Windows(Docker Desktop)使用桥接版:
+
+```bash
+docker compose -f docker-compose.bridge.yml up -d --build
+```
+
+桥接模式下容器内的 `127.0.0.1` 指向容器自身,宿主机代理请改填
+`http://host.docker.internal:7890`(compose 已通过 `host-gateway` 映射)。
+
+数据(SQLite 与静态图片)持久化在仓库根目录 `./data`,与本地开发共用同一
+目录;备份即拷贝该目录。端口可通过 `.env` 中的 `HX_EMAIL_HTTP_PORT` /
+`HX_EMAIL_BACKEND_PORT` 覆盖。
+
 ## Whole Repo Checks
 
 ```bash
