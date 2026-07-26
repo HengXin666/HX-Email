@@ -1,10 +1,15 @@
-import pytest
 from fastapi.testclient import TestClient
 from hx_email.app import create_app
 from hx_email.config import Settings
 from hx_email.database import migrate
 
-LEGACY_CONTRACT_REASON: str = "Legacy API contract drift baselined during quality-gate adoption"
+
+class FakeMailboxProvider:
+    def __init__(self, messages):
+        self.messages = messages
+
+    def read_messages(self, email_account):
+        return self.messages
 
 
 def login_admin(client: TestClient) -> dict[str, str]:
@@ -27,7 +32,6 @@ def create_account(client: TestClient, headers: dict[str, str], primary: str, al
     ).json()
 
 
-@pytest.mark.xfail(reason=LEGACY_CONTRACT_REASON, strict=True)
 def test_workbench_filters_usable_emails_by_kind_group_tag_keyword_and_paginates(tmp_path):
     settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
     migrate(settings)
@@ -86,7 +90,12 @@ def test_workbench_filters_usable_emails_by_kind_group_tag_keyword_and_paginates
                 "label": "Campaign alias",
                 "kind": "alias",
                 "status": "active",
-                "group": {"id": group["id"], "name": "注册用途", "color": "#58a6ff"},
+                "group": {
+                    "id": group["id"],
+                    "name": "注册用途",
+                    "color": "#58a6ff",
+                    "proxy_url": "",
+                },
                 "tags": [{"id": tag["id"], "name": "验证码", "color": "#238636"}],
                 "platform_binding_count": 0,
             }
@@ -163,11 +172,19 @@ def test_workbench_filters_are_isolated_to_current_user(tmp_path):
     assert bob_response.json()["usable_emails"] == []
 
 
-@pytest.mark.xfail(reason=LEGACY_CONTRACT_REASON, strict=True)
 def test_workbench_overview_counts_current_workspace_resources(tmp_path):
     settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
     migrate(settings)
-    client = TestClient(create_app(settings))
+    mailbox = FakeMailboxProvider(
+        [
+            {
+                "recipient_address": "owner@example.com",
+                "subject": "Verification",
+                "body": "Your verification code is 381927.",
+            }
+        ]
+    )
+    client = TestClient(create_app(settings, mailbox_provider=mailbox))
     headers = login_admin(client)
 
     account = create_account(client, headers, "owner@example.com", ["alias@example.com"])
