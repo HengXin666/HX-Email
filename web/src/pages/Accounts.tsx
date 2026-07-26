@@ -308,12 +308,13 @@ const EditGroupModal: React.FC<{
   onUpdate: (id: number, name: string, color: string, proxy_url?: string) => Promise<any>;
   onDelete: (id: number) => Promise<any>;
 }> = ({ groupId, onClose, onUpdate, onDelete }) => {
-  const { groups } = useApp();
+  const { groups, refreshGroups } = useApp();
   const { toast } = useToast();
   const g = groups.find((x) => x.id === groupId);
   const [name, setName] = useState(g?.name || "");
   const [color, setColor] = useState(g?.color || COLORS[0]);
   const [proxyUrl, setProxyUrl] = useState(g?.proxy_url || "");
+  const [notifyEnabled, setNotifyEnabled] = useState(g?.notify_enabled !== false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [testLoading, setTestLoading] = useState(false);
@@ -327,6 +328,7 @@ const EditGroupModal: React.FC<{
       setName(current.name);
       setColor(current.color);
       setProxyUrl(current.proxy_url || "");
+      setNotifyEnabled(current.notify_enabled !== false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupId]);
@@ -354,6 +356,19 @@ const EditGroupModal: React.FC<{
     } finally {
       setDeleting(false);
       setShowDeleteConfirm(false);
+    }
+  };
+
+  const handleGroupNotifyToggle = async (value: boolean): Promise<void> => {
+    if (!g) return;
+    setNotifyEnabled(value);
+    try {
+      await api.toggleGroupNotify(g.id, value);
+      await refreshGroups();
+      toast(value ? "该分组的浏览器通知已开启" : "该分组的浏览器通知已静音", "success");
+    } catch (err: any) {
+      setNotifyEnabled(!value);
+      toast(err.message, "error");
     }
   };
 
@@ -443,6 +458,11 @@ const EditGroupModal: React.FC<{
               </div>
             )}
           </div>
+          <Checkbox
+            label="新邮件浏览器通知（组内所有邮箱）"
+            checked={notifyEnabled}
+            onChange={(value: boolean) => void handleGroupNotifyToggle(value)}
+          />
         </div>
       </Modal>
 
@@ -2383,6 +2403,8 @@ const EmailSettingsModal: React.FC<{
   const [credentialAccount, setCredentialAccount] = useState<EmailAccount | null>(null);
   // Account remark (多行备注)
   const [remark, setRemark] = useState("");
+  // 浏览器通知
+  const [notifyEnabled, setNotifyEnabled] = useState(true);
   // 邮箱池
   const [inPool, setInPool] = useState(false);
   const [initialInPool, setInitialInPool] = useState(false);
@@ -2412,6 +2434,7 @@ const EmailSettingsModal: React.FC<{
       setShowPwd(false);
       setRemark("");
       setNewTagName("");
+      setNotifyEnabled(email.notify_enabled !== false);
     }
   }, [email]);
 
@@ -2562,6 +2585,19 @@ const EmailSettingsModal: React.FC<{
     );
   };
 
+  const handleEmailNotifyToggle = async (value: boolean): Promise<void> => {
+    if (!email) return;
+    setNotifyEnabled(value);
+    try {
+      await api.toggleEmailNotify(email.id, value);
+      await refreshEmails();
+      toast(value ? "该邮箱的浏览器通知已开启" : "该邮箱的浏览器通知已静音", "success");
+    } catch (err: any) {
+      setNotifyEnabled(!value);
+      toast(err.message, "error");
+    }
+  };
+
   const isOutlook = settingsAccount?.provider === "outlook";
   const isGmail = settingsAccount?.provider === "gmail";
 
@@ -2689,6 +2725,13 @@ const EmailSettingsModal: React.FC<{
               ) : (
                 <div className="text-sm text-gh-text-secondary">无关联账户，不能加入邮箱池</div>
               )}
+
+              {/* 浏览器通知 */}
+              <Checkbox
+                label="新邮件浏览器通知"
+                checked={notifyEnabled}
+                onChange={(value: boolean) => void handleEmailNotifyToggle(value)}
+              />
 
               {/* 别名邮箱 */}
               <div className="pt-3 border-t border-gh-border">

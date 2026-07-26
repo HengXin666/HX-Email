@@ -14,6 +14,7 @@ from hx_email.api.impl.external import (
 from hx_email.api.impl.mail.pool import register_pool_admin_routes
 from hx_email.api.impl.mail_routes import register_mail_routes
 from hx_email.api.impl.overview import (
+    register_notification_routes,
     register_overview_refresh_routes,
     register_overview_routes,
 )
@@ -60,6 +61,7 @@ def register_routes(
     register_temp_mail_routes(api, settings, temp_mail_providers)
     register_overview_routes(api, settings)
     register_overview_refresh_routes(api, settings)
+    register_notification_routes(api, settings)
     register_settings_routes(api, settings)
     register_settings_test_routes(api, settings)
     register_data_transfer_routes(api, settings)

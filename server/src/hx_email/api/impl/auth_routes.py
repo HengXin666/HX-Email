@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Header, HTTPException, status
 
 from hx_email.api.dependencies import bearer_token, require_admin, require_user
-from hx_email.api.schemas import Credentials, RegistrationSettingUpdate
+from hx_email.api.schemas import Credentials, EnabledToggle
 from hx_email.config import Settings
 from hx_email.database import connect
 from hx_email.server.auth import (
@@ -78,7 +78,7 @@ def register_auth_routes(router: APIRouter, settings: Settings) -> None:
 
     @router.put("/admin/settings/registration")
     def update_registration_setting(
-        payload: RegistrationSettingUpdate,
+        payload: EnabledToggle,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, bool]:
         require_admin(settings, authorization)

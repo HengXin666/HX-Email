@@ -8,7 +8,7 @@ class Credentials(BaseModel):
     password: str
 
 
-class RegistrationSettingUpdate(BaseModel):
+class EnabledToggle(BaseModel):
     enabled: bool
 
 

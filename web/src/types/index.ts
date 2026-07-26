@@ -23,6 +23,7 @@ export type {
 export type { Group, Tag } from "./group";
 export type {
   EmailMessagesPage,
+  MailNotification,
   StoredEmailMessage,
   TempMessage,
   VerificationMatch,

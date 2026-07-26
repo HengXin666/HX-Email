@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import React from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Sidebar } from "./components/layout";
+import { useBrowserNotifications } from "./hooks/useBrowserNotifications";
 import { Accounts } from "./pages/Accounts";
 import { ApiAccess } from "./pages/ApiAccess";
 import { AuditLog } from "./pages/AuditLog";
@@ -45,6 +46,7 @@ const RequireAuth: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
 const App: React.FC = () => {
   const { token } = useApp();
+  useBrowserNotifications(!!token);
 
   return (
     <Routes>

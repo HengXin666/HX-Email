@@ -39,6 +39,12 @@ export const emailsApi = {
   deleteUsableEmail: (id: number) =>
     request<{ success: boolean; message: string }>(`/usable-emails/${id}`, { method: "DELETE" }),
 
+  toggleEmailNotify: (id: number, enabled: boolean) =>
+    request<{ id: number; notify_enabled: boolean }>(`/usable-emails/${id}/notify`, {
+      method: "PUT",
+      body: JSON.stringify({ enabled }),
+    }),
+
   activateUsableEmail: (id: number) =>
     request<{ usable_email: UsableEmail }>(`/usable-emails/${id}/activate`, { method: "POST" }),
 

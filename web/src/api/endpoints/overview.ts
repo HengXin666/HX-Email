@@ -1,5 +1,6 @@
 import type {
   ActivityStats,
+  MailNotification,
   Overview,
   OverviewSummary,
   PoolStats,
@@ -17,6 +18,11 @@ export const overviewApi = {
   getPoolStats: () => request<PoolStats>("/overview/pool-stats"),
 
   getActivityStats: () => request<ActivityStats>("/overview/activity"),
+
+  pollNotifications: (sinceId: number) =>
+    request<{ latest_id: number; notifications: MailNotification[] }>(
+      `/notifications?since_id=${sinceId}`,
+    ),
 
   exportData: () => request<unknown>("/data/export"),
 

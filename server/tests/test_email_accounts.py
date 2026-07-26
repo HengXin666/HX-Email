@@ -68,6 +68,7 @@ def test_adding_email_account_creates_primary_usable_email_in_current_workspace(
             "status": "active",
             "group": None,
             "email_account_id": alice_create.json()["id"],
+            "notify_enabled": True,
             "last_refresh_at": None,
         }
     ]
@@ -80,6 +81,7 @@ def test_adding_email_account_creates_primary_usable_email_in_current_workspace(
             "status": "active",
             "group": None,
             "email_account_id": bob_create.json()["id"],
+            "notify_enabled": True,
             "last_refresh_at": None,
         }
     ]

@@ -28,6 +28,7 @@ def serialize_usable_email(usable_email: UsableEmail) -> dict[str, object]:
         "status": usable_email.status,
         "group": serialize_group(usable_email.group),
         "email_account_id": usable_email.email_account_id,
+        "notify_enabled": usable_email.notify_enabled,
     }
 
 
@@ -39,6 +40,8 @@ def serialize_group(group: Group | GroupInfo | None) -> dict[str, object] | None
         "name": group.name,
         "color": group.color,
         "proxy_url": group.proxy_url,
+        # GroupInfo (joined-row projection) has no notify flag; default to on
+        "notify_enabled": getattr(group, "notify_enabled", True),
     }
 
 

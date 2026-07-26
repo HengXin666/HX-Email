@@ -95,6 +95,7 @@ def test_workbench_filters_usable_emails_by_kind_group_tag_keyword_and_paginates
                     "name": "注册用途",
                     "color": "#58a6ff",
                     "proxy_url": "",
+                    "notify_enabled": True,
                 },
                 "tags": [{"id": tag["id"], "name": "验证码", "color": "#238636"}],
                 "platform_binding_count": 0,

@@ -11,6 +11,7 @@ class Group:
     name: str
     color: str
     proxy_url: str = ""
+    notify_enabled: bool = True
 
 
 @dataclass(frozen=True)
@@ -45,11 +46,18 @@ def create_tag(settings: Settings, user_id: int, name: str, color: str) -> Tag:
 def list_groups(settings: Settings, user_id: int) -> list[Group]:
     with connect(settings) as connection:
         rows = connection.execute(
-            "SELECT id, name, color, proxy_url FROM groups WHERE user_id = ? ORDER BY id",
+            "SELECT id, name, color, proxy_url, notify_enabled FROM groups"
+            " WHERE user_id = ? ORDER BY id",
             (user_id,),
         ).fetchall()
     return [
-        Group(id=row["id"], name=row["name"], color=row["color"], proxy_url=row["proxy_url"] or "")
+        Group(
+            id=row["id"],
+            name=row["name"],
+            color=row["color"],
+            proxy_url=row["proxy_url"] or "",
+            notify_enabled=bool(row["notify_enabled"]),
+        )
         for row in rows
     ]
 

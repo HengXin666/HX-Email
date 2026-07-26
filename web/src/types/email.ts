@@ -15,6 +15,7 @@ export interface UsableEmail {
   updated_at?: string;
   email_account_id?: number | null;
   provider?: string;
+  notify_enabled?: boolean;
 }
 
 export interface WorkbenchEmail extends UsableEmail {

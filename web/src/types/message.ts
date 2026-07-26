@@ -36,3 +36,13 @@ export interface VerificationMatch {
 export interface VerificationReading {
   matches: VerificationMatch[];
 }
+
+export interface MailNotification {
+  id: number;
+  usable_email_id: number;
+  address: string;
+  from_address: string;
+  subject: string;
+  verification_code: string | null;
+  received_at: string;
+}

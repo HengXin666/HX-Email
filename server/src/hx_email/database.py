@@ -9,6 +9,32 @@ def column_exists(connection: sqlite3.Connection, table: str, column: str) -> bo
     return any(row[1] == column for row in connection.execute(f"PRAGMA table_info({table})"))
 
 
+# Columns added after a table's initial CREATE, applied in order once all tables exist
+COLUMN_MIGRATIONS: tuple[tuple[str, str, str], ...] = (
+    ("usable_emails", "email_account_id", "INTEGER REFERENCES email_accounts(id)"),
+    ("usable_emails", "kind", "TEXT NOT NULL DEFAULT 'custom'"),
+    ("usable_emails", "status", "TEXT NOT NULL DEFAULT 'active'"),
+    ("usable_emails", "group_id", "INTEGER REFERENCES groups(id)"),
+    ("usable_emails", "notify_enabled", "INTEGER NOT NULL DEFAULT 1"),
+    ("email_accounts", "imap_password", "TEXT NOT NULL DEFAULT ''"),
+    ("email_accounts", "client_id", "TEXT NOT NULL DEFAULT ''"),
+    ("email_accounts", "refresh_token", "TEXT NOT NULL DEFAULT ''"),
+    ("email_accounts", "last_refresh_at", "TEXT"),
+    ("email_accounts", "group_id", "INTEGER REFERENCES groups(id)"),
+    ("email_accounts", "remark", "TEXT NOT NULL DEFAULT ''"),
+    ("email_accounts", "telegram_enabled", "INTEGER NOT NULL DEFAULT 1"),
+    ("groups", "proxy_url", "TEXT NOT NULL DEFAULT ''"),
+    ("groups", "notify_enabled", "INTEGER NOT NULL DEFAULT 1"),
+    ("fetched_messages", "message_id", "TEXT NOT NULL DEFAULT ''"),
+)
+
+
+def apply_column_migrations(connection: sqlite3.Connection) -> None:
+    for table, column, definition in COLUMN_MIGRATIONS:
+        if not column_exists(connection, table, column):
+            connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
 def connect(settings: Settings) -> sqlite3.Connection:
     connection = sqlite3.connect(settings.database_path, timeout=30)
     connection.row_factory = sqlite3.Row
@@ -61,25 +87,6 @@ def migrate(settings: Settings) -> Path:
             )
             """
         )
-        if not column_exists(connection, "usable_emails", "email_account_id"):
-            connection.execute(
-                """
-                ALTER TABLE usable_emails
-                ADD COLUMN email_account_id INTEGER REFERENCES email_accounts(id)
-                """
-            )
-        if not column_exists(connection, "usable_emails", "kind"):
-            connection.execute(
-                "ALTER TABLE usable_emails ADD COLUMN kind TEXT NOT NULL DEFAULT 'custom'"
-            )
-        if not column_exists(connection, "usable_emails", "status"):
-            connection.execute(
-                "ALTER TABLE usable_emails ADD COLUMN status TEXT NOT NULL DEFAULT 'active'"
-            )
-        if not column_exists(connection, "usable_emails", "group_id"):
-            connection.execute(
-                "ALTER TABLE usable_emails ADD COLUMN group_id INTEGER REFERENCES groups(id)"
-            )
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS email_accounts (
@@ -100,20 +107,6 @@ def migrate(settings: Settings) -> Path:
             )
             """
         )
-        if not column_exists(connection, "email_accounts", "imap_password"):
-            connection.execute(
-                "ALTER TABLE email_accounts ADD COLUMN imap_password TEXT NOT NULL DEFAULT ''"
-            )
-        if not column_exists(connection, "email_accounts", "client_id"):
-            connection.execute(
-                "ALTER TABLE email_accounts ADD COLUMN client_id TEXT NOT NULL DEFAULT ''"
-            )
-        if not column_exists(connection, "email_accounts", "refresh_token"):
-            connection.execute(
-                "ALTER TABLE email_accounts ADD COLUMN refresh_token TEXT NOT NULL DEFAULT ''"
-            )
-        if not column_exists(connection, "email_accounts", "last_refresh_at"):
-            connection.execute("ALTER TABLE email_accounts ADD COLUMN last_refresh_at TEXT")
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS groups (
@@ -230,18 +223,6 @@ def migrate(settings: Settings) -> Path:
             )
             """
         )
-        if not column_exists(connection, "email_accounts", "group_id"):
-            connection.execute(
-                "ALTER TABLE email_accounts ADD COLUMN group_id INTEGER REFERENCES groups(id)"
-            )
-        if not column_exists(connection, "email_accounts", "remark"):
-            connection.execute(
-                "ALTER TABLE email_accounts ADD COLUMN remark TEXT NOT NULL DEFAULT ''"
-            )
-        if not column_exists(connection, "email_accounts", "telegram_enabled"):
-            connection.execute(
-                "ALTER TABLE email_accounts ADD COLUMN telegram_enabled INTEGER NOT NULL DEFAULT 1"
-            )
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS audit_logs (
@@ -270,10 +251,7 @@ def migrate(settings: Settings) -> Path:
             )
             """
         )
-        if not column_exists(connection, "fetched_messages", "message_id"):
-            connection.execute(
-                "ALTER TABLE fetched_messages ADD COLUMN message_id TEXT NOT NULL DEFAULT ''"
-            )
+        apply_column_migrations(connection)
         connection.execute(
             """
             CREATE UNIQUE INDEX IF NOT EXISTS idx_fetched_msg_dedup
@@ -293,8 +271,6 @@ def migrate(settings: Settings) -> Path:
             """,
             (settings.admin_username, hash_password(settings.admin_password)),
         )
-        if not column_exists(connection, "groups", "proxy_url"):
-            connection.execute("ALTER TABLE groups ADD COLUMN proxy_url TEXT NOT NULL DEFAULT ''")
-        connection.execute("PRAGMA user_version = 8")
+        connection.execute("PRAGMA user_version = 9")
         migrate_stored_secrets(settings, connection)
     return database_path

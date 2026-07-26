@@ -55,6 +55,7 @@ def test_users_only_see_usable_emails_in_their_own_workspace(tmp_path):
                 "status": "active",
                 "group": None,
                 "email_account_id": None,
+                "notify_enabled": True,
                 "last_refresh_at": None,
             }
         ]
@@ -69,6 +70,7 @@ def test_users_only_see_usable_emails_in_their_own_workspace(tmp_path):
                 "status": "active",
                 "group": None,
                 "email_account_id": None,
+                "notify_enabled": True,
                 "last_refresh_at": None,
             }
         ]

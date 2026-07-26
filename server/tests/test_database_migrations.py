@@ -43,7 +43,7 @@ def test_migrate_creates_sqlite_database_in_configured_data_dir(tmp_path):
             row[1] for row in connection.execute("PRAGMA table_info(fetched_messages)").fetchall()
         }
 
-    assert version == 8
+    assert version == 9
     assert registration_enabled == "false"
     assert admin == (settings.admin_username, 1)
     assert {"provider", "primary_address", "status"}.issubset(email_accounts_columns)

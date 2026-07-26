@@ -44,7 +44,8 @@ def export_core_data(settings: Settings, user_id: int) -> dict[str, object]:
         usable_emails = rows(
             connection,
             """
-            SELECT id, email_account_id, address, label, kind, status, group_id
+            SELECT id, email_account_id, address, label, kind, status, group_id,
+                   notify_enabled
             FROM usable_emails
             WHERE user_id = ?
             ORDER BY id
@@ -53,7 +54,8 @@ def export_core_data(settings: Settings, user_id: int) -> dict[str, object]:
         )
         groups = rows(
             connection,
-            "SELECT id, name, color, proxy_url FROM groups WHERE user_id = ? ORDER BY id",
+            "SELECT id, name, color, proxy_url, notify_enabled FROM groups"
+            " WHERE user_id = ? ORDER BY id",
             user_id,
         )
         tags = rows(
@@ -125,8 +127,15 @@ def import_groups(
     ids: dict[int, int] = {}
     for group in payload.get("groups", []):
         cursor = connection.execute(
-            "INSERT INTO groups (user_id, name, color, proxy_url) VALUES (?, ?, ?, ?)",
-            (user_id, group["name"], group.get("color", "#58a6ff"), group.get("proxy_url", "")),
+            "INSERT INTO groups (user_id, name, color, proxy_url, notify_enabled)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (
+                user_id,
+                group["name"],
+                group.get("color", "#58a6ff"),
+                group.get("proxy_url", ""),
+                int(group.get("notify_enabled", 1)),
+            ),
         )
         ids[int(group["id"])] = inserted_id(cursor)
     return ids
@@ -200,9 +209,10 @@ def import_usable_emails(
         cursor = connection.execute(
             """
             INSERT INTO usable_emails (
-                user_id, email_account_id, address, label, kind, status, active, group_id
+                user_id, email_account_id, address, label, kind, status, active, group_id,
+                notify_enabled
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 user_id,
@@ -213,6 +223,7 @@ def import_usable_emails(
                 email.get("status", "active"),
                 1 if email.get("status", "active") == "active" else 0,
                 group_ids.get(int(old_group_id)) if old_group_id is not None else None,
+                int(email.get("notify_enabled", 1)),
             ),
         )
         ids[int(email["id"])] = inserted_id(cursor)

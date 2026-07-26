@@ -3,6 +3,7 @@ export interface Group {
   name: string;
   color: string;
   proxy_url?: string;
+  notify_enabled?: boolean;
   count?: number;
 }
 

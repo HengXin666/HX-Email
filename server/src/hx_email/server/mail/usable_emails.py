@@ -25,6 +25,7 @@ class UsableEmail:
     status: str = "active"
     group: GroupInfo | None = None
     email_account_id: int | None = None
+    notify_enabled: bool = True
 
 
 def group_info_from_row(row: Mapping[str, Any]) -> GroupInfo | None:
@@ -73,7 +74,7 @@ def list_usable_emails(settings: Settings, user_id: int) -> list[UsableEmail]:
         rows = connection.execute(
             """
             SELECT ue.id, ue.address, ue.label, ue.kind, ue.status,
-                   ue.email_account_id,
+                   ue.email_account_id, ue.notify_enabled,
                    ue.group_id, g.name AS group_name, g.color AS group_color,
                    g.proxy_url AS group_proxy_url
             FROM usable_emails ue
@@ -93,6 +94,7 @@ def list_usable_emails(settings: Settings, user_id: int) -> list[UsableEmail]:
             status=row["status"],
             group=group_info_from_row(row),
             email_account_id=row["email_account_id"],
+            notify_enabled=bool(row["notify_enabled"]),
         )
         for row in rows
     ]
@@ -103,6 +105,7 @@ def get_usable_email(settings: Settings, user_id: int, usable_email_id: int) -> 
         row = connection.execute(
             """
             SELECT ue.id, ue.address, ue.label, ue.kind, ue.status,
+                   ue.notify_enabled,
                    ue.group_id, g.name AS group_name, g.color AS group_color,
                    g.proxy_url AS group_proxy_url
             FROM usable_emails ue
@@ -122,6 +125,7 @@ def get_usable_email(settings: Settings, user_id: int, usable_email_id: int) -> 
         kind=row["kind"],
         status=row["status"],
         group=group_info_from_row(row),
+        notify_enabled=bool(row["notify_enabled"]),
     )
 
 

@@ -138,6 +138,7 @@ def register_workspace_routes(router: APIRouter, settings: Settings) -> None:
                 "name": group.name,
                 "color": group.color,
                 "proxy_url": group.proxy_url,
+                "notify_enabled": group.notify_enabled,
             }
             for group in list_groups(settings, user.id)
         ]

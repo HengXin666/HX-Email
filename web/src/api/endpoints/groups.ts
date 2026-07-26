@@ -16,6 +16,12 @@ export const groupsApi = {
 
   deleteGroup: (id: number) => request<void>(`/groups/${id}`, { method: "DELETE" }),
 
+  toggleGroupNotify: (id: number, enabled: boolean) =>
+    request<{ id: number; notify_enabled: boolean }>(`/groups/${id}/notify`, {
+      method: "PUT",
+      body: JSON.stringify({ enabled }),
+    }),
+
   listGroups: () => request<Group[]>("/groups"),
 
   testProxy: (proxy_url: string) =>

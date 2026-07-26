@@ -27,6 +27,7 @@ import {
 import { Topbar } from "../components/layout";
 import { Button, Card, Input, Select } from "../components/ui/Primitives";
 import { useToast } from "../components/ui/Toast";
+import { isBrowserNotifyEnabled, setBrowserNotifyEnabled } from "../hooks/useBrowserNotifications";
 import { useApp } from "../store/AppContext";
 import { copyToClipboard } from "../utils/clipboard";
 import { CRON_PRESETS, maskValue } from "./impl/settings_api";
@@ -789,6 +790,37 @@ const ToggleRow: React.FC<{
   </div>
 );
 
+const BrowserNotifyCard: React.FC<{ toast: TabProps["toast"] }> = ({ toast }) => {
+  const [enabled, setEnabled] = useState(isBrowserNotifyEnabled());
+
+  const handleToggle = async (value: boolean): Promise<void> => {
+    if (value && typeof Notification !== "undefined" && Notification.permission !== "granted") {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        toast("浏览器通知权限被拒绝，请在浏览器地址栏设置中允许本站通知", "error");
+        return;
+      }
+    }
+    setBrowserNotifyEnabled(value);
+    setEnabled(value);
+    if (value) toast("浏览器通知已开启，新邮件将推送系统通知", "success");
+  };
+
+  return (
+    <Card className="p-5">
+      <SectionHeader>浏览器通知</SectionHeader>
+      <div className="space-y-3 max-w-lg">
+        <ToggleRow
+          label="新邮件浏览器推送"
+          desc="任意邮箱收到新邮件时推送系统通知（含验证码）；可在分组或邮箱设置中单独静音"
+          enabled={enabled}
+          onChange={(value) => void handleToggle(value)}
+        />
+      </div>
+    </Card>
+  );
+};
+
 /* ═══════════════════════════════════════════
    Tab 4: 自动化
    ═══════════════════════════════════════════ */
@@ -1074,6 +1106,9 @@ const AutomationTab: React.FC<TabProps> = ({ settings, setSetting, toast }) => {
           </div>
         </div>
       </Card>
+
+      {/* Browser Notification */}
+      <BrowserNotifyCard toast={toast} />
 
       {/* Email Notification */}
       <Card className="p-5">
