@@ -50,6 +50,7 @@ import type {
 } from "../types";
 import { copyToClipboard } from "../utils/clipboard";
 import { formatDateTimeFull, formatRelativeTime } from "../utils/time";
+import { waitForFreshCode } from "../utils/verification";
 import { GoogleOAuthControls } from "./impl/GoogleOAuthControls";
 import { GoogleOAuthCreatePath } from "./impl/GoogleOAuthCreatePath";
 import { PlatformLogo } from "./impl/PlatformLogo";
@@ -692,10 +693,16 @@ const EmailCard: React.FC<{
     : "";
   const [loadingCode, setLoadingCode] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const lastCodeFetchRef = React.useRef<{ time: number; codes: Set<string> }>({
-    time: 0,
-    codes: new Set(),
-  });
+  // Codes already shown to the user this session — anything else counts as fresh.
+  const seenCodesRef = React.useRef<Set<string>>(new Set());
+  const codeWaitGenerationRef = React.useRef(0);
+
+  useEffect(() => {
+    return () => {
+      // Cancel any in-flight fresh-code wait when the card unmounts.
+      codeWaitGenerationRef.current += 1;
+    };
+  }, []);
 
   // 三种操作的确认弹窗状态
   type ActionMode = "activate" | "deactivate" | "delete" | null;
@@ -752,7 +759,7 @@ const EmailCard: React.FC<{
     type: "success" | "info" = "success",
   ): Promise<void> => {
     const copied = await copyToClipboard(code);
-    toast(copied ? successMessage : "验证码复制失败，请手动复制", copied ? type : "error");
+    toast(copied ? successMessage : `验证码 ${code} 复制失败，请手动复制`, copied ? type : "error");
   };
 
   const loadVerificationMatches = async (): Promise<VerificationMatch[]> => {
@@ -776,59 +783,63 @@ const EmailCard: React.FC<{
     return newestHistoryMatches(history.matches);
   };
 
+  const loadBaselineCodes = async (): Promise<Set<string>> => {
+    const baseline = new Set(seenCodesRef.current);
+    if (email.kind !== "temp") {
+      // Cached history only — must NOT trigger a live fetch, otherwise a code
+      // that just arrived would land in the baseline and never count as fresh.
+      const history = await api.verificationHistory(email.id);
+      for (const historyMatch of history.matches) {
+        if (historyMatch.code) baseline.add(historyMatch.code);
+      }
+    }
+    return baseline;
+  };
+
   const handleGetCode = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    const generation = ++codeWaitGenerationRef.current;
     setLoadingCode(true);
     try {
-      const matches = await loadVerificationMatches();
-      const now = Date.now();
-      const prev = lastCodeFetchRef.current;
-      const isReFetch = prev.time > 0;
-      const secondsSinceLast = isReFetch ? (now - prev.time) / 1000 : 0;
-
-      if (isReFetch && secondsSinceLast > 30) {
-        // User is probably waiting for a NEW verification email — find fresh codes
-        const freshMatches = matches.filter(
-          (match: VerificationMatch) => match.code && !prev.codes.has(match.code),
-        );
-        if (freshMatches.length > 0) {
-          const code = freshMatches[0].code || "";
-          await copyCode(
-            code,
-            `新验证码 ${code} 已复制 (距上次 ${Math.floor(secondsSinceLast)}秒)`,
-          );
-          // Update seen codes
-          freshMatches.forEach((match: VerificationMatch) => {
-            if (match.code) prev.codes.add(match.code);
-          });
-          lastCodeFetchRef.current = { time: now, codes: prev.codes };
-        } else {
-          // No new codes — fall back to first available
-          const match = matches[0];
-          if (match?.code) {
-            await copyCode(match.code, `验证码 ${match.code} 已复制 (暂无新验证码)`, "info");
+      const baselineCodes = await loadBaselineCodes();
+      const outcome = await waitForFreshCode({
+        fetchMatches: loadVerificationMatches,
+        baselineCodes,
+        isCancelled: () => codeWaitGenerationRef.current !== generation,
+        onNoFreshCodeYet: async (fallbackCode: string | null) => {
+          if (fallbackCode) {
+            await copyCode(
+              fallbackCode,
+              `已复制最近验证码 ${fallbackCode} (可能为旧)，正在等待新邮件...`,
+              "info",
+            );
           } else {
-            toast("未找到验证码 (可能邮件尚未到达)", "info");
+            toast("暂未找到验证码，正在等待新邮件...", "info");
           }
-          lastCodeFetchRef.current = { time: now, codes: prev.codes };
-        }
-      } else {
-        // First fetch or quick re-fetch (<30s): return first available code
-        const match = matches[0];
-        if (match?.code) {
-          await copyCode(match.code, `验证码 ${match.code} 已复制`);
-          // Track this code
-          prev.codes.add(match.code);
-          lastCodeFetchRef.current = { time: now, codes: prev.codes };
-        } else {
-          toast("未找到验证码", "info");
-          lastCodeFetchRef.current = { time: now, codes: prev.codes };
-        }
+        },
+      });
+      outcome.seenCodes.forEach((code: string) => seenCodesRef.current.add(code));
+      if (outcome.status === "fresh") {
+        await copyCode(
+          outcome.code,
+          outcome.attempts === 1
+            ? `验证码 ${outcome.code} 已复制`
+            : `新验证码 ${outcome.code} 已复制`,
+        );
+      } else if (outcome.status === "timeout") {
+        toast(
+          outcome.fallbackCode
+            ? "等待结束：未收到新验证码，此前复制的可能是旧验证码"
+            : "等待结束：未收到新邮件，请稍后重试",
+          "info",
+        );
       }
     } catch (err: any) {
       toast(err.message, "error");
     } finally {
-      setLoadingCode(false);
+      if (codeWaitGenerationRef.current === generation) {
+        setLoadingCode(false);
+      }
     }
   };
 
@@ -1005,7 +1016,7 @@ const EmailCard: React.FC<{
               onClick={handleGetCode}
               disabled={loadingCode}
               className="p-1 rounded-md text-gh-text-muted hover:text-gh-accent hover:bg-gh-accent/10 transition-colors disabled:opacity-50"
-              title="获取验证码"
+              title={loadingCode ? "正在等待新邮件..." : "获取验证码"}
             >
               {loadingCode ? (
                 <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
