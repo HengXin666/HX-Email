@@ -23,13 +23,8 @@ def register_overview_routes(router: APIRouter, settings: Settings) -> None:
         require_user(settings, authorization)
         return get_overview_summary(settings)
 
-    @router.get("/overview/verification")
-    def overview_verification(
-        authorization: Annotated[str | None, Header()] = None,
-    ) -> dict[str, object]:
-        require_user(settings, authorization)
-        return get_verification_stats(settings)
-
+    # Canonical paths use the -stats suffix; the short forms are legacy aliases
+    @router.get("/overview/verification", deprecated=True)
     @router.get("/overview/verification-stats")
     def overview_verification_stats(
         authorization: Annotated[str | None, Header()] = None,
@@ -37,13 +32,7 @@ def register_overview_routes(router: APIRouter, settings: Settings) -> None:
         require_user(settings, authorization)
         return get_verification_stats(settings)
 
-    @router.get("/overview/external-api")
-    def overview_external_api(
-        authorization: Annotated[str | None, Header()] = None,
-    ) -> dict[str, object]:
-        require_user(settings, authorization)
-        return get_external_api_stats(settings)
-
+    @router.get("/overview/external-api", deprecated=True)
     @router.get("/overview/external-api-stats")
     def overview_external_api_stats(
         authorization: Annotated[str | None, Header()] = None,
@@ -51,13 +40,7 @@ def register_overview_routes(router: APIRouter, settings: Settings) -> None:
         require_user(settings, authorization)
         return get_external_api_stats(settings)
 
-    @router.get("/overview/pool")
-    def overview_pool(
-        authorization: Annotated[str | None, Header()] = None,
-    ) -> dict[str, object]:
-        require_user(settings, authorization)
-        return get_pool_stats(settings)
-
+    @router.get("/overview/pool", deprecated=True)
     @router.get("/overview/pool-stats")
     def overview_pool_stats(
         authorization: Annotated[str | None, Header()] = None,

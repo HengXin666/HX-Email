@@ -42,7 +42,7 @@ def register_refresh_routes(
         return result
 
     # POST is the canonical method (triggers refreshes); GET kept for legacy clients
-    @router.get("/email-accounts/refresh-all")
+    @router.get("/email-accounts/refresh-all", deprecated=True)
     @router.post("/email-accounts/refresh-all")
     def refresh_all(
         authorization: Annotated[str | None, Header()] = None,
@@ -62,7 +62,7 @@ def register_refresh_routes(
         result = refresh_single_account(settings, user.id, account_id, mailbox_provider)
         return result
 
-    @router.get("/email-accounts/refresh-failed")
+    @router.get("/email-accounts/refresh-failed", deprecated=True)
     @router.post("/email-accounts/refresh-failed")
     def refresh_failed(
         authorization: Annotated[str | None, Header()] = None,
@@ -73,7 +73,7 @@ def register_refresh_routes(
             media_type="text/event-stream",
         )
 
-    @router.get("/email-accounts/trigger-scheduled-refresh")
+    @router.get("/email-accounts/trigger-scheduled-refresh", deprecated=True)
     @router.post("/email-accounts/trigger-scheduled-refresh")
     def trigger_scheduled_refresh(
         authorization: Annotated[str | None, Header()] = None,

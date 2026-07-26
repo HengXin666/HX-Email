@@ -40,6 +40,19 @@ SDK 都能直接对接。
   事件为 JSON: `{"type": "start|progress|complete", ...}`。
 - 版本策略: 破坏性变更才升 `/api/v2`; 新增字段/端点不算破坏。
 
+## 废弃别名 (仍可用, 勿新接)
+
+历史路径保留兼容, 但在 OpenAPI 中标记 `deprecated: true` (Swagger UI 显示删除线),
+新对接一律使用规范路径:
+
+| 废弃别名                                          | 规范路径                                  |
+| ------------------------------------------------- | ----------------------------------------- |
+| `GET /api/v1/email/{addr}/{id}`                   | `GET /api/v1/emails/{addr}/{id}`          |
+| `GET /api/v1/overview/verification`               | `GET /api/v1/overview/verification-stats` |
+| `GET /api/v1/overview/external-api`               | `GET /api/v1/overview/external-api-stats` |
+| `GET /api/v1/overview/pool`                       | `GET /api/v1/overview/pool-stats`         |
+| `GET /api/v1/email-accounts/refresh-all` 等触发类 | 同路径 `POST`                             |
+
 ## 快速上手
 
 ```bash

@@ -79,7 +79,9 @@ def register_email_ops_routes(
             code_source=code_source,
         )
 
-    @router.get("/email/{email_addr}/{message_id}")
+    # Canonical plural path; singular /email/... kept as a deprecated alias
+    @router.get("/email/{email_addr}/{message_id}", deprecated=True)
+    @router.get("/emails/{email_addr}/{message_id}")
     def email_detail(
         email_addr: str,
         message_id: str,
