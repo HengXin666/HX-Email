@@ -41,7 +41,9 @@ def register_refresh_routes(
             )
         return result
 
+    # POST is the canonical method (triggers refreshes); GET kept for legacy clients
     @router.get("/email-accounts/refresh-all")
+    @router.post("/email-accounts/refresh-all")
     def refresh_all(
         authorization: Annotated[str | None, Header()] = None,
     ) -> StreamingResponse:
@@ -72,6 +74,7 @@ def register_refresh_routes(
         )
 
     @router.get("/email-accounts/trigger-scheduled-refresh")
+    @router.post("/email-accounts/trigger-scheduled-refresh")
     def trigger_scheduled_refresh(
         authorization: Annotated[str | None, Header()] = None,
     ) -> StreamingResponse:

@@ -58,23 +58,30 @@ def check_rate_limit(settings: Settings, api_key: str) -> bool:
     return True
 
 
-def require_api_key(settings: Settings, authorization: str | None) -> str:
-    """Extract X-API-Key from header, validate, check rate limit.
+def require_api_key(settings: Settings, credential: str | None) -> str:
+    """Validate an external API key and check its rate limit.
+
+    Accepts the key from the X-API-Key header (standard form) or, for
+    compatibility, from Authorization as either the raw key or "Bearer <key>".
 
     Returns the valid API key string.
     Raises HTTPException(401) if key is missing or invalid.
     Raises HTTPException(429) if rate limit exceeded.
     """
-    api_key: str = (authorization or "").strip()
+    api_key: str = (credential or "").strip()
+    if api_key.lower().startswith("bearer "):
+        api_key = api_key[7:].strip()
     if not api_key:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing X-API-Key header",
+            headers={"WWW-Authenticate": "ApiKey"},
         )
     if not validate_api_key(settings, api_key):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid API key",
+            headers={"WWW-Authenticate": "ApiKey"},
         )
     if not check_rate_limit(settings, api_key):
         raise HTTPException(

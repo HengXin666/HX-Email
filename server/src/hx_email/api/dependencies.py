@@ -7,7 +7,11 @@ from hx_email.server.auth import AuthenticatedUser, authenticate_token
 def bearer_token(authorization: str | None) -> str:
     scheme, _, token = (authorization or "").partition(" ")
     if scheme.lower() != "bearer" or not token:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return token
 
 
@@ -15,7 +19,11 @@ def require_user(settings: Settings, authorization: str | None) -> Authenticated
     token = bearer_token(authorization)
     user = authenticate_token(settings, token)
     if user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return user
 
 

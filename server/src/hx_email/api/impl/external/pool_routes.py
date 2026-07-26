@@ -47,9 +47,10 @@ def register_external_pool_routes(app: FastAPI, settings: Settings) -> None:
     @app.post("/api/external/pool/claim-random")
     def ext_pool_claim_random(
         payload: ExternalPoolClaim,
+        x_api_key: Annotated[str | None, Header()] = None,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_api_key(settings, authorization)
+        require_api_key(settings, x_api_key or authorization)
         _check_pool_enabled(settings)
         result = claim_random(
             settings,
@@ -71,9 +72,10 @@ def register_external_pool_routes(app: FastAPI, settings: Settings) -> None:
     @app.post("/api/external/pool/claim-release")
     def ext_pool_claim_release(
         payload: ExternalPoolRelease,
+        x_api_key: Annotated[str | None, Header()] = None,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_api_key(settings, authorization)
+        require_api_key(settings, x_api_key or authorization)
         _check_pool_enabled(settings)
         result = claim_release(
             settings,
@@ -88,9 +90,10 @@ def register_external_pool_routes(app: FastAPI, settings: Settings) -> None:
     @app.post("/api/external/pool/claim-complete")
     def ext_pool_claim_complete(
         payload: ExternalPoolComplete,
+        x_api_key: Annotated[str | None, Header()] = None,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_api_key(settings, authorization)
+        require_api_key(settings, x_api_key or authorization)
         _check_pool_enabled(settings)
         result = claim_complete(
             settings,
@@ -105,9 +108,10 @@ def register_external_pool_routes(app: FastAPI, settings: Settings) -> None:
 
     @app.get("/api/external/pool/stats")
     def ext_pool_stats(
+        x_api_key: Annotated[str | None, Header()] = None,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_api_key(settings, authorization)
+        require_api_key(settings, x_api_key or authorization)
         _check_pool_enabled(settings)
         result = get_pool_stats(settings)
         return external_response(True, data=result)

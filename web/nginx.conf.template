@@ -24,6 +24,19 @@ server {
         proxy_send_timeout 3600s;
     }
 
+    # OpenAPI spec + interactive docs (Swagger UI / ReDoc)
+    location = /openapi.json {
+        proxy_pass ${API_TARGET};
+    }
+
+    location /docs {
+        proxy_pass ${API_TARGET};
+    }
+
+    location /redoc {
+        proxy_pass ${API_TARGET};
+    }
+
     location = /health {
         proxy_pass ${API_TARGET};
     }

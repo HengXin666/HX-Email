@@ -29,22 +29,25 @@ def external_response(
 def register_external_system_routes(app: FastAPI, settings: Settings) -> None:
     @app.get("/api/external/health")
     def ext_health(
+        x_api_key: Annotated[str | None, Header()] = None,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_api_key(settings, authorization)
+        require_api_key(settings, x_api_key or authorization)
         return external_response(True, data=get_health(settings))
 
     @app.get("/api/external/capabilities")
     def ext_capabilities(
+        x_api_key: Annotated[str | None, Header()] = None,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_api_key(settings, authorization)
+        require_api_key(settings, x_api_key or authorization)
         return external_response(True, data=get_capabilities(settings))
 
     @app.get("/api/external/account-status")
     def ext_account_status(
         email: str = Query(...),
+        x_api_key: Annotated[str | None, Header()] = None,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_api_key(settings, authorization)
+        require_api_key(settings, x_api_key or authorization)
         return external_response(True, data=get_account_status(settings, email))

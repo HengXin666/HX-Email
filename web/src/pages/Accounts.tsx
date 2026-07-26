@@ -3357,7 +3357,8 @@ export const Accounts: React.FC = () => {
     setRefreshProgress(null);
     const url = mode === "all" ? "/email-accounts/refresh-all" : "/email-accounts/refresh-failed";
     try {
-      await streamRefresh(url, undefined, (e: SSERefreshEvent) => {
+      // POST: 触发刷新是有副作用的操作, 不应走 GET
+      await streamRefresh(url, {}, (e: SSERefreshEvent) => {
         setRefreshProgress(e);
         if (e.type === "complete") {
           setRefreshRunning(false);
