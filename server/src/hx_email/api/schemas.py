@@ -185,11 +185,6 @@ class DeleteEmailRequest(BaseModel):
     ids: list[str]
 
 
-class CFWorkerSyncRequest(BaseModel):
-    worker_url: str = ""
-    admin_key: str = ""
-
-
 class AccountUpdate(BaseModel):
     email: str | None = None
     password: str | None = None

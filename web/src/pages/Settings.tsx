@@ -437,7 +437,11 @@ const TempMailTab: React.FC<TabProps> = ({ settings, setSetting, toast }) => {
     setSyncLoading(true);
     setSyncResult(null);
     try {
-      const res = await api.syncCFDomains({ worker_url: workerUrl, admin_key: adminKey });
+      const res = await api.syncCFDomains({
+        worker_url: workerUrl,
+        admin_key: adminKey,
+        custom_auth: settings.cf_worker_custom_auth || "",
+      });
       setSyncResult({ success: res.success, message: res.message });
       if (res.domains?.length) setDomains(res.domains);
       toast(res.message, res.success ? "success" : "error");
@@ -497,6 +501,13 @@ const TempMailTab: React.FC<TabProps> = ({ settings, setSetting, toast }) => {
               type="password"
               value={settings.cf_worker_admin_key || ""}
               onChange={(e) => setSetting("cf_worker_admin_key", e.target.value)}
+            />
+            <Input
+              label="PASSWORDS（Custom Auth 密码，可选）"
+              type="password"
+              value={settings.cf_worker_custom_auth || ""}
+              onChange={(e) => setSetting("cf_worker_custom_auth", e.target.value)}
+              placeholder="Worker 未设置 PASSWORDS 环境变量时留空"
             />
             <div className="flex gap-2">
               <Button variant="secondary" onClick={handleSyncDomains} loading={syncLoading}>

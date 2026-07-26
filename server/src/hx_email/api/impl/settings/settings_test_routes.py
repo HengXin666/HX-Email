@@ -9,10 +9,10 @@ from email.mime.text import MIMEText
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Header, HTTPException, status
+from pydantic import BaseModel
 
 from hx_email.api.dependencies import require_user
 from hx_email.api.schemas import (
-    CFWorkerSyncRequest,
     CronValidateRequest,
     EmailTestRequest,
     TelegramTestRequest,
@@ -31,6 +31,12 @@ except ImportError:
     _croniter_cls = None
     CroniterBadCronError = ValueError
     HAS_CRONITER = False
+
+
+class CFWorkerSyncRequest(BaseModel):
+    worker_url: str = ""
+    admin_key: str = ""
+    custom_auth: str = ""
 
 
 def _http_error_body(exc: urllib.error.HTTPError) -> str:
@@ -261,6 +267,7 @@ def register_settings_test_routes(router: APIRouter, settings: Settings) -> None
         require_user(settings, authorization)
         worker_url: str = payload.worker_url or get_setting(settings, "cf_worker_base_url")
         admin_key: str = payload.admin_key or get_setting(settings, "cf_worker_admin_key")
+        custom_auth: str = payload.custom_auth or get_setting(settings, "cf_worker_custom_auth")
         if not worker_url:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="worker_url is required"
@@ -268,6 +275,9 @@ def register_settings_test_routes(router: APIRouter, settings: Settings) -> None
         headers: dict[str, str] = {}
         if admin_key:
             headers["Authorization"] = f"Bearer {admin_key}"
+        if custom_auth:
+            # Worker deployed with PASSWORDS (custom auth) requires this on every request
+            headers["x-custom-auth"] = custom_auth
         url: str = f"{worker_url.rstrip('/')}/admin/domains"
         try:
             _status_code, body = _json_get(url, headers, timeout=15)
