@@ -93,32 +93,31 @@ def claim_mail_pool_entry(
     project_key: str,
     claim_key: str,
 ) -> MailPoolEntry | None:
+    # 单条原子 UPDATE: 并发 claim 时避免 "先查后改" 竞态导致两个调用方拿到同一邮箱
     with connect(settings) as connection:
         row = connection.execute(
             """
-            SELECT mail_pool_entries.id
-            FROM mail_pool_entries
-            JOIN usable_emails ON usable_emails.id = mail_pool_entries.usable_email_id
-                AND usable_emails.user_id = mail_pool_entries.user_id
-            WHERE mail_pool_entries.user_id = ?
-                AND mail_pool_entries.status IN ('available', 'completed')
-                AND usable_emails.status = 'active'
-                AND mail_pool_entries.completed_project_key != ?
-            ORDER BY mail_pool_entries.id
-            LIMIT 1
+            UPDATE mail_pool_entries
+            SET status = 'claimed', claim_key = ?, claimed_project_key = ?
+            WHERE id = (
+                SELECT mail_pool_entries.id
+                FROM mail_pool_entries
+                JOIN usable_emails ON usable_emails.id = mail_pool_entries.usable_email_id
+                    AND usable_emails.user_id = mail_pool_entries.user_id
+                WHERE mail_pool_entries.user_id = ?
+                    AND mail_pool_entries.status IN ('available', 'completed')
+                    AND usable_emails.status = 'active'
+                    AND mail_pool_entries.completed_project_key != ?
+                ORDER BY mail_pool_entries.id
+                LIMIT 1
+            )
+            AND status IN ('available', 'completed')
+            RETURNING id
             """,
-            (user_id, project_key),
+            (claim_key, project_key, user_id, project_key),
         ).fetchone()
         if row is None:
             return None
-        connection.execute(
-            """
-            UPDATE mail_pool_entries
-            SET status = 'claimed', claim_key = ?, claimed_project_key = ?
-            WHERE id = ? AND user_id = ?
-            """,
-            (claim_key, project_key, row["id"], user_id),
-        )
 
     return get_mail_pool_entry(settings, user_id, row["id"])
 
