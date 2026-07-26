@@ -19,15 +19,15 @@ def register_overview_refresh_routes(router: APIRouter, settings: Settings) -> N
         limit: int = Query(default=50, ge=1, le=500),
         authorization: Annotated[str | None, Header()] = None,
     ) -> list[dict[str, object]]:
-        require_user(settings, authorization)
-        return get_failed_refresh_logs(settings, limit=limit)
+        user = require_user(settings, authorization)
+        return get_failed_refresh_logs(settings, user.id, limit=limit)
 
     @router.get("/overview/refresh-stats")
     def overview_refresh_stats(
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_user(settings, authorization)
-        return get_refresh_stats(settings)
+        user = require_user(settings, authorization)
+        return get_refresh_stats(settings, user.id)
 
     @router.get("/overview/invalid-token-candidates")
     def overview_invalid_token_candidates(
@@ -35,5 +35,5 @@ def register_overview_refresh_routes(router: APIRouter, settings: Settings) -> N
         offset: int = Query(default=0, ge=0),
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_user(settings, authorization)
-        return get_invalid_token_candidates(settings, limit=limit, offset=offset)
+        user = require_user(settings, authorization)
+        return get_invalid_token_candidates(settings, user.id, limit=limit, offset=offset)

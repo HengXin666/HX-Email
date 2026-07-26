@@ -38,7 +38,7 @@ def test_refresh_single_account_passes_group_proxy_to_token_refresh(tmp_path) ->
         "hx_email.server.mail.impl.refresh_service.try_refresh_provider_oauth_token",
         return_value={"success": True, "message": "ok", "error_detail": ""},
     ) as refresh:
-        result = refresh_single_account(settings, 1, EmptyMailboxProvider())
+        result = refresh_single_account(settings, 1, 1, EmptyMailboxProvider())
 
     assert result["success"] is True
     assert refresh.call_args.args[4] == "http://127.0.0.1:2334"
@@ -58,7 +58,7 @@ def test_refresh_single_account_persists_rotated_microsoft_refresh_token(tmp_pat
             "refresh_token": "rotated-refresh-token",
         },
     ):
-        result = refresh_single_account(settings, 1, EmptyMailboxProvider())
+        result = refresh_single_account(settings, 1, 1, EmptyMailboxProvider())
 
     with connect(settings) as connection:
         stored: str = str(
@@ -80,7 +80,7 @@ def test_refresh_selected_accounts_passes_group_proxy_to_token_refresh(tmp_path)
         "hx_email.server.mail.impl.refresh_service.try_refresh_provider_oauth_token",
         return_value={"success": True, "message": "ok", "error_detail": ""},
     ) as refresh:
-        events = list(refresh_selected_accounts(settings, [1], EmptyMailboxProvider()))
+        events = list(refresh_selected_accounts(settings, 1, [1], EmptyMailboxProvider()))
 
     assert any("progress" in event for event in events)
     assert refresh.call_args.kwargs["proxy_url"] == "http://127.0.0.1:2334"
@@ -104,7 +104,7 @@ def test_refresh_selected_accounts_skips_password_provider(tmp_path) -> None:
         "hx_email.server.mail.impl.refresh_service.try_refresh_provider_oauth_token",
         return_value={"success": True, "message": "ok", "error_detail": ""},
     ) as refresh:
-        events = list(refresh_selected_accounts(settings, [1, 2], EmptyMailboxProvider()))
+        events = list(refresh_selected_accounts(settings, 1, [1, 2], EmptyMailboxProvider()))
 
     assert refresh.call_count == 1
     assert '"total": 1' in events[0]
@@ -158,3 +158,23 @@ def _insert_proxy_account(settings: Settings) -> None:
             VALUES (1, 1, 'outlook', 'owner@example.com', 'active', 'cid', 'rt', 10)
             """
         )
+
+
+def test_refresh_is_scoped_to_owning_user(tmp_path) -> None:
+    settings = Settings(data_dir=tmp_path)
+    migrate(settings)
+    _insert_proxy_account(settings)  # 属于 user_id=1
+
+    with patch(
+        "hx_email.server.mail.impl.refresh_service.try_refresh_provider_oauth_token",
+        return_value={"success": True, "message": "ok", "error_detail": ""},
+    ) as refresh:
+        # 其他用户 (user_id=2) 不能刷新/探测 user 1 的账户
+        cross_result = refresh_single_account(settings, 2, 1, EmptyMailboxProvider())
+        cross_events = list(refresh_selected_accounts(settings, 2, [1], EmptyMailboxProvider()))
+
+    assert cross_result["success"] is False
+    assert cross_result["message"] == "Account not found"
+    assert "email" not in cross_result
+    assert refresh.call_count == 0
+    assert not any('"email"' in e and "owner@example.com" in e for e in cross_events)

@@ -172,6 +172,10 @@ def register_usable_email_routes(
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
         user = require_user(settings, authorization)
+        if get_usable_email(settings, user.id, usable_email_id) is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Usable email not found"
+            )
         state = get_verification_state(settings, user.id, usable_email_id)
         msg_count = get_message_count(settings, usable_email_id)
         return {

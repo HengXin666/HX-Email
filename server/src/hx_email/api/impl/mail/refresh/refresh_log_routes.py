@@ -27,8 +27,8 @@ def register_refresh_log_routes(router: APIRouter, settings: Settings) -> None:
         offset: Annotated[int, Query(ge=0)] = 0,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_user(settings, authorization)
-        return get_refresh_logs(settings, limit=limit, offset=offset)
+        user = require_user(settings, authorization)
+        return get_refresh_logs(settings, user.id, limit=limit, offset=offset)
 
     @router.get("/email-accounts/{account_id}/refresh-logs")
     def list_account_refresh_logs(
@@ -37,16 +37,18 @@ def register_refresh_log_routes(router: APIRouter, settings: Settings) -> None:
         offset: Annotated[int, Query(ge=0)] = 0,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_user(settings, authorization)
-        return get_refresh_logs(settings, account_id=account_id, limit=limit, offset=offset)
+        user = require_user(settings, authorization)
+        return get_refresh_logs(
+            settings, user.id, account_id=account_id, limit=limit, offset=offset
+        )
 
     @router.get("/email-accounts/refresh-logs/failed")
     def list_failed_refresh_logs(
         limit: Annotated[int, Query(ge=1, le=200)] = 50,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_user(settings, authorization)
-        return {"logs": get_failed_refresh_logs(settings, limit=limit)}
+        user = require_user(settings, authorization)
+        return {"logs": get_failed_refresh_logs(settings, user.id, limit=limit)}
 
     @router.get("/email-accounts/invalid-token-candidates")
     def list_invalid_token_candidates(
@@ -54,12 +56,12 @@ def register_refresh_log_routes(router: APIRouter, settings: Settings) -> None:
         offset: Annotated[int, Query(ge=0)] = 0,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_user(settings, authorization)
-        return get_invalid_token_candidates(settings, limit=limit, offset=offset)
+        user = require_user(settings, authorization)
+        return get_invalid_token_candidates(settings, user.id, limit=limit, offset=offset)
 
     @router.get("/email-accounts/refresh-stats")
     def get_stats(
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_user(settings, authorization)
-        return get_refresh_stats(settings)
+        user = require_user(settings, authorization)
+        return get_refresh_stats(settings, user.id)

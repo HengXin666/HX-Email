@@ -32,8 +32,8 @@ def register_refresh_routes(
         account_id: int,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_user(settings, authorization)
-        result = refresh_single_account(settings, account_id, mailbox_provider)
+        user = require_user(settings, authorization)
+        result = refresh_single_account(settings, user.id, account_id, mailbox_provider)
         if not result.get("success"):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -45,9 +45,9 @@ def register_refresh_routes(
     def refresh_all(
         authorization: Annotated[str | None, Header()] = None,
     ) -> StreamingResponse:
-        require_user(settings, authorization)
+        user = require_user(settings, authorization)
         return StreamingResponse(
-            refresh_all_accounts(settings, mailbox_provider),
+            refresh_all_accounts(settings, user.id, mailbox_provider),
             media_type="text/event-stream",
         )
 
@@ -56,8 +56,8 @@ def register_refresh_routes(
         account_id: int,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_user(settings, authorization)
-        result = refresh_single_account(settings, account_id, mailbox_provider)
+        user = require_user(settings, authorization)
+        result = refresh_single_account(settings, user.id, account_id, mailbox_provider)
         return result
 
     @router.get("/email-accounts/refresh-failed")
@@ -65,9 +65,9 @@ def register_refresh_routes(
     def refresh_failed(
         authorization: Annotated[str | None, Header()] = None,
     ) -> StreamingResponse:
-        require_user(settings, authorization)
+        user = require_user(settings, authorization)
         return StreamingResponse(
-            refresh_failed_accounts(settings, mailbox_provider),
+            refresh_failed_accounts(settings, user.id, mailbox_provider),
             media_type="text/event-stream",
         )
 
@@ -75,9 +75,9 @@ def register_refresh_routes(
     def trigger_scheduled_refresh(
         authorization: Annotated[str | None, Header()] = None,
     ) -> StreamingResponse:
-        require_user(settings, authorization)
+        user = require_user(settings, authorization)
         return StreamingResponse(
-            refresh_all_accounts(settings, mailbox_provider),
+            refresh_all_accounts(settings, user.id, mailbox_provider),
             media_type="text/event-stream",
         )
 
@@ -86,13 +86,13 @@ def register_refresh_routes(
         payload: RefreshSelectedRequest,
         authorization: Annotated[str | None, Header()] = None,
     ) -> StreamingResponse:
-        require_user(settings, authorization)
+        user = require_user(settings, authorization)
         if not payload.account_ids:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="account_ids must not be empty",
             )
         return StreamingResponse(
-            refresh_selected_accounts(settings, payload.account_ids, mailbox_provider),
+            refresh_selected_accounts(settings, user.id, payload.account_ids, mailbox_provider),
             media_type="text/event-stream",
         )

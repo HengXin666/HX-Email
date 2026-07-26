@@ -7,6 +7,12 @@ from typing import Any, cast
 from hx_email.config import Settings
 from hx_email.database import connect
 from hx_email.server.mail.impl.oauth_tool import try_refresh_provider_oauth_token
+from hx_email.server.mail.impl.refresh_log_service import (
+    insert_refresh_log as _insert_refresh_log,
+)
+from hx_email.server.mail.impl.refresh_log_service import (
+    now_iso as _now_iso,
+)
 from hx_email.server.mail.verification import MailboxProvider
 
 
@@ -14,52 +20,9 @@ def sse_event(event: str, data: object) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
-def _now_iso() -> str:
-    import datetime
-
-    return datetime.datetime.now(datetime.UTC).isoformat()
-
-
-def _insert_refresh_log(
-    settings: Settings,
-    account_id: int,
-    email: str,
-    status: str,
-    message: str,
-    error_detail: str,
-    started_at: str | None = None,
-    completed_at: str | None = None,
-) -> int:
-    now = completed_at or _now_iso()
-    with connect(settings) as connection:
-        cursor = connection.execute(
-            """
-            INSERT INTO refresh_logs (
-                account_id, email, status, message, error_detail,
-                started_at, completed_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                account_id,
-                email,
-                status,
-                message,
-                error_detail,
-                started_at,
-                now,
-            ),
-        )
-        if status == "success":
-            connection.execute(
-                "UPDATE email_accounts SET last_refresh_at = ? WHERE id = ?",
-                (now, account_id),
-            )
-        return cursor.lastrowid or 0
-
-
 def refresh_single_account(
     settings: Settings,
+    user_id: int,
     account_id: int,
     mailbox_provider: MailboxProvider,
 ) -> dict[str, object]:
@@ -72,9 +35,9 @@ def refresh_single_account(
                    g.proxy_url
             FROM email_accounts ea
             LEFT JOIN groups g ON g.id = ea.group_id
-            WHERE ea.id = ?
+            WHERE ea.id = ? AND ea.user_id = ?
             """,
-            (account_id,),
+            (account_id, user_id),
         ).fetchone()
     if row is None:
         return {"account_id": account_id, "success": False, "message": "Account not found"}
@@ -147,6 +110,7 @@ def refresh_single_account(
 
 def _fetch_active_accounts(
     settings: Settings,
+    user_id: int,
 ) -> list[dict[str, object]]:
     with connect(settings) as connection:
         rows = connection.execute(
@@ -155,10 +119,11 @@ def _fetch_active_accounts(
                    g.proxy_url
             FROM email_accounts ea
             LEFT JOIN groups g ON g.id = ea.group_id
-            WHERE ea.status = 'active'
+            WHERE ea.status = 'active' AND ea.user_id = ?
               AND ea.provider IN ('outlook', 'gmail') AND ea.refresh_token != ''
             ORDER BY ea.id
-            """
+            """,
+            (user_id,),
         ).fetchall()
     return [
         {
@@ -222,14 +187,16 @@ def _refresh_account_batch(
 
 def refresh_all_accounts(
     settings: Settings,
+    user_id: int,
     mailbox_provider: MailboxProvider,
 ) -> Generator[str, None, None]:
-    accounts = _fetch_active_accounts(settings)
+    accounts = _fetch_active_accounts(settings, user_id)
     yield from _refresh_account_batch(settings, accounts)
 
 
 def refresh_selected_accounts(
     settings: Settings,
+    user_id: int,
     account_ids: list[int],
     mailbox_provider: MailboxProvider,
 ) -> Generator[str, None, None]:
@@ -242,11 +209,11 @@ def refresh_selected_accounts(
             FROM email_accounts ea
             LEFT JOIN groups g ON g.id = ea.group_id
             WHERE ea.id IN ({placeholders})
-              AND ea.status = 'active'
+              AND ea.status = 'active' AND ea.user_id = ?
               AND ea.provider IN ('outlook', 'gmail') AND ea.refresh_token != ''
             ORDER BY ea.id
             """,
-            tuple(account_ids),
+            (*account_ids, user_id),
         ).fetchall()
     accounts: list[dict[str, object]] = [
         {
@@ -264,6 +231,7 @@ def refresh_selected_accounts(
 
 def refresh_failed_accounts(
     settings: Settings,
+    user_id: int,
     mailbox_provider: MailboxProvider,
 ) -> Generator[str, None, None]:
     with connect(settings) as connection:
@@ -279,11 +247,12 @@ def refresh_failed_accounts(
                 GROUP BY account_id
             ) latest ON ea.id = latest.account_id
             INNER JOIN refresh_logs rl ON rl.id = latest.max_id
-            WHERE ea.status = 'active'
+            WHERE ea.status = 'active' AND ea.user_id = ?
               AND ea.provider IN ('outlook', 'gmail') AND ea.refresh_token != ''
               AND rl.status = 'failed'
             ORDER BY ea.id
-            """
+            """,
+            (user_id,),
         ).fetchall()
     accounts: list[dict[str, object]] = [
         {
