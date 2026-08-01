@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import sqlite3
 from datetime import UTC
 from sqlite3 import Row
@@ -10,6 +11,8 @@ from typing import TYPE_CHECKING
 
 from hx_email.config import Settings
 from hx_email.database import connect
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from hx_email.server.mail import MailboxMessage
@@ -31,7 +34,7 @@ def save_messages(
     if not messages:
         return 0
 
-    inserted = 0
+    inserted_ids: list[int] = []
     with connect(settings) as conn:
         for msg in messages:
             from_addr = msg.from_address or ""
@@ -78,10 +81,17 @@ def save_messages(
                     body_hash,
                 ),
             )
-            if cursor.rowcount > 0:
-                inserted += 1
+            if cursor.rowcount > 0 and cursor.lastrowid is not None:
+                inserted_ids.append(int(cursor.lastrowid))
 
-    return inserted
+    if inserted_ids:
+        try:
+            from hx_email.server.notifications import dispatch_new_messages
+
+            dispatch_new_messages(settings, inserted_ids)
+        except Exception:
+            logger.exception("Failed to enqueue new-mail deliveries")
+    return len(inserted_ids)
 
 
 def message_dedup_hash(message: MailboxMessage, received_at: str) -> str:
@@ -205,12 +215,22 @@ def delete_messages_for_email(
     avoiding SQLite "database is locked" errors from concurrent write connections.
     """
     if connection is not None:
+        connection.execute(
+            "DELETE FROM message_deliveries WHERE fetched_message_id IN"
+            " (SELECT id FROM fetched_messages WHERE usable_email_id = ?)",
+            (usable_email_id,),
+        )
         cursor = connection.execute(
             "DELETE FROM fetched_messages WHERE usable_email_id = ?",
             (usable_email_id,),
         )
         return cursor.rowcount
     with connect(settings) as conn:
+        conn.execute(
+            "DELETE FROM message_deliveries WHERE fetched_message_id IN"
+            " (SELECT id FROM fetched_messages WHERE usable_email_id = ?)",
+            (usable_email_id,),
+        )
         cursor = conn.execute(
             "DELETE FROM fetched_messages WHERE usable_email_id = ?",
             (usable_email_id,),

@@ -4,6 +4,7 @@ export interface Group {
   color: string;
   proxy_url?: string;
   notify_enabled?: boolean;
+  polling_enabled?: boolean;
   count?: number;
 }
 

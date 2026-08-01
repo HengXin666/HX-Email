@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
-import React, { useState } from "react";
+import React from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useApp } from "../store/AppContext";
 import {
@@ -36,7 +36,6 @@ export const Sidebar: React.FC = () => {
   const { user, logout } = useApp();
   const { toast } = useToast();
   const navigate = useNavigate();
-  const [collapsed] = useState(false);
 
   const handleLogout = async () => {
     await logout();
@@ -45,37 +44,33 @@ export const Sidebar: React.FC = () => {
   };
 
   return (
-    <aside
-      className={`${
-        collapsed ? "w-16" : "w-[180px]"
-      } shrink-0 h-screen sticky top-0 border-r border-gh-border bg-gh-canvas-subtle/60 backdrop-blur-xl flex flex-col transition-all duration-200`}
-    >
+    <aside className="sticky top-0 flex h-screen w-16 shrink-0 flex-col border-r border-gh-border bg-gh-canvas-subtle/60 backdrop-blur-xl transition-all duration-200 md:w-[180px]">
       {/* Logo */}
-      <div className="flex items-center gap-3 px-5 h-14 border-b border-gh-border">
-        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-gh-accent to-gh-purple flex items-center justify-center shadow-lg shadow-gh-accent/20">
+      <div className="flex h-14 items-center justify-center gap-3 border-b border-gh-border px-3 md:justify-start md:px-5">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-gh-accent to-gh-purple shadow-lg shadow-gh-accent/20">
           <IconInbox size={16} className="text-white" />
         </div>
-        {!collapsed && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="flex flex-col leading-tight"
-          >
-            <span className="font-semibold text-sm gradient-text">HX-Email</span>
-            <span className="text-[10px] text-gh-text-secondary">可用邮箱工作台</span>
-          </motion.div>
-        )}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="hidden flex-col leading-tight md:flex"
+        >
+          <span className="text-sm font-semibold gradient-text">HX-Email</span>
+          <span className="text-[10px] text-gh-text-secondary">可用邮箱工作台</span>
+        </motion.div>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 py-3 px-3 overflow-y-auto">
+      <nav className="flex-1 overflow-y-auto px-2 py-3 md:px-3">
         <ul className="flex flex-col gap-0.5">
           {NAV.map((item) => (
             <li key={item.to}>
               <NavLink
                 to={item.to}
+                aria-label={item.label}
+                title={item.label}
                 className={({ isActive }) =>
-                  `group relative flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
+                  `group relative flex items-center justify-center gap-3 rounded-md px-3 py-2 text-sm transition-colors md:justify-start ${
                     isActive
                       ? "bg-gh-accent/10 text-gh-accent"
                       : "text-gh-text-muted hover:text-gh-text hover:bg-gh-border/40"
@@ -91,9 +86,9 @@ export const Sidebar: React.FC = () => {
                       />
                     )}
                     <item.icon size={16} />
-                    {!collapsed && <span className="flex-1">{item.label}</span>}
-                    {!collapsed && isActive && (
-                      <IconChevronRight size={14} className="opacity-60" />
+                    <span className="hidden flex-1 md:block">{item.label}</span>
+                    {isActive && (
+                      <IconChevronRight size={14} className="hidden opacity-60 md:block" />
                     )}
                   </>
                 )}
@@ -104,9 +99,9 @@ export const Sidebar: React.FC = () => {
       </nav>
 
       {/* User section */}
-      <div className="p-3 border-t border-gh-border">
-        {!collapsed && user && (
-          <div className="flex items-center gap-2 px-3 py-2 mb-2 rounded-md bg-gh-border/20">
+      <div className="border-t border-gh-border p-2 md:p-3">
+        {user && (
+          <div className="mb-2 hidden items-center gap-2 rounded-md bg-gh-border/20 px-3 py-2 md:flex">
             <div className="w-7 h-7 rounded-full bg-gradient-to-br from-gh-purple to-gh-pink flex items-center justify-center text-xs font-semibold text-white">
               {user.username.slice(0, 1).toUpperCase()}
             </div>
@@ -121,19 +116,23 @@ export const Sidebar: React.FC = () => {
         <div className="flex flex-col gap-0.5">
           <button
             onClick={handleLogout}
-            className="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-gh-text-muted hover:text-gh-danger hover:bg-gh-danger/10 transition-colors"
+            aria-label="退出登录"
+            title="退出登录"
+            className="flex items-center justify-center gap-3 rounded-md px-3 py-2 text-sm text-gh-text-muted transition-colors hover:bg-gh-danger/10 hover:text-gh-danger md:justify-start"
           >
             <IconLogout size={16} />
-            {!collapsed && <span>退出登录</span>}
+            <span className="hidden md:inline">退出登录</span>
           </button>
           <a
             href="https://github.com/HengXin666/HX-Email"
             target="_blank"
             rel="noreferrer"
-            className="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-gh-text-muted hover:text-gh-text hover:bg-gh-border/40 transition-colors"
+            aria-label="GitHub"
+            title="GitHub"
+            className="flex items-center justify-center gap-3 rounded-md px-3 py-2 text-sm text-gh-text-muted transition-colors hover:bg-gh-border/40 hover:text-gh-text md:justify-start"
           >
             <IconGithub size={16} />
-            {!collapsed && <span>GitHub</span>}
+            <span className="hidden md:inline">GitHub</span>
           </a>
         </div>
       </div>
@@ -146,11 +145,13 @@ export const Topbar: React.FC<{ title: string; subtitle?: string; actions?: Reac
   subtitle,
   actions,
 }) => (
-  <div className="flex items-center justify-between h-14 px-6 border-b border-gh-border bg-gh-canvas/60 backdrop-blur-xl sticky top-0 z-30">
-    <div>
+  <div className="sticky top-0 z-30 flex min-h-14 items-center justify-between gap-3 border-b border-gh-border bg-gh-canvas/60 px-3 py-2 backdrop-blur-xl sm:px-6">
+    <div className="min-w-0">
       <h1 className="text-base font-semibold text-gh-text">{title}</h1>
-      {subtitle && <div className="text-xs text-gh-text-secondary">{subtitle}</div>}
+      {subtitle && (
+        <div className="hidden truncate text-xs text-gh-text-secondary sm:block">{subtitle}</div>
+      )}
     </div>
-    {actions && <div className="flex items-center gap-2">{actions}</div>}
+    {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
   </div>
 );

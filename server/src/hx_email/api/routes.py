@@ -35,6 +35,7 @@ from hx_email.server.data_transfer import (
     export_core_data,
     import_core_data,
 )
+from hx_email.server.mail.impl.fetch.scheduler import get_polling_status
 from hx_email.server.mail.temp_mail import TempMailProvider
 from hx_email.server.mail.verification import MailboxProvider
 
@@ -127,12 +128,13 @@ def register_system_routes(router: APIRouter, settings: Settings) -> None:
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
         user = require_user(settings, authorization)
+        polling_status: dict[str, object] = get_polling_status(settings)
         return {
             "bootstrap": {
                 "user_id": user.id,
                 "is_admin": user.is_admin,
-                "enable_auto_polling": True,
-                "polling_interval": 30,
+                "enable_auto_polling": polling_status["enabled"],
+                "polling_interval": polling_status["interval_seconds"],
                 "ui_layout_v2": {},
             }
         }
@@ -142,15 +144,7 @@ def register_system_routes(router: APIRouter, settings: Settings) -> None:
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
         require_user(settings, authorization)
-        return {
-            "running": True,
-            "last_run": "",
-            "next_run": "",
-            "tasks": {
-                "scheduled_refresh": "idle",
-                "auto_poll": "idle",
-            },
-        }
+        return get_polling_status(settings)
 
     @router.get("/system/diagnostics")
     def system_diagnostics(

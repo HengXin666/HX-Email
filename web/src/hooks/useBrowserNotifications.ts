@@ -41,11 +41,12 @@ function showMailNotification(item: MailNotification): void {
 }
 
 /** One poll round: fetch mail newer than the stored cursor and notify. Exported for tests. */
-export async function pollOnce(): Promise<void> {
+export async function pollOnce(userId?: number): Promise<void> {
   if (!isBrowserNotifyEnabled() || !canNotify()) return;
+  const cursorKey: string = userId ? `${CURSOR_KEY}_${userId}` : CURSOR_KEY;
   let sinceId = -1;
   try {
-    const stored = window.localStorage.getItem(CURSOR_KEY);
+    const stored = window.localStorage.getItem(cursorKey);
     const parsed = stored === null ? -1 : Number(stored);
     sinceId = Number.isFinite(parsed) ? parsed : -1;
   } catch {
@@ -53,7 +54,7 @@ export async function pollOnce(): Promise<void> {
   }
   try {
     const result = await api.pollNotifications(sinceId);
-    window.localStorage.setItem(CURSOR_KEY, String(result.latest_id));
+    window.localStorage.setItem(cursorKey, String(result.latest_id));
     result.notifications.forEach(showMailNotification);
   } catch {
     // Transient network/auth error — retry on the next tick
@@ -65,11 +66,11 @@ export async function pollOnce(): Promise<void> {
  * The first poll only initializes the server-side cursor (no flood of old mail);
  * per-email / per-group muting is applied server-side.
  */
-export function useBrowserNotifications(active: boolean): void {
+export function useBrowserNotifications(active: boolean, userId?: number): void {
   useEffect(() => {
     if (!active) return;
-    void pollOnce();
-    const timer = window.setInterval(() => void pollOnce(), NOTIFY_POLL_INTERVAL_MS);
+    void pollOnce(userId);
+    const timer = window.setInterval(() => void pollOnce(userId), NOTIFY_POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [active]);
+  }, [active, userId]);
 }

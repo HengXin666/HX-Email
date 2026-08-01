@@ -28,6 +28,25 @@ test("protects the workbench and recovers from a rejected login", async ({ page 
   await expect(page.getByRole("heading", { name: "邮箱工作台" })).toBeVisible();
   await expect(page.getByText("admin", { exact: true })).toBeVisible();
 
+  await page.setViewportSize({ width: 390, height: 844 });
+  const overviewScroller = page.locator("div.overflow-y-auto.p-4").first();
+  await overviewScroller.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect(page.getByText("所有邮箱的最新邮件", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "最新邮件", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "打开工作台", exact: true })).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+    .toBe(true);
+
+  await page.goto("/settings");
+  await page.getByRole("button", { name: "自动化", exact: true }).click();
+  await expect(page.getByText("自动轮询", { exact: true })).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+    .toBe(true);
+
   const logoutResponse = page.waitForResponse(
     (response) => response.url().endsWith("/api/v1/auth/logout") && response.status() === 204,
   );

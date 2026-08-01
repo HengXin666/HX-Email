@@ -9,7 +9,9 @@ from hx_email.database import migrate
 from hx_email.server.mail.impl.temp_mail import CFWorkerTempMailProvider, get_temp_mail_options
 from hx_email.server.mail.temp_mail import (
     MissingTempMailProviderError,
+    TempMailMessage,
     TempMailProviderError,
+    extract_codes,
 )
 from hx_email.server.settings_service import set_setting
 
@@ -21,6 +23,14 @@ RAW_MIME = (
     "Content-Type: text/plain; charset=utf-8\r\n"
     "\r\n"
     "Verification code: 123456\r\n"
+)
+
+ESCAPED_UNICODE_MIME = (
+    "From: account-security-noreply@accountprotection.microsoft.com\r\n"
+    "Subject: Microsoft account security code\r\n"
+    "Content-Type: text/html; charset=utf-8\r\n"
+    "\r\n"
+    "<html><body>\\u5b89\\u5168\\u4ee3\\u7801: 432939</body></html>\r\n"
 )
 
 
@@ -104,6 +114,21 @@ def test_list_messages_parses_raw_mime(tmp_path) -> None:
     assert method == "GET"
     assert url.startswith("https://worker.example.dev/api/mails")
     assert headers["Authorization"] == "Bearer user-jwt"
+
+
+def test_list_messages_decodes_escaped_unicode_before_code_extraction(tmp_path) -> None:
+    provider, _settings = make_provider(tmp_path)
+    response = json.dumps({"results": [{"id": 8, "raw": ESCAPED_UNICODE_MIME}]})
+    mailbox_id = json.dumps({"id": "42", "jwt": "user-jwt"})
+
+    with patch(MOCK_TARGET, return_value=(200, response)):
+        messages = provider.list_messages(mailbox_id)
+
+    assert len(messages) == 1
+    message = messages[0]
+    assert isinstance(message, TempMailMessage)
+    assert "安全代码: 432939" in message.html
+    assert extract_codes((message,))[0].code == "432939"
 
 
 def test_list_messages_requires_jwt(tmp_path) -> None:

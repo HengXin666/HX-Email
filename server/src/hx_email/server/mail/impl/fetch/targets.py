@@ -93,6 +93,8 @@ def list_fetch_usable_emails_for_account(
     settings: Settings,
     user_id: int,
     account_id: int,
+    *,
+    polling_only: bool = False,
 ) -> list[FetchUsableEmail]:
     with connect(settings) as conn:
         direct_rows = conn.execute(
@@ -100,17 +102,23 @@ def list_fetch_usable_emails_for_account(
             SELECT ue.id, ue.address, ue.kind, ea.provider
             FROM usable_emails ue
             JOIN email_accounts ea ON ea.id = ue.email_account_id
+            LEFT JOIN groups g ON g.id = COALESCE(ue.group_id, ea.group_id)
+                              AND g.user_id = ue.user_id
             WHERE ue.email_account_id = ? AND ue.user_id = ?
+              AND ue.status = 'active'
+              AND (? = 0 OR COALESCE(g.polling_enabled, 1) = 1)
             """,
-            (account_id, user_id),
+            (account_id, user_id, 1 if polling_only else 0),
         ).fetchall()
         standalone_rows = conn.execute(
             """
-            SELECT id, address, kind
-            FROM usable_emails
-            WHERE email_account_id IS NULL AND user_id = ? AND status = 'active'
+            SELECT ue.id, ue.address, ue.kind
+            FROM usable_emails ue
+            LEFT JOIN groups g ON g.id = ue.group_id AND g.user_id = ue.user_id
+            WHERE ue.email_account_id IS NULL AND ue.user_id = ? AND ue.status = 'active'
+              AND (? = 0 OR COALESCE(g.polling_enabled, 1) = 1)
             """,
-            (user_id,),
+            (user_id, 1 if polling_only else 0),
         ).fetchall()
     account_provider: str = str(direct_rows[0]["provider"] or "") if direct_rows else ""
     emails = [

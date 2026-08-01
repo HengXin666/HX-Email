@@ -18,6 +18,7 @@ import { useToast } from "../components/ui/Toast";
 import { useApp } from "../store/AppContext";
 import type { TempMessage } from "../types";
 import { copyToClipboard } from "../utils/clipboard";
+import { looksLikeHtml, sanitizeHtml } from "../utils/html";
 
 export const TempMail: React.FC = () => {
   const { emails, createTempMail, refreshEmails } = useApp();
@@ -341,11 +342,17 @@ const TempDetail: React.FC<{ emailId: number; address: string; label: string }> 
                       )}
                     </div>
                     <div className="text-xs text-gh-text-muted truncate">{m.from_address}</div>
-                    {m.text && (
-                      <div className="mt-2 text-xs text-gh-text-secondary font-mono bg-gh-canvas-inset p-2 rounded whitespace-pre-wrap break-all">
-                        {m.text}
-                      </div>
-                    )}
+                    <div className="mt-2 max-h-96 overflow-y-auto rounded bg-gh-canvas-inset p-3 text-sm text-gh-text-secondary break-words">
+                      {m.html ? (
+                        <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(m.html) }} />
+                      ) : looksLikeHtml(m.text) ? (
+                        <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(m.text) }} />
+                      ) : (
+                        <div className="whitespace-pre-wrap font-mono text-xs">
+                          {m.text || "(无正文)"}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </motion.div>

@@ -54,7 +54,7 @@ def export_core_data(settings: Settings, user_id: int) -> dict[str, object]:
         )
         groups = rows(
             connection,
-            "SELECT id, name, color, proxy_url, notify_enabled FROM groups"
+            "SELECT id, name, color, proxy_url, notify_enabled, polling_enabled FROM groups"
             " WHERE user_id = ? ORDER BY id",
             user_id,
         )
@@ -127,14 +127,15 @@ def import_groups(
     ids: dict[int, int] = {}
     for group in payload.get("groups", []):
         cursor = connection.execute(
-            "INSERT INTO groups (user_id, name, color, proxy_url, notify_enabled)"
-            " VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO groups (user_id, name, color, proxy_url, notify_enabled, polling_enabled)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
             (
                 user_id,
                 group["name"],
                 group.get("color", "#58a6ff"),
                 group.get("proxy_url", ""),
                 int(group.get("notify_enabled", 1)),
+                int(group.get("polling_enabled", 1)),
             ),
         )
         ids[int(group["id"])] = inserted_id(cursor)

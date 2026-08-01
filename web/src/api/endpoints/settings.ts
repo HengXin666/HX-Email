@@ -4,15 +4,9 @@ export const settingsApi = {
   getSettings: () => request<Record<string, string>>("/settings"),
 
   updateSettings: (data: Record<string, unknown>) =>
-    request<{ success: boolean }>("/settings", {
+    request<Record<string, string>>("/settings", {
       method: "PUT",
       body: JSON.stringify(data),
-    }),
-
-  validateCron: (cron: string) =>
-    request<{ valid: boolean; message: string }>("/settings/validate-cron", {
-      method: "POST",
-      body: JSON.stringify({ cron_expression: cron }),
     }),
 
   testTelegram: (data: Record<string, unknown>) =>
@@ -48,6 +42,45 @@ export const settingsApi = {
   getAPIKeyPlaintext: () =>
     request<{ external_api_key: string }>("/settings/external-api-key/plaintext"),
 
+  rotateExternalAPIKey: () =>
+    request<{ external_api_key: string }>("/settings/external-api-key/rotate", {
+      method: "POST",
+    }),
+
+  testScript: (path: string, timeoutSeconds: number) =>
+    request<{ success: boolean; message: string }>("/settings/script-test", {
+      method: "POST",
+      body: JSON.stringify({ path, timeout_seconds: timeoutSeconds }),
+    }),
+
+  getRuntimeStatus: () =>
+    request<{
+      polling: {
+        running: boolean;
+        enabled: boolean;
+        interval_seconds: number;
+        last_run: string;
+        next_run: string;
+        last_error: string;
+      };
+      deliveries: {
+        pending: number;
+        sending: number;
+        sent: number;
+        failed: number;
+        skipped: number;
+        last_error: string;
+        last_error_at: string;
+      };
+      pool: {
+        enabled: boolean;
+        api_key_configured: boolean;
+        total: number;
+        available: number;
+        claimed: number;
+      };
+    }>("/settings/runtime-status"),
+
   getVersionCheck: () =>
     request<{
       version?: string;
@@ -73,19 +106,4 @@ export const settingsApi = {
 
   getDeploymentInfo: () =>
     request<{ python_version: string; platform: string }>("/system/deployment-info"),
-
-  triggerUpdate: () =>
-    request<{ success: boolean; message: string }>("/system/trigger-update", {
-      method: "POST",
-    }),
-
-  testWatchtower: () =>
-    request<{ success: boolean; message: string }>("/system/test-watchtower", {
-      method: "POST",
-    }),
-
-  reloadPlugins: () =>
-    request<{ success: boolean; message: string }>("/system/reload-plugins", {
-      method: "POST",
-    }),
 };

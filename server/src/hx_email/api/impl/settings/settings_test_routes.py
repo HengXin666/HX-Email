@@ -1,35 +1,30 @@
-"""Settings test/validate endpoints (Telegram, Email, Webhook, AI, Cron)."""
+"""Settings test endpoints for external delivery channels and AI extraction."""
 
 import json
 import smtplib
 import urllib.error
 import urllib.request
-from datetime import UTC, datetime
 from email.mime.text import MIMEText
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Header, HTTPException, status
+from pydantic import BaseModel
 
-from hx_email.api.dependencies import require_user
+from hx_email.api.dependencies import require_admin
 from hx_email.api.schemas import (
-    CronValidateRequest,
     EmailTestRequest,
     TelegramTestRequest,
     VerificationAITestRequest,
     WebhookTestRequest,
 )
 from hx_email.config import Settings
+from hx_email.server.notifications import test_script_pipeline
 from hx_email.server.settings_service import get_setting
 
-try:
-    from croniter import CroniterBadCronError
-    from croniter import croniter as _croniter_cls
 
-    HAS_CRONITER: bool = True
-except ImportError:
-    _croniter_cls = None
-    CroniterBadCronError = ValueError
-    HAS_CRONITER = False
+class ScriptTestRequest(BaseModel):
+    path: str = ""
+    timeout_seconds: int | None = None
 
 
 def _http_error_body(exc: urllib.error.HTTPError) -> str:
@@ -62,36 +57,13 @@ def _json_post(
 def register_settings_test_routes(router: APIRouter, settings: Settings) -> None:
     """Register all settings test/validate endpoints."""
 
-    @router.post("/settings/validate-cron")
-    def validate_cron(
-        payload: CronValidateRequest,
-        authorization: Annotated[str | None, Header()] = None,
-    ) -> dict[str, object]:
-        """Validate a cron expression and return next run times."""
-        require_user(settings, authorization)
-        expr: str = payload.cron_expression.strip()
-        if not expr:
-            return {"valid": False, "next_runs": [], "error": "Empty expression"}
-        if HAS_CRONITER:
-            assert _croniter_cls is not None
-            try:
-                cron = _croniter_cls(expr, datetime.now(tz=UTC))
-                next_runs: list[str] = [cron.get_next(datetime).isoformat() for _ in range(5)]
-                return {"valid": True, "next_runs": next_runs}
-            except (ValueError, KeyError, CroniterBadCronError) as exc:
-                return {"valid": False, "next_runs": [], "error": str(exc)}
-        parts: list[str] = expr.split()
-        if len(parts) != 5:
-            return {"valid": False, "next_runs": [], "error": "Cron expression must have 5 fields"}
-        return {"valid": True, "next_runs": [], "message": "croniter not available"}
-
     @router.post("/settings/telegram-test")
     def telegram_test(
         payload: TelegramTestRequest,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
         """Send a test message via Telegram Bot API."""
-        require_user(settings, authorization)
+        require_admin(settings, authorization)
         bot_token: str = payload.bot_token or get_setting(settings, "telegram_bot_token")
         chat_id: str = payload.chat_id or get_setting(settings, "telegram_chat_id")
         proxy_url: str | None = (
@@ -110,7 +82,12 @@ def register_settings_test_routes(router: APIRouter, settings: Settings) -> None
             proxy_url=proxy_url,
         )
         result: dict[str, Any] = json.loads(body)
-        return {"success": result.get("ok", False), "response": result}
+        success: bool = result.get("ok") is True
+        return {
+            "success": success,
+            "message": "Telegram test message sent" if success else str(result),
+            "response": result,
+        }
 
     @router.post("/settings/email-test")
     def email_test(
@@ -118,7 +95,7 @@ def register_settings_test_routes(router: APIRouter, settings: Settings) -> None
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
         """Send a test email via SMTP."""
-        require_user(settings, authorization)
+        require_admin(settings, authorization)
         smtp_host: str | None = (
             payload.smtp_host or get_setting(settings, "email_notification_smtp_host") or None
         )
@@ -165,7 +142,7 @@ def register_settings_test_routes(router: APIRouter, settings: Settings) -> None
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
         """Send a test POST to the webhook URL."""
-        require_user(settings, authorization)
+        require_admin(settings, authorization)
         url: str = payload.url
         token: str | None = (
             payload.token or get_setting(settings, "webhook_notification_token") or None
@@ -180,7 +157,27 @@ def register_settings_test_routes(router: APIRouter, settings: Settings) -> None
         status_code, body = _json_post(
             url, {"test": True, "message": "HX-Email webhook test"}, headers, timeout=15
         )
-        return {"success": True, "status_code": status_code, "response": body[:1000]}
+        success: bool = 200 <= status_code < 300
+        return {
+            "success": success,
+            "message": (
+                f"Webhook accepted the test message (HTTP {status_code})"
+                if success
+                else f"Webhook returned HTTP {status_code}"
+            ),
+            "status_code": status_code,
+            "response": body[:1000],
+        }
+
+    @router.post("/settings/script-test")
+    def script_test(
+        payload: ScriptTestRequest,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        """Run a shell pipeline with a harmless test event."""
+        require_admin(settings, authorization)
+        path_value: str = payload.path or get_setting(settings, "script_notification_path", "")
+        return test_script_pipeline(settings, path_value, payload.timeout_seconds)
 
     @router.post("/settings/verification-ai-test")
     def verification_ai_test(
@@ -188,10 +185,10 @@ def register_settings_test_routes(router: APIRouter, settings: Settings) -> None
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
         """Call AI API to extract a verification code from sample content."""
-        require_user(settings, authorization)
-        base_url: str = get_setting(settings, "verification_ai_base_url")
-        model: str = get_setting(settings, "verification_ai_model")
-        api_key: str = get_setting(settings, "verification_ai_api_key")
+        require_admin(settings, authorization)
+        base_url: str = payload.base_url or get_setting(settings, "verification_ai_base_url")
+        model: str = payload.model_id or get_setting(settings, "verification_ai_model")
+        api_key: str = payload.api_key or get_setting(settings, "verification_ai_api_key")
         if not base_url or not model:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -217,7 +214,12 @@ def register_settings_test_routes(router: APIRouter, settings: Settings) -> None
         else:
             prompt_parts.append(f"The code should be {code_length} digits.")
         prompt: str = "\n".join(prompt_parts)
-        api_url: str = f"{base_url.rstrip('/')}/v1/chat/completions"
+        normalized_base_url: str = base_url.rstrip("/")
+        api_url: str = (
+            f"{normalized_base_url}/chat/completions"
+            if normalized_base_url.endswith("/v1")
+            else f"{normalized_base_url}/v1/chat/completions"
+        )
         api_headers: dict[str, str] = {}
         if api_key:
             api_headers["Authorization"] = f"Bearer {api_key}"

@@ -131,6 +131,63 @@ def test_temp_mail_reads_messages_codes_and_verification_links_through_cf_provid
     }
 
 
+def test_temp_mail_only_extracts_code_with_verification_context(tmp_path):
+    settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
+    migrate(settings)
+    provider = FakeCfTempMailProvider()
+    provider.messages_by_address["cf-box-1"] = [
+        FakeProviderMessage(
+            id="msg-1",
+            from_address="noreply@service.test",
+            subject="Order 482913 created on 20260801",
+            text="Your verification code is A7B9C2.",
+            html='<div style="width: 6400px">Your verification code is A7B9C2.</div>',
+        )
+    ]
+    client = TestClient(create_app(settings, temp_mail_providers={"cf": provider}))
+    headers = login_admin(client)
+    mailbox = client.post(
+        "/api/v1/temp-mail/cf/mailboxes",
+        json={"address": "signup@example.test", "label": "Signup temp"},
+        headers=headers,
+    ).json()
+
+    response = client.get(f"/api/v1/temp-mail/{mailbox['id']}/codes", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json() == {"codes": [{"message_id": "msg-1", "code": "A7B9C2"}]}
+
+
+def test_temp_mail_extracts_microsoft_chinese_security_code(tmp_path):
+    settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
+    migrate(settings)
+    provider = FakeCfTempMailProvider()
+    provider.messages_by_address["cf-box-1"] = [
+        FakeProviderMessage(
+            id="microsoft-message",
+            from_address="account-security-noreply@accountprotection.microsoft.com",
+            subject="Microsoft 帐户安全代码",
+            text=(
+                "请对个人 Microsoft 帐户 hy**k@outlook.com 使用以下安全代码。\n\n"
+                "安全代码: 432939\n\n"
+                "仅在官方网站或应用上输入此代码。不要与任何人共享。"
+            ),
+        )
+    ]
+    client = TestClient(create_app(settings, temp_mail_providers={"cf": provider}))
+    headers = login_admin(client)
+    mailbox = client.post(
+        "/api/v1/temp-mail/cf/mailboxes",
+        json={"address": "signup@example.test", "label": "Signup temp"},
+        headers=headers,
+    ).json()
+
+    response = client.get(f"/api/v1/temp-mail/{mailbox['id']}/codes", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json() == {"codes": [{"message_id": "microsoft-message", "code": "432939"}]}
+
+
 def test_temp_mail_is_isolated_by_user_and_can_be_deactivated_or_archived(tmp_path):
     settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
     migrate(settings)

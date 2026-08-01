@@ -22,6 +22,12 @@ export const groupsApi = {
       body: JSON.stringify({ enabled }),
     }),
 
+  toggleGroupPolling: (id: number, enabled: boolean) =>
+    request<{ id: number; polling_enabled: boolean }>(`/groups/${id}/polling`, {
+      method: "PUT",
+      body: JSON.stringify({ enabled }),
+    }),
+
   listGroups: () => request<Group[]>("/groups"),
 
   testProxy: (proxy_url: string) =>

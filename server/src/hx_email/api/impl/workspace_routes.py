@@ -125,6 +125,8 @@ def register_workspace_routes(router: APIRouter, settings: Settings) -> None:
             "name": group.name,
             "color": group.color,
             "proxy_url": group.proxy_url,
+            "notify_enabled": group.notify_enabled,
+            "polling_enabled": group.polling_enabled,
         }
 
     @router.get("/groups")
@@ -139,6 +141,7 @@ def register_workspace_routes(router: APIRouter, settings: Settings) -> None:
                 "color": group.color,
                 "proxy_url": group.proxy_url,
                 "notify_enabled": group.notify_enabled,
+                "polling_enabled": group.polling_enabled,
             }
             for group in list_groups(settings, user.id)
         ]
@@ -160,6 +163,8 @@ def register_workspace_routes(router: APIRouter, settings: Settings) -> None:
             "name": group.name,
             "color": group.color,
             "proxy_url": group.proxy_url,
+            "notify_enabled": group.notify_enabled,
+            "polling_enabled": group.polling_enabled,
         }
 
     @router.delete("/groups/{group_id}", status_code=status.HTTP_204_NO_CONTENT)

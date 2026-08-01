@@ -46,3 +46,16 @@ export interface MailNotification {
   verification_code: string | null;
   received_at: string;
 }
+
+export interface LatestMailMessage {
+  id: number;
+  usable_email_id: number;
+  address: string;
+  group: { id: number; name: string; color: string } | null;
+  from_address: string;
+  recipient_address: string;
+  subject: string;
+  body: string;
+  verification_code: string | null;
+  received_at: string;
+}

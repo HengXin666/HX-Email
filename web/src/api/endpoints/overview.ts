@@ -1,5 +1,6 @@
 import type {
   ActivityStats,
+  LatestMailMessage,
   MailNotification,
   Overview,
   OverviewSummary,
@@ -18,6 +19,11 @@ export const overviewApi = {
   getPoolStats: () => request<PoolStats>("/overview/pool-stats"),
 
   getActivityStats: () => request<ActivityStats>("/overview/activity"),
+
+  getLatestMessages: (limit = 20) =>
+    request<{ messages: LatestMailMessage[] }>(`/overview/latest-messages?limit=${limit}`).then(
+      (result) => result.messages,
+    ),
 
   pollNotifications: (sinceId: number) =>
     request<{ latest_id: number; notifications: MailNotification[] }>(

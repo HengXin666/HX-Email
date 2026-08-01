@@ -138,10 +138,6 @@ class SettingsUpdate(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
-class CronValidateRequest(BaseModel):
-    cron_expression: str
-
-
 class TelegramTestRequest(BaseModel):
     bot_token: str = ""
     chat_id: str = ""
@@ -162,6 +158,9 @@ class WebhookTestRequest(BaseModel):
 
 
 class VerificationAITestRequest(BaseModel):
+    base_url: str | None = None
+    model_id: str | None = None
+    api_key: str | None = None
     subject: str | None = None
     body: str | None = None
     body_html: str | None = None

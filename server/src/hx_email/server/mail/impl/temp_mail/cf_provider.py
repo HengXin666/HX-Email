@@ -10,6 +10,7 @@ from __future__ import annotations
 import email
 import email.policy
 import json
+import re
 import secrets
 import string
 import urllib.error
@@ -109,12 +110,30 @@ def _parse_mime(raw: str) -> tuple[str, str, str, str]:
             content: str = payload.decode(charset, errors="replace")
         except LookupError:
             content = payload.decode("utf-8", errors="replace")
+        content = _decode_json_unicode_escapes(content)
         content_type: str = part.get_content_type()
         if content_type == "text/plain" and not text:
             text = content
         elif content_type == "text/html" and not html:
             html = content
     return subject, from_address, text, html
+
+
+def _decode_json_unicode_escapes(value: str) -> str:
+    """Decode literal JSON Unicode escapes left in stored Worker MIME bodies."""
+
+    def decode_match(match: re.Match[str]) -> str:
+        escaped: str = match.group(0)
+        try:
+            decoded: object = json.loads(f'"{escaped}"')
+        except (TypeError, ValueError):
+            return escaped
+        return decoded if isinstance(decoded, str) else escaped
+
+    pattern: str = (
+        r"\\u(?:[dD][89abAB][0-9a-fA-F]{2}\\u[dD][c-fC-F][0-9a-fA-F]{2}" r"|[0-9a-fA-F]{4})"
+    )
+    return re.sub(pattern, decode_match, value)
 
 
 def _normalize_message(item: dict[str, Any]) -> TempMailMessage:

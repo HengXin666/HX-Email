@@ -12,6 +12,7 @@ class Group:
     color: str
     proxy_url: str = ""
     notify_enabled: bool = True
+    polling_enabled: bool = True
 
 
 @dataclass(frozen=True)
@@ -46,7 +47,7 @@ def create_tag(settings: Settings, user_id: int, name: str, color: str) -> Tag:
 def list_groups(settings: Settings, user_id: int) -> list[Group]:
     with connect(settings) as connection:
         rows = connection.execute(
-            "SELECT id, name, color, proxy_url, notify_enabled FROM groups"
+            "SELECT id, name, color, proxy_url, notify_enabled, polling_enabled FROM groups"
             " WHERE user_id = ? ORDER BY id",
             (user_id,),
         ).fetchall()
@@ -57,6 +58,7 @@ def list_groups(settings: Settings, user_id: int) -> list[Group]:
             color=row["color"],
             proxy_url=row["proxy_url"] or "",
             notify_enabled=bool(row["notify_enabled"]),
+            polling_enabled=bool(row["polling_enabled"]),
         )
         for row in rows
     ]
@@ -76,14 +78,19 @@ def update_group(
             UPDATE groups
             SET name = ?, color = ?, proxy_url = ?
             WHERE id = ? AND user_id = ?
-            RETURNING id, name, color, proxy_url
+            RETURNING id, name, color, proxy_url, notify_enabled, polling_enabled
             """,
             (name, color, proxy_url, group_id, user_id),
         ).fetchone()
     if row is None:
         return None
     return Group(
-        id=row["id"], name=row["name"], color=row["color"], proxy_url=row["proxy_url"] or ""
+        id=row["id"],
+        name=row["name"],
+        color=row["color"],
+        proxy_url=row["proxy_url"] or "",
+        notify_enabled=bool(row["notify_enabled"]),
+        polling_enabled=bool(row["polling_enabled"]),
     )
 
 

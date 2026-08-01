@@ -8,6 +8,7 @@ from hx_email.config import Settings
 from hx_email.database import connect
 from hx_email.server.auth import require_inserted_id
 from hx_email.server.mail.email_accounts import DuplicateUsableEmailError
+from hx_email.server.mail.verification import extract_verification_code
 
 
 @dataclass(frozen=True)
@@ -234,14 +235,11 @@ def list_temp_messages(
 
 def extract_codes(messages: tuple[TempMailMessage, ...]) -> tuple[TempMailCode, ...]:
     codes: list[TempMailCode] = []
-    seen: set[tuple[str, str]] = set()
     for message in messages:
         content = f"{message.subject}\n{message.text}\n{message.html}"
-        for match in re.finditer(r"(?<!\d)(\d{4,8})(?!\d)", content):
-            key = (message.id, match.group(1))
-            if key not in seen:
-                seen.add(key)
-                codes.append(TempMailCode(message_id=message.id, code=match.group(1)))
+        code: str | None = extract_verification_code(content)
+        if code is not None:
+            codes.append(TempMailCode(message_id=message.id, code=code))
     return tuple(codes)
 
 

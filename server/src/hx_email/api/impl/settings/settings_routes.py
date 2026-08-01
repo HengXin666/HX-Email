@@ -2,21 +2,26 @@
 
 import json
 import platform
+import secrets
 import sys as sys_module
 import urllib.error
 import urllib.request
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Header, status
+from fastapi import APIRouter, Header, HTTPException, status
 
 from hx_email.api.dependencies import require_admin, require_user
 from hx_email.api.schemas import SettingsUpdate
 from hx_email.config import Settings
+from hx_email.server.external_api import get_pool_stats
+from hx_email.server.mail.impl.fetch.scheduler import get_polling_status
+from hx_email.server.notifications import get_delivery_status
 from hx_email.server.settings_service import (
     PROJECT_REPOSITORY_URL,
     VERSION,
     get_all_settings,
     get_setting,
+    set_setting,
     update_settings,
 )
 
@@ -73,7 +78,7 @@ def register_settings_routes(router: APIRouter, settings: Settings) -> None:
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, str]:
         """Return all system settings as a flat key-value dict."""
-        require_user(settings, authorization)
+        require_admin(settings, authorization)
         return get_all_settings(settings)
 
     @router.put("/settings")
@@ -82,9 +87,15 @@ def register_settings_routes(router: APIRouter, settings: Settings) -> None:
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, str]:
         """Update settings with any subset of fields."""
-        require_user(settings, authorization)
+        require_admin(settings, authorization)
         updates: dict[str, Any] = payload.model_dump()
-        update_settings(settings, updates)
+        try:
+            update_settings(settings, updates)
+        except ValueError as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(error),
+            ) from error
         return get_all_settings(settings)
 
     @router.get("/settings/external-api-key/plaintext")
@@ -95,6 +106,32 @@ def register_settings_routes(router: APIRouter, settings: Settings) -> None:
         require_admin(settings, authorization)
         key: str = get_setting(settings, "external_api_key", "")
         return {"external_api_key": key}
+
+    @router.post("/settings/external-api-key/rotate")
+    def rotate_external_api_key(
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, str]:
+        """Generate a new external API key, invalidating the previous primary key."""
+        require_admin(settings, authorization)
+        key: str = secrets.token_urlsafe(32)
+        set_setting(settings, "external_api_key", key)
+        return {"external_api_key": key}
+
+    @router.get("/settings/runtime-status")
+    def runtime_status(
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        """Return observable polling, delivery, and external-pool state."""
+        require_user(settings, authorization)
+        return {
+            "polling": get_polling_status(settings),
+            "deliveries": get_delivery_status(settings),
+            "pool": {
+                "enabled": get_setting(settings, "pool_external_enabled", "false") == "true",
+                "api_key_configured": bool(get_setting(settings, "external_api_key", "")),
+                **get_pool_stats(settings),
+            },
+        }
 
     @router.get("/system/version-check")
     def version_check(
@@ -149,27 +186,3 @@ def register_settings_routes(router: APIRouter, settings: Settings) -> None:
             "platform": platform.platform(),
             "version": VERSION,
         }
-
-    @router.post("/system/trigger-update", status_code=status.HTTP_202_ACCEPTED)
-    def trigger_update(
-        authorization: Annotated[str | None, Header()] = None,
-    ) -> dict[str, object]:
-        """Trigger Docker update (stub)."""
-        require_admin(settings, authorization)
-        return {"success": True, "message": "Update triggered (stub)"}
-
-    @router.post("/system/test-watchtower")
-    def test_watchtower(
-        authorization: Annotated[str | None, Header()] = None,
-    ) -> dict[str, object]:
-        """Test Watchtower connectivity (stub)."""
-        require_user(settings, authorization)
-        return {"success": True, "message": "Watchtower connectivity OK (stub)"}
-
-    @router.post("/system/reload-plugins")
-    def reload_plugins(
-        authorization: Annotated[str | None, Header()] = None,
-    ) -> dict[str, object]:
-        """Reload temp email plugins (stub)."""
-        require_user(settings, authorization)
-        return {"success": True, "message": "Plugins reloaded (stub)"}

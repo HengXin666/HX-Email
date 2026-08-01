@@ -13,6 +13,7 @@ import type {
   ActivityStats,
   EmailAccount,
   Group,
+  LatestMailMessage,
   Overview,
   Platform,
   PoolStats,
@@ -20,6 +21,7 @@ import type {
   VerificationStats,
 } from "../../types";
 import { OverviewEmailList } from "./OverviewEmailList";
+import { OverviewLatestMail } from "./OverviewLatestMail";
 import { OperationPanel, OverviewMetrics } from "./OverviewWorkbenchWidgets";
 
 interface OverviewWorkbenchProps {
@@ -31,6 +33,7 @@ interface OverviewWorkbenchProps {
   verificationStats: VerificationStats | null;
   poolStats: PoolStats | null;
   activityStats: ActivityStats | null;
+  latestMessages: LatestMailMessage[];
   statsLoading: boolean;
   onRefreshStats: () => Promise<void>;
   onNavigate: (path: string) => void;
@@ -55,6 +58,7 @@ export const OverviewWorkbench: React.FC<OverviewWorkbenchProps> = ({
   verificationStats,
   poolStats,
   activityStats,
+  latestMessages,
   statsLoading,
   onRefreshStats,
   onNavigate,
@@ -64,6 +68,7 @@ export const OverviewWorkbench: React.FC<OverviewWorkbenchProps> = ({
     [emails],
   );
   const [selectedEmailId, setSelectedEmailId] = useState<number | null>(null);
+  const [mailView, setMailView] = useState<"latest" | "emails">("latest");
 
   useEffect(() => {
     if (visibleEmails.length === 0) {
@@ -127,8 +132,8 @@ export const OverviewWorkbench: React.FC<OverviewWorkbenchProps> = ({
   ];
 
   return (
-    <div className="flex-1 min-h-0 overflow-hidden p-5 md:p-6 xl:p-8">
-      <div className="h-full min-h-0 max-w-[1600px] mx-auto flex flex-col gap-6">
+    <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6 lg:overflow-hidden xl:p-8">
+      <div className="mx-auto flex min-h-full max-w-[1600px] flex-col gap-6 lg:h-full lg:min-h-0">
         <OverviewMetrics
           overview={overview}
           visibleEmailCount={visibleEmails.length}
@@ -136,7 +141,7 @@ export const OverviewWorkbench: React.FC<OverviewWorkbenchProps> = ({
           accountCount={accounts.length}
         />
 
-        <div className="flex-1 min-h-0 flex flex-col lg:flex-row border border-gh-border bg-gh-canvas-subtle rounded-lg overflow-hidden">
+        <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-gh-border bg-gh-canvas-subtle lg:flex-1 lg:flex-row">
           <aside className="lg:w-72 shrink-0 border-b lg:border-b-0 lg:border-r border-gh-border bg-gh-canvas">
             <div className="min-h-12 px-5 py-3 flex items-center justify-between border-b border-gh-border">
               <span className="text-xs font-semibold text-gh-text-muted uppercase tracking-wider">
@@ -186,24 +191,65 @@ export const OverviewWorkbench: React.FC<OverviewWorkbenchProps> = ({
           </aside>
 
           <main className="flex-1 min-w-0 min-h-[320px] flex flex-col">
-            <div className="min-h-14 px-5 py-3 flex items-center justify-between gap-4 border-b border-gh-border bg-gh-canvas/70">
+            <div className="flex min-h-14 flex-col items-stretch justify-between gap-3 border-b border-gh-border bg-gh-canvas/70 px-5 py-3 sm:flex-row sm:items-center sm:gap-4">
               <div>
-                <h2 className="text-sm font-semibold text-gh-text">可用邮箱主工作区</h2>
+                <h2 className="text-sm font-semibold text-gh-text">
+                  {mailView === "latest" ? "所有邮箱的最新邮件" : "可用邮箱主工作区"}
+                </h2>
                 <p className="text-[11px] text-gh-text-secondary">
-                  选中邮箱后在右侧执行验证码、平台绑定、邮箱池和 API 下一步
+                  {mailView === "latest"
+                    ? "按收取时间汇总，选中邮件后可继续处理对应可用邮箱"
+                    : "选中邮箱后在右侧执行验证码、平台绑定、邮箱池和 API 下一步"}
                 </p>
               </div>
-              <Button variant="secondary" size="sm" onClick={() => onNavigate("/accounts")}>
-                <IconMail size={13} /> 打开邮箱工作台
-              </Button>
+              <div className="flex flex-wrap items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setMailView("latest")}
+                  className={`whitespace-nowrap px-2.5 py-1.5 text-xs rounded-md border transition-colors ${
+                    mailView === "latest"
+                      ? "border-gh-accent bg-gh-accent/10 text-gh-accent"
+                      : "border-gh-border text-gh-text-muted hover:text-gh-text"
+                  }`}
+                >
+                  最新邮件
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMailView("emails")}
+                  className={`whitespace-nowrap px-2.5 py-1.5 text-xs rounded-md border transition-colors ${
+                    mailView === "emails"
+                      ? "border-gh-accent bg-gh-accent/10 text-gh-accent"
+                      : "border-gh-border text-gh-text-muted hover:text-gh-text"
+                  }`}
+                >
+                  邮箱
+                </button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="whitespace-nowrap"
+                  onClick={() => onNavigate("/accounts")}
+                >
+                  <IconMail size={13} /> 打开工作台
+                </Button>
+              </div>
             </div>
             <div className="flex-1 min-w-0 overflow-auto">
-              <OverviewEmailList
-                emails={visibleEmails}
-                accounts={accounts}
-                selectedEmailId={selectedEmailId}
-                onSelectEmail={setSelectedEmailId}
-              />
+              {mailView === "latest" ? (
+                <OverviewLatestMail
+                  messages={latestMessages}
+                  selectedEmailId={selectedEmailId}
+                  onSelectEmail={setSelectedEmailId}
+                />
+              ) : (
+                <OverviewEmailList
+                  emails={visibleEmails}
+                  accounts={accounts}
+                  selectedEmailId={selectedEmailId}
+                  onSelectEmail={setSelectedEmailId}
+                />
+              )}
             </div>
           </main>
 

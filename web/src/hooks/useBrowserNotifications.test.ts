@@ -85,6 +85,15 @@ test("subsequent polls notify new mail with the verification code and advance th
   expect(notificationInstances[1].options?.body).toBe("Login code");
 });
 
+test("keeps a separate notification cursor for each signed-in user", async () => {
+  pollNotifications.mockResolvedValue({ latest_id: 12, notifications: [] });
+
+  await pollOnce(7);
+
+  expect(window.localStorage.getItem("hx_notify_since_id_7")).toBe("12");
+  expect(window.localStorage.getItem("hx_notify_since_id")).toBeNull();
+});
+
 test("does not poll when disabled or permission missing", async () => {
   setBrowserNotifyEnabled(false);
   await pollOnce();

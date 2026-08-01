@@ -9,7 +9,6 @@
     "src/hooks/useAsync.ts",
     "src/hooks/useCopyToClipboard.ts",
     "src/types/index.ts",
-    "src/utils/clipboard.ts",
     "src/utils/index.ts"
   ],
   "ignoreDependencies": [

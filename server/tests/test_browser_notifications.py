@@ -101,12 +101,14 @@ def test_mute_state_round_trips_through_email_and_group_listings(tmp_path):
 
     client.put(f"{API}/usable-emails/{email_id}/notify", json={"enabled": False}, headers=headers)
     client.put(f"{API}/groups/{group_id}/notify", json={"enabled": False}, headers=headers)
+    client.put(f"{API}/groups/{group_id}/polling", json={"enabled": False}, headers=headers)
 
     emails = client.get(f"{API}/usable-emails", headers=headers).json()["usable_emails"]
     groups = client.get(f"{API}/groups", headers=headers).json()
 
     assert emails[0]["notify_enabled"] is False
     assert groups[0]["notify_enabled"] is False
+    assert groups[0]["polling_enabled"] is False
 
 
 def test_notify_toggle_404_for_unknown_targets(tmp_path):
@@ -116,6 +118,10 @@ def test_notify_toggle_404_for_unknown_targets(tmp_path):
         f"{API}/usable-emails/999/notify", json={"enabled": True}, headers=headers
     )
     group_response = client.put(f"{API}/groups/999/notify", json={"enabled": True}, headers=headers)
+    polling_response = client.put(
+        f"{API}/groups/999/polling", json={"enabled": True}, headers=headers
+    )
 
     assert email_response.status_code == 404
     assert group_response.status_code == 404
+    assert polling_response.status_code == 404

@@ -8,7 +8,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Header, HTTPException, status
 from pydantic import BaseModel
 
-from hx_email.api.dependencies import require_user
+from hx_email.api.dependencies import require_admin
 from hx_email.config import Settings
 from hx_email.server.settings_service import get_setting, set_setting
 
@@ -61,7 +61,7 @@ def register_cf_worker_sync_route(router: APIRouter, settings: Settings) -> None
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
         """Fetch domains from the CF Worker public open_api/settings endpoint and persist them."""
-        require_user(settings, authorization)
+        require_admin(settings, authorization)
         worker_url: str = payload.worker_url or get_setting(settings, "cf_worker_base_url")
         custom_auth: str = payload.custom_auth or get_setting(settings, "cf_worker_custom_auth")
         if not worker_url:

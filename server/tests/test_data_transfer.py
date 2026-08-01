@@ -47,6 +47,16 @@ def test_user_can_export_and_import_core_data_without_cross_user_leaks(tmp_path)
     group = source.post(
         "/api/v1/groups", json={"name": "Register", "color": "#58a6ff"}, headers=alice_headers
     ).json()
+    source.put(
+        f"/api/v1/groups/{group['id']}/notify",
+        json={"enabled": False},
+        headers=alice_headers,
+    )
+    source.put(
+        f"/api/v1/groups/{group['id']}/polling",
+        json={"enabled": False},
+        headers=alice_headers,
+    )
     tag = source.post(
         "/api/v1/tags", json={"name": "GitHub", "color": "#238636"}, headers=alice_headers
     ).json()
@@ -92,6 +102,8 @@ def test_user_can_export_and_import_core_data_without_cross_user_leaks(tmp_path)
     assert exported.json()["email_accounts"][0]["primary_address"] == "owner@example.com"
     assert exported.json()["email_accounts"][0]["imap_password"] == "app-password"
     assert exported.json()["usable_emails"][1]["address"] == "alias@example.com"
+    assert exported.json()["groups"][0]["notify_enabled"] == 0
+    assert exported.json()["groups"][0]["polling_enabled"] == 0
     assert "bob@example.com" not in str(exported.json())
     assert imported.status_code == 201
     assert duplicate_import.status_code == 409
@@ -105,6 +117,8 @@ def test_user_can_export_and_import_core_data_without_cross_user_leaks(tmp_path)
         {"id": platforms.json()["platforms"][0]["id"], "name": "GitHub", "binding_count": 1}
     ]
     assert bindings.json()["platform_bindings"][0]["notes"] == "login"
+    assert imported.json()["groups"][0]["notify_enabled"] == 0
+    assert imported.json()["groups"][0]["polling_enabled"] == 0
 
 
 def test_export_import_round_trips_group_proxy_and_account_metadata(tmp_path) -> None:

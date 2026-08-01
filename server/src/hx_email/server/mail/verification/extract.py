@@ -22,6 +22,7 @@ _CTX_RE: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bcode\s*(?:is|:)?\s*([A-Z0-9]{4,8})\b", re.IGNORECASE),
     re.compile(r"\bOTP\s*(?:is|code|:)?\s*([A-Z0-9]{4,8})\b", re.IGNORECASE),
     re.compile(r"验证码[是为:：]?\s*([A-Z0-9]{4,8})"),
+    re.compile(r"安全代码[是为:：]?\s*([A-Z0-9]{4,8})"),
     re.compile(r"激活码[是为:：]?\s*([A-Z0-9]{4,8})"),
     re.compile(r"校验码[是为:：]?\s*([A-Z0-9]{4,8})"),
     re.compile(r"动态码[是为:：]?\s*([A-Z0-9]{4,8})"),
@@ -32,6 +33,7 @@ _CTX_RE: tuple[re.Pattern[str], ...] = (
 _KW: tuple[str, ...] = (
     "verification code",
     "验证码",
+    "安全代码",
     "security code",
     "confirmation code",
     "one-time code",

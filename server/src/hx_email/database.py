@@ -2,6 +2,7 @@ import sqlite3
 from pathlib import Path
 
 from hx_email.config import Settings
+from hx_email.models import migrate_message_delivery_schema, migrate_polling_schema
 from hx_email.security import hash_password, migrate_stored_secrets
 
 
@@ -252,6 +253,8 @@ def migrate(settings: Settings) -> Path:
             """
         )
         apply_column_migrations(connection)
+        migrate_polling_schema(connection)
+        migrate_message_delivery_schema(connection)
         connection.execute(
             """
             CREATE UNIQUE INDEX IF NOT EXISTS idx_fetched_msg_dedup
@@ -271,6 +274,6 @@ def migrate(settings: Settings) -> Path:
             """,
             (settings.admin_username, hash_password(settings.admin_password)),
         )
-        connection.execute("PRAGMA user_version = 9")
+        connection.execute("PRAGMA user_version = 10")
         migrate_stored_secrets(settings, connection)
     return database_path

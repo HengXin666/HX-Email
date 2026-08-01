@@ -7,7 +7,7 @@ from hx_email.api.routes import register_routes
 from hx_email.config import Settings
 from hx_email.database import migrate
 from hx_email.server.mail.graph.fallback_provider import FallbackMailProvider
-from hx_email.server.mail.impl.email_fetch_service import start_background_fetch
+from hx_email.server.mail.impl.fetch.scheduler import MailPollingScheduler
 from hx_email.server.mail.impl.temp_mail import CFWorkerTempMailProvider
 from hx_email.server.mail.temp_mail import TempMailProvider
 from hx_email.server.mail.verification import MailboxProvider
@@ -109,6 +109,7 @@ def create_app(
         else {"cf": CFWorkerTempMailProvider(resolved_settings)}
     )
     app = FastAPI(title="HX Email", version="1.0.0", description=API_DESCRIPTION)
+    polling_scheduler = MailPollingScheduler(resolved_settings, resolved_mailbox_provider)
     register_routes(
         app,
         resolved_settings,
@@ -117,17 +118,14 @@ def create_app(
     )
     install_openapi_schema(app)
 
-    # Start background email fetcher (runs every 120 seconds)
     @app.on_event("startup")
     def _start_bg_fetch() -> None:
         migrate(resolved_settings)
-        start_background_fetch(resolved_settings, interval=120)
+        polling_scheduler.start()
 
     @app.on_event("shutdown")
     def _stop_bg_fetch() -> None:
-        from hx_email.server.mail.impl.email_fetch_service import stop_background_fetch
-
-        stop_background_fetch()
+        polling_scheduler.stop()
 
     return app
 

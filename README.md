@@ -26,6 +26,11 @@ The FastAPI app exposes:
   and migration. The payload covers email accounts, usable emails, aliases,
   groups, tags, platforms and platform bindings for the authenticated user only.
 
+Mail automation supports settings-driven polling, per-group polling and
+delivery controls, SMTP forwarding, Telegram, webhook callbacks, browser
+notifications, and custom `.sh` pipelines. The event and external mailbox-pool
+contracts are documented in [docs/mail-automation.md](docs/mail-automation.md).
+
 Configuration is loaded from `.env`. Copy `.env.example` before first startup:
 
 ```bash
@@ -141,6 +146,6 @@ canaries stay outside the PR gate.
 
 The rewrite preserves the first-phase core data model. Import/export is scoped
 to the authenticated user's email accounts, usable emails, aliases, groups,
-tags, platforms and platform bindings. Browser extension features, a full
-public API, notifications, one-click updates, AI enhancements and plugin-based
-temporary mail providers remain deferred follow-up capabilities.
+tags, platforms and platform bindings. Browser extension features, closed-page
+VAPID push, one-click updates and plugin-based temporary mail providers remain
+deferred follow-up capabilities.

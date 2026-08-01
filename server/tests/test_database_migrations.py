@@ -27,6 +27,9 @@ def test_migrate_creates_sqlite_database_in_configured_data_dir(tmp_path):
         usable_email_columns = {
             row[1] for row in connection.execute("PRAGMA table_info(usable_emails)").fetchall()
         }
+        group_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(groups)").fetchall()
+        }
         temp_mailbox_columns = {
             row[1] for row in connection.execute("PRAGMA table_info(temp_mailboxes)").fetchall()
         }
@@ -42,12 +45,16 @@ def test_migrate_creates_sqlite_database_in_configured_data_dir(tmp_path):
         fetched_message_columns = {
             row[1] for row in connection.execute("PRAGMA table_info(fetched_messages)").fetchall()
         }
+        delivery_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(message_deliveries)").fetchall()
+        }
 
-    assert version == 9
+    assert version == 10
     assert registration_enabled == "false"
     assert admin == (settings.admin_username, 1)
     assert {"provider", "primary_address", "status"}.issubset(email_accounts_columns)
     assert {"email_account_id", "kind", "status", "group_id"}.issubset(usable_email_columns)
+    assert {"notify_enabled", "polling_enabled"}.issubset(group_columns)
     assert {"user_id", "usable_email_id", "provider", "provider_mailbox_id"}.issubset(
         temp_mailbox_columns
     )
@@ -63,3 +70,35 @@ def test_migrate_creates_sqlite_database_in_configured_data_dir(tmp_path):
         "completed_project_key",
     }.issubset(mail_pool_columns)
     assert {"email_account_id", "message_id", "body_hash"}.issubset(fetched_message_columns)
+    assert {
+        "fetched_message_id",
+        "channel",
+        "status",
+        "attempts",
+        "last_error",
+        "delivered_at",
+    }.issubset(delivery_columns)
+
+
+def test_migrate_upgrades_v9_polling_and_delivery_schema(tmp_path) -> None:
+    settings = Settings(data_dir=tmp_path / "hx-data")
+    database_path = migrate(settings)
+    with sqlite3.connect(database_path) as connection:
+        connection.execute("DROP TABLE message_deliveries")
+        connection.execute("ALTER TABLE groups DROP COLUMN polling_enabled")
+        connection.execute("PRAGMA user_version = 9")
+
+    migrate(settings)
+
+    with sqlite3.connect(database_path) as connection:
+        version = connection.execute("PRAGMA user_version").fetchone()[0]
+        group_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(groups)").fetchall()
+        }
+        delivery_table = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'message_deliveries'"
+        ).fetchone()
+
+    assert version == 10
+    assert "polling_enabled" in group_columns
+    assert delivery_table == ("message_deliveries",)

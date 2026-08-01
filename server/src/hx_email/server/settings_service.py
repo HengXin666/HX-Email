@@ -1,7 +1,10 @@
 """Settings service: domain logic for reading and writing system settings."""
 
 import base64
+import json
+import secrets
 from typing import Any
+from urllib.parse import urlparse
 
 from hx_email.config import Settings
 from hx_email.database import connect
@@ -11,42 +14,23 @@ VERSION: str = "0.2.0"
 PROJECT_REPOSITORY_URL: str = "https://github.com/HengXin666/HX-Email"
 
 SETTINGS_DEFAULTS: dict[str, str] = {
-    "login_password": "",
     "verification_ai_enabled": "false",
     "verification_ai_base_url": "",
     "verification_ai_model": "",
     "verification_ai_api_key": "",
-    "temp_mail_provider": "cloudflare_temp_mail",
-    "temp_mail_api_base_url": "",
-    "temp_mail_api_key": "",
-    "temp_mail_domains": "[]",
-    "temp_mail_default_domain": "",
-    "temp_mail_prefix_rules": "{}",
     "cf_worker_domains": "[]",
     "cf_worker_default_domain": "",
-    "cf_worker_prefix_rules": "{}",
     "cf_worker_base_url": "",
     "cf_worker_admin_key": "",
     "cf_worker_custom_auth": "",
     "external_api_key": "",
     "external_api_keys": "[]",
-    "external_api_public_mode": "false",
-    "external_api_ip_whitelist": "[]",
     "external_api_rate_limit_per_minute": "60",
     "external_api_disable_raw_content": "false",
     "external_api_disable_wait_message": "false",
     "pool_external_enabled": "false",
-    "enable_scheduled_refresh": "false",
-    "refresh_interval_days": "7",
-    "refresh_delay_seconds": "2",
-    "refresh_cron": "",
-    "use_cron_schedule": "false",
     "enable_auto_polling": "false",
     "polling_interval": "30",
-    "polling_count": "5",
-    "enable_compact_auto_poll": "false",
-    "compact_poll_interval": "10",
-    "compact_poll_max_count": "3",
     "email_notification_enabled": "false",
     "email_notification_recipient": "",
     "email_notification_smtp_host": "",
@@ -58,25 +42,24 @@ SETTINGS_DEFAULTS: dict[str, str] = {
     "webhook_notification_token": "",
     "telegram_bot_token": "",
     "telegram_chat_id": "",
-    "telegram_poll_interval": "30",
+    "telegram_notification_enabled": "false",
     "telegram_proxy_url": "",
-    "watchtower_url": "",
-    "watchtower_token": "",
-    "update_method": "watchtower",
+    "script_notification_enabled": "false",
+    "script_notification_path": "",
+    "script_notification_timeout": "15",
     "ui_layout_v2": "{}",
 }
 
 SENSITIVE_KEYS: frozenset[str] = frozenset(
     {
         "verification_ai_api_key",
-        "temp_mail_api_key",
         "telegram_bot_token",
         "cf_worker_admin_key",
         "cf_worker_custom_auth",
         "external_api_key",
-        "login_password",
-        "watchtower_token",
+        "external_api_keys",
         "email_notification_smtp_password",
+        "webhook_notification_token",
         "google_oauth_client_secret",
     }
 )
@@ -151,13 +134,106 @@ def get_all_settings(settings: Settings) -> dict[str, str]:
     return result
 
 
+BOOLEAN_SETTING_KEYS: frozenset[str] = frozenset(
+    {
+        "verification_ai_enabled",
+        "external_api_disable_raw_content",
+        "external_api_disable_wait_message",
+        "pool_external_enabled",
+        "enable_auto_polling",
+        "email_notification_enabled",
+        "webhook_notification_enabled",
+        "telegram_notification_enabled",
+        "script_notification_enabled",
+    }
+)
+
+INTEGER_SETTING_RANGES: dict[str, tuple[int, int]] = {
+    "external_api_rate_limit_per_minute": (0, 100_000),
+    "polling_interval": (3, 86_400),
+    "email_notification_smtp_port": (1, 65_535),
+    "script_notification_timeout": (1, 300),
+}
+
+
+def stringify_setting_value(value: object) -> str:
+    """Convert API values to the canonical string representation used in SQLite."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if value is None:
+        return ""
+    return str(value).strip() if not isinstance(value, str) else value.strip()
+
+
+def validate_callback_url(value: str, field_name: str) -> None:
+    """Require an explicit HTTP(S) callback URL."""
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError(f"{field_name} must be an http:// or https:// URL")
+
+
+def normalize_settings_updates(
+    settings: Settings,
+    updates: dict[str, Any],
+) -> dict[str, str]:
+    """Normalize and validate a partial settings update before persistence."""
+    normalized: dict[str, str] = {}
+    for key, value in updates.items():
+        if key not in SETTINGS_DEFAULTS:
+            continue
+        string_value: str = stringify_setting_value(value)
+        if key in BOOLEAN_SETTING_KEYS:
+            lowered: str = string_value.lower()
+            if lowered not in {"true", "false", "1", "0"}:
+                raise ValueError(f"{key} must be true or false")
+            string_value = "true" if lowered in {"true", "1"} else "false"
+        if key in INTEGER_SETTING_RANGES:
+            minimum, maximum = INTEGER_SETTING_RANGES[key]
+            try:
+                integer_value: int = int(string_value)
+            except ValueError as error:
+                raise ValueError(f"{key} must be an integer") from error
+            if not minimum <= integer_value <= maximum:
+                raise ValueError(f"{key} must be between {minimum} and {maximum}")
+            string_value = str(integer_value)
+        normalized[key] = string_value
+
+    merged: dict[str, str] = {**get_all_settings(settings), **normalized}
+    webhook_url: str = merged["webhook_notification_url"]
+    if webhook_url:
+        validate_callback_url(webhook_url, "webhook_notification_url")
+    if merged["webhook_notification_enabled"] == "true" and not webhook_url:
+        raise ValueError("webhook_notification_url is required when webhook delivery is enabled")
+    if merged["email_notification_enabled"] == "true":
+        if not merged["email_notification_recipient"]:
+            raise ValueError("email_notification_recipient is required for email forwarding")
+        if not merged["email_notification_smtp_host"]:
+            raise ValueError("email_notification_smtp_host is required for email forwarding")
+    if merged["telegram_notification_enabled"] == "true" and (
+        not merged["telegram_bot_token"] or not merged["telegram_chat_id"]
+    ):
+        raise ValueError("telegram_bot_token and telegram_chat_id are required")
+    if merged["script_notification_enabled"] == "true":
+        script_path: str = merged["script_notification_path"]
+        if not script_path or not script_path.lower().endswith(".sh"):
+            raise ValueError("script_notification_path must point to a .sh file")
+    if "external_api_keys" in normalized:
+        try:
+            api_keys: object = json.loads(normalized["external_api_keys"])
+        except json.JSONDecodeError as error:
+            raise ValueError("external_api_keys must be a JSON array") from error
+        if not isinstance(api_keys, list) or not all(isinstance(key, str) for key in api_keys):
+            raise ValueError("external_api_keys must be a JSON array of strings")
+    if merged["pool_external_enabled"] == "true" and not merged["external_api_key"]:
+        normalized["external_api_key"] = secrets.token_urlsafe(32)
+    return normalized
+
+
 def update_settings(settings: Settings, updates: dict[str, Any]) -> None:
     """Batch-update settings, encoding sensitive values transparently."""
+    normalized: dict[str, str] = normalize_settings_updates(settings, updates)
     with connect(settings) as connection:
-        for key, value in updates.items():
-            if key not in SETTINGS_DEFAULTS:
-                continue
-            str_value: str = str(value) if not isinstance(value, str) else value
+        for key, str_value in normalized.items():
             stored: str = (
                 encrypt_secret(settings, str_value) if key in SENSITIVE_KEYS else str_value
             )
@@ -169,3 +245,7 @@ def update_settings(settings: Settings, updates: dict[str, Any]) -> None:
                 """,
                 (key, stored),
             )
+    if {"enable_auto_polling", "polling_interval"}.intersection(normalized):
+        from hx_email.server.mail.impl.fetch.scheduler import wake_polling_scheduler
+
+        wake_polling_scheduler(settings)

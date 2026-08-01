@@ -2,9 +2,64 @@
 
 from hx_email.config import Settings
 from hx_email.database import connect
+from hx_email.server.mail.impl.fetch.scheduler import wake_polling_scheduler
 from hx_email.server.mail.verification.extract import extract_verification_code
 
 POLL_BATCH_LIMIT: int = 20
+
+
+def list_latest_messages(
+    settings: Settings,
+    user_id: int,
+    limit: int = 20,
+) -> list[dict[str, object]]:
+    """List the authenticated user's newest stored messages across all usable emails."""
+    safe_limit: int = min(max(limit, 1), 50)
+    with connect(settings) as connection:
+        rows = connection.execute(
+            """
+            SELECT m.id, m.usable_email_id, ue.address,
+                   COALESCE(ue.group_id, ea.group_id) AS group_id,
+                   COALESCE(g.name, '') AS group_name,
+                   COALESCE(g.color, '') AS group_color,
+                   m.from_address, m.recipient_address, m.subject, m.body,
+                   m.received_at, m.created_at
+            FROM fetched_messages m
+            JOIN usable_emails ue ON ue.id = m.usable_email_id AND ue.user_id = m.user_id
+            LEFT JOIN email_accounts ea ON ea.id = m.email_account_id AND ea.user_id = m.user_id
+            LEFT JOIN groups g ON g.id = COALESCE(ue.group_id, ea.group_id)
+                              AND g.user_id = ue.user_id
+            WHERE m.user_id = ?
+            ORDER BY COALESCE(NULLIF(m.received_at, ''), m.created_at) DESC, m.id DESC
+            LIMIT ?
+            """,
+            (user_id, safe_limit),
+        ).fetchall()
+    return [
+        {
+            "id": row["id"],
+            "usable_email_id": row["usable_email_id"],
+            "address": row["address"],
+            "group": (
+                {
+                    "id": row["group_id"],
+                    "name": row["group_name"],
+                    "color": row["group_color"],
+                }
+                if row["group_id"] is not None
+                else None
+            ),
+            "from_address": row["from_address"],
+            "recipient_address": row["recipient_address"],
+            "subject": row["subject"],
+            "body": row["body"],
+            "verification_code": extract_verification_code(
+                f"{row['subject']}\n{row['body'] or ''}"
+            ),
+            "received_at": row["received_at"] or row["created_at"],
+        }
+        for row in rows
+    ]
 
 
 def poll_notifications(
@@ -33,7 +88,9 @@ def poll_notifications(
                    m.body, m.received_at, m.created_at
             FROM fetched_messages m
             JOIN usable_emails ue ON ue.id = m.usable_email_id
-            LEFT JOIN groups g ON g.id = ue.group_id AND g.user_id = ue.user_id
+            LEFT JOIN email_accounts ea ON ea.id = m.email_account_id AND ea.user_id = m.user_id
+            LEFT JOIN groups g ON g.id = COALESCE(ue.group_id, ea.group_id)
+                              AND g.user_id = ue.user_id
             WHERE m.user_id = ? AND m.id > ?
               AND COALESCE(ue.notify_enabled, 1) = 1
               AND COALESCE(g.notify_enabled, 1) = 1
@@ -79,3 +136,16 @@ def set_group_notify(settings: Settings, user_id: int, group_id: int, enabled: b
             (1 if enabled else 0, group_id, user_id),
         )
     return result.rowcount > 0
+
+
+def set_group_polling(settings: Settings, user_id: int, group_id: int, enabled: bool) -> bool:
+    """Enable or disable automatic mail polling for one user-owned group."""
+    with connect(settings) as connection:
+        result = connection.execute(
+            "UPDATE groups SET polling_enabled = ? WHERE id = ? AND user_id = ?",
+            (1 if enabled else 0, group_id, user_id),
+        )
+    updated: bool = result.rowcount > 0
+    if updated:
+        wake_polling_scheduler(settings)
+    return updated

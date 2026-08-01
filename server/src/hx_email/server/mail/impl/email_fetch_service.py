@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import logging
-import threading
-import time
 from datetime import UTC, datetime
 from typing import Any
 
@@ -22,11 +20,6 @@ from hx_email.server.mail.verification import (
 
 logger = logging.getLogger(__name__)
 
-_FETCH_LOCK: threading.Lock = threading.Lock()
-_FETCH_RUNNING: bool = False
-_FETCH_THREAD: threading.Thread | None = None
-
-
 # ── single-account fetch ──────────────────────────────────────────────────
 
 
@@ -35,6 +28,8 @@ def fetch_and_store_for_account(
     user_id: int,
     account_id: int,
     mailbox_provider: MailboxProvider | None = None,
+    *,
+    polling_only: bool = False,
 ) -> dict[str, Any]:
     """Fetch emails via IMAP for one account, store messages, extract verification codes.
 
@@ -69,7 +64,12 @@ def fetch_and_store_for_account(
             primary_address=row["primary_address"],
         )
 
-    email_rows = list_fetch_usable_emails_for_account(settings, user_id, account_id)
+    email_rows = list_fetch_usable_emails_for_account(
+        settings,
+        user_id,
+        account_id,
+        polling_only=polling_only,
+    )
 
     if not email_rows:
         return {
@@ -77,7 +77,7 @@ def fetch_and_store_for_account(
             "email": email_addr,
             "messages_stored": 0,
             "codes_found": 0,
-            "error": "No usable emails",
+            "error": "" if polling_only else "No usable emails",
         }
 
     # Fetch from IMAP
@@ -169,7 +169,10 @@ def _mark_account_refreshed(settings: Settings, account_id: int) -> None:
 # ── bulk fetch (all active accounts) ─────────────────────────────────────
 
 
-def fetch_all_active_accounts(settings: Settings) -> dict[str, Any]:
+def fetch_all_active_accounts(
+    settings: Settings,
+    mailbox_provider: MailboxProvider | None = None,
+) -> dict[str, Any]:
     """Fetch emails for all active accounts. Returns summary."""
     from hx_email.database import connect
 
@@ -187,7 +190,13 @@ def fetch_all_active_accounts(settings: Settings) -> dict[str, Any]:
     errors = 0
 
     for row in rows:
-        result = fetch_and_store_for_account(settings, row["user_id"], row["id"])
+        result = fetch_and_store_for_account(
+            settings,
+            row["user_id"],
+            row["id"],
+            mailbox_provider,
+            polling_only=True,
+        )
         results.append(result)
         total_stored += result.get("messages_stored", 0)
         total_codes += result.get("codes_found", 0)
@@ -201,52 +210,3 @@ def fetch_all_active_accounts(settings: Settings) -> dict[str, Any]:
         "errors": errors,
         "results": results,
     }
-
-
-# ── background fetch loop ────────────────────────────────────────────────
-
-
-def start_background_fetch(settings: Settings, interval: int = 120) -> None:
-    """Start a background daemon thread that fetches emails periodically.
-
-    Args:
-        settings: application settings
-        interval: seconds between fetch cycles (default 120)
-    """
-    global _FETCH_RUNNING, _FETCH_THREAD
-
-    with _FETCH_LOCK:
-        if _FETCH_RUNNING:
-            return
-        _FETCH_RUNNING = True
-
-    def _loop() -> None:
-        logger.info("Background email fetch started (interval=%ds)", interval)
-        while _FETCH_RUNNING:
-            try:
-                summary = fetch_all_active_accounts(settings)
-                if summary["messages_stored"] > 0 or summary["codes_found"] > 0:
-                    logger.info(
-                        "Background fetch: %d new messages, %d codes from %d accounts",
-                        summary["messages_stored"],
-                        summary["codes_found"],
-                        summary["accounts_processed"],
-                    )
-            except Exception:
-                logger.exception("Background email fetch error")
-
-            # Sleep in small chunks so we can shut down promptly
-            for _ in range(interval):
-                if not _FETCH_RUNNING:
-                    break
-                time.sleep(1)
-
-    _FETCH_THREAD = threading.Thread(target=_loop, daemon=True, name="email-fetcher")
-    _FETCH_THREAD.start()
-
-
-def stop_background_fetch() -> None:
-    """Signal the background fetch thread to stop."""
-    global _FETCH_RUNNING
-    with _FETCH_LOCK:
-        _FETCH_RUNNING = False

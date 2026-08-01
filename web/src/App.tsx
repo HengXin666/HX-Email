@@ -45,8 +45,8 @@ const RequireAuth: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 };
 
 const App: React.FC = () => {
-  const { token } = useApp();
-  useBrowserNotifications(!!token);
+  const { token, user } = useApp();
+  useBrowserNotifications(!!token, user?.id);
 
   return (
     <Routes>

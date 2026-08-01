@@ -49,6 +49,7 @@ import type {
   VerificationMatch,
 } from "../types";
 import { copyToClipboard } from "../utils/clipboard";
+import { looksLikeHtml, sanitizeHtml } from "../utils/html";
 import { formatDateTimeFull, formatRelativeTime } from "../utils/time";
 import { waitForFreshCode } from "../utils/verification";
 import { GoogleOAuthControls } from "./impl/GoogleOAuthControls";
@@ -315,6 +316,7 @@ const EditGroupModal: React.FC<{
   const [color, setColor] = useState(g?.color || COLORS[0]);
   const [proxyUrl, setProxyUrl] = useState(g?.proxy_url || "");
   const [notifyEnabled, setNotifyEnabled] = useState(g?.notify_enabled !== false);
+  const [pollingEnabled, setPollingEnabled] = useState(g?.polling_enabled !== false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [testLoading, setTestLoading] = useState(false);
@@ -329,6 +331,7 @@ const EditGroupModal: React.FC<{
       setColor(current.color);
       setProxyUrl(current.proxy_url || "");
       setNotifyEnabled(current.notify_enabled !== false);
+      setPollingEnabled(current.polling_enabled !== false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupId]);
@@ -365,10 +368,23 @@ const EditGroupModal: React.FC<{
     try {
       await api.toggleGroupNotify(g.id, value);
       await refreshGroups();
-      toast(value ? "该分组的浏览器通知已开启" : "该分组的浏览器通知已静音", "success");
+      toast(value ? "该分组的通知与转发已开启" : "该分组的通知与转发已暂停", "success");
     } catch (err: any) {
       setNotifyEnabled(!value);
       toast(err.message, "error");
+    }
+  };
+
+  const handleGroupPollingToggle = async (value: boolean): Promise<void> => {
+    if (!g) return;
+    setPollingEnabled(value);
+    try {
+      await api.toggleGroupPolling(g.id, value);
+      await refreshGroups();
+      toast(value ? "该分组已加入自动轮询" : "该分组已暂停自动轮询", "success");
+    } catch (error: unknown) {
+      setPollingEnabled(!value);
+      toast(error instanceof Error ? error.message : "更新分组轮询失败", "error");
     }
   };
 
@@ -459,7 +475,12 @@ const EditGroupModal: React.FC<{
             )}
           </div>
           <Checkbox
-            label="新邮件浏览器通知（组内所有邮箱）"
+            label="自动轮询组内邮箱"
+            checked={pollingEnabled}
+            onChange={(value: boolean) => void handleGroupPollingToggle(value)}
+          />
+          <Checkbox
+            label="发送新邮件通知与转发"
             checked={notifyEnabled}
             onChange={(value: boolean) => void handleGroupNotifyToggle(value)}
           />
@@ -1887,21 +1908,6 @@ function getMessagePreview(text: string): string {
     .trim();
 }
 
-/** Detect if text content looks like HTML */
-function looksLikeHtml(text: string | undefined): boolean {
-  if (!text) return false;
-  return /<\s*(html|body|div|table|p|a|img|br|span|style|head)\b/i.test(text);
-}
-
-/** Basic HTML sanitizer: strip script/style tags, keep structural tags */
-function sanitizeHtml(raw: string): string {
-  return raw
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
-    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, "")
-    .replace(/\bon\w+\s*=\s*"[^"]*"/gi, "")
-    .replace(/\bon\w+\s*=\s*'[^']*'/gi, "");
-}
-
 function normalizePoolEntries(response: any): any[] {
   if (Array.isArray(response)) return response;
   if (Array.isArray(response?.entries)) return response.entries;
@@ -2591,7 +2597,7 @@ const EmailSettingsModal: React.FC<{
     try {
       await api.toggleEmailNotify(email.id, value);
       await refreshEmails();
-      toast(value ? "该邮箱的浏览器通知已开启" : "该邮箱的浏览器通知已静音", "success");
+      toast(value ? "该邮箱的通知与转发已开启" : "该邮箱的通知与转发已暂停", "success");
     } catch (err: any) {
       setNotifyEnabled(!value);
       toast(err.message, "error");
@@ -2728,7 +2734,7 @@ const EmailSettingsModal: React.FC<{
 
               {/* 浏览器通知 */}
               <Checkbox
-                label="新邮件浏览器通知"
+                label="新邮件通知与转发"
                 checked={notifyEnabled}
                 onChange={(value: boolean) => void handleEmailNotifyToggle(value)}
               />
