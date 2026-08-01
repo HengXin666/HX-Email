@@ -188,6 +188,38 @@ def test_temp_mail_extracts_microsoft_chinese_security_code(tmp_path):
     assert response.json() == {"codes": [{"message_id": "microsoft-message", "code": "432939"}]}
 
 
+def test_temp_mail_extracts_microsoft_chinese_one_time_code(tmp_path):
+    settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
+    migrate(settings)
+    provider = FakeCfTempMailProvider()
+    provider.messages_by_address["cf-box-1"] = [
+        FakeProviderMessage(
+            id="microsoft-one-time-message",
+            from_address="account-security-noreply@accountprotection.microsoft.com",
+            subject="Microsoft 帐户一次性代码",
+            text=(
+                "我们已收到你要求获得 Microsoft 帐户所用的一次性代码的申请。\n\n"
+                "你的一次性代码为: 797619\n\n"
+                "仅在官方网站或应用上输入此代码。不要与任何人共享。"
+            ),
+        )
+    ]
+    client = TestClient(create_app(settings, temp_mail_providers={"cf": provider}))
+    headers = login_admin(client)
+    mailbox = client.post(
+        "/api/v1/temp-mail/cf/mailboxes",
+        json={"address": "signup@example.test", "label": "Signup temp"},
+        headers=headers,
+    ).json()
+
+    response = client.get(f"/api/v1/temp-mail/{mailbox['id']}/codes", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "codes": [{"message_id": "microsoft-one-time-message", "code": "797619"}]
+    }
+
+
 def test_temp_mail_is_isolated_by_user_and_can_be_deactivated_or_archived(tmp_path):
     settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
     migrate(settings)
