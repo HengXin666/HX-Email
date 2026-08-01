@@ -45,6 +45,18 @@ export function firstCode(matches: VerificationMatch[]): string | null {
   return null;
 }
 
+/** Merge codes already returned by the mailbox into a wait baseline. */
+export function mergeCodeBaseline(
+  baselineCodes: ReadonlySet<string>,
+  matches: ReadonlyArray<{ code?: string | null }>,
+): Set<string> {
+  const mergedCodes: Set<string> = new Set(baselineCodes);
+  for (const match of matches) {
+    if (match.code) mergedCodes.add(match.code);
+  }
+  return mergedCodes;
+}
+
 /**
  * Poll a live mailbox until a verification code OUTSIDE baselineCodes shows up.
  *

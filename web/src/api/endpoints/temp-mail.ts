@@ -1,6 +1,8 @@
 import type { TempMessage, UsableEmail } from "../../types";
 import { request } from "../core";
 
+const TEMP_MAIL_REQUEST_OPTIONS: RequestInit = { cache: "no-store" };
+
 export const tempMailApi = {
   createTempMail: (label: string) =>
     request<UsableEmail>("/temp-mail/cf/mailboxes", {
@@ -12,15 +14,20 @@ export const tempMailApi = {
     request<UsableEmail>(`/temp-mail/${id}/archive`, { method: "POST" }),
 
   tempMessages: (id: number) =>
-    request<{ messages: TempMessage[] }>(`/temp-mail/${id}/messages`).then((r) => r.messages),
+    request<{ messages: TempMessage[] }>(
+      `/temp-mail/${id}/messages`,
+      TEMP_MAIL_REQUEST_OPTIONS,
+    ).then((r) => r.messages),
 
   tempCodes: (id: number) =>
-    request<{ codes: Array<{ message_id: string; code: string }> }>(`/temp-mail/${id}/codes`).then(
-      (r) => r.codes,
-    ),
+    request<{ codes: Array<{ message_id: string; code: string }> }>(
+      `/temp-mail/${id}/codes`,
+      TEMP_MAIL_REQUEST_OPTIONS,
+    ).then((r) => r.codes),
 
   tempLinks: (id: number) =>
     request<{ links: Array<{ message_id: string; url: string }> }>(
       `/temp-mail/${id}/verification-links`,
+      TEMP_MAIL_REQUEST_OPTIONS,
     ).then((r) => r.links),
 };

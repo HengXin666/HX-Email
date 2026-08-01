@@ -202,10 +202,17 @@ class CFWorkerTempMailProvider:
         jwt: str = _extract_jwt(provider_mailbox_id)
         if not jwt:
             raise TempMailProviderError("临时邮箱缺少访问凭证, 请删除后重新创建")
-        headers: dict[str, str] = {**_BROWSER_HEADERS, "Authorization": f"Bearer {jwt}"}
+        headers: dict[str, str] = {
+            **_BROWSER_HEADERS,
+            "Authorization": f"Bearer {jwt}",
+            "Cache-Control": "no-cache, no-store, max-age=0",
+            "Pragma": "no-cache",
+        }
         if custom_auth:
             headers["x-custom-auth"] = custom_auth
-        status, body = _http_request("GET", f"{base_url}/api/mails?limit=100&offset=0", headers)
+        refresh_key: str = secrets.token_hex(8)
+        url: str = f"{base_url}/api/mails?limit=100&offset=0&_hx_refresh={refresh_key}"
+        status, body = _http_request("GET", url, headers)
         if not 200 <= status < 300:
             raise TempMailProviderError(f"CF Worker 读取邮件失败 HTTP {status}: {body[:200]}")
         data: dict[str, Any] = _parse_json_object(body)

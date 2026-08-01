@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Header, HTTPException, Query, status
+from fastapi import APIRouter, Header, HTTPException, Query, Response, status
 
 from hx_email.api.dependencies import require_user
 from hx_email.api.schemas import TempMailboxCreate
@@ -27,6 +27,15 @@ from hx_email.server.mail.temp_mail import (
     extract_links,
     list_temp_messages,
 )
+
+_NO_CACHE_HEADERS: dict[str, str] = {
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+}
+
+
+def _disable_response_cache(response: Response) -> None:
+    response.headers.update(_NO_CACHE_HEADERS)
 
 
 def register_temp_mail_routes(
@@ -176,9 +185,11 @@ def register_temp_mail_read_routes(
     @router.get("/temp-mail/{usable_email_id}/messages")
     def get_temp_mail_messages(
         usable_email_id: int,
+        response: Response,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, list[dict[str, object]]]:
         user = require_user(settings, authorization)
+        _disable_response_cache(response)
         messages = load_temp_messages(settings, user.id, usable_email_id, temp_mail_providers)
         return {
             "messages": [
@@ -196,9 +207,11 @@ def register_temp_mail_read_routes(
     @router.get("/temp-mail/{usable_email_id}/codes")
     def get_temp_mail_codes(
         usable_email_id: int,
+        response: Response,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, list[dict[str, str]]]:
         user = require_user(settings, authorization)
+        _disable_response_cache(response)
         messages = load_temp_messages(settings, user.id, usable_email_id, temp_mail_providers)
         return {
             "codes": [
@@ -210,9 +223,11 @@ def register_temp_mail_read_routes(
     @router.get("/temp-mail/{usable_email_id}/verification-links")
     def get_temp_mail_verification_links(
         usable_email_id: int,
+        response: Response,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, list[dict[str, str]]]:
         user = require_user(settings, authorization)
+        _disable_response_cache(response)
         messages = load_temp_messages(settings, user.id, usable_email_id, temp_mail_providers)
         return {
             "links": [

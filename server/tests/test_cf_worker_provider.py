@@ -116,6 +116,23 @@ def test_list_messages_parses_raw_mime(tmp_path) -> None:
     assert headers["Authorization"] == "Bearer user-jwt"
 
 
+def test_list_messages_bypasses_cached_mail_list_responses(tmp_path) -> None:
+    provider, _settings = make_provider(tmp_path)
+    response = json.dumps({"results": []})
+    mailbox_id = json.dumps({"id": "42", "jwt": "user-jwt"})
+
+    with patch(MOCK_TARGET, return_value=(200, response)) as http:
+        provider.list_messages(mailbox_id)
+        provider.list_messages(mailbox_id)
+
+    first_call = http.call_args_list[0]
+    second_call = http.call_args_list[1]
+    assert first_call.args[1] != second_call.args[1]
+    for call in http.call_args_list:
+        assert call.args[2]["Cache-Control"] == "no-cache, no-store, max-age=0"
+        assert call.args[2]["Pragma"] == "no-cache"
+
+
 def test_list_messages_decodes_escaped_unicode_before_code_extraction(tmp_path) -> None:
     provider, _settings = make_provider(tmp_path)
     response = json.dumps({"results": [{"id": 8, "raw": ESCAPED_UNICODE_MIME}]})

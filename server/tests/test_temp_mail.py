@@ -124,6 +124,7 @@ def test_temp_mail_reads_messages_codes_and_verification_links_through_cf_provid
         }
     ]
     assert codes.status_code == 200
+    assert codes.headers["cache-control"] == "no-store, no-cache, must-revalidate, max-age=0"
     assert codes.json() == {"codes": [{"message_id": "msg-1", "code": "482913"}]}
     assert links.status_code == 200
     assert links.json() == {

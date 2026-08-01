@@ -1,7 +1,7 @@
 import { expect, test, vi } from "vitest";
 
 import type { VerificationMatch } from "../types";
-import { firstCode, waitForFreshCode } from "./verification";
+import { firstCode, mergeCodeBaseline, waitForFreshCode } from "./verification";
 
 function match(code: string | null): VerificationMatch {
   return { code, link: null, recipient_address: null, certainty: "certain", subject: "" };
@@ -27,6 +27,25 @@ test("firstCode returns the newest non-empty code", () => {
   expect(firstCode([match(null), match("111111"), match("222222")])).toBe("111111");
   expect(firstCode([match(null)])).toBeNull();
   expect(firstCode([])).toBeNull();
+});
+
+test("codes already present in a temp mailbox become the stale baseline", async () => {
+  const clock = makeClock();
+  const baseline = mergeCodeBaseline(new Set<string>(), [match("123456")]);
+  let calls = 0;
+
+  const outcome = await waitForFreshCode({
+    fetchMatches: () => {
+      calls += 1;
+      return Promise.resolve(calls >= 2 ? [match("999999"), match("123456")] : [match("123456")]);
+    },
+    baselineCodes: baseline,
+    timeoutMs: 60_000,
+    pollIntervalMs: 5_000,
+    ...clock,
+  });
+
+  expect(outcome).toMatchObject({ status: "fresh", code: "999999", attempts: 2 });
 });
 
 test("fresh code already arrived is returned on the first attempt", async () => {

@@ -51,7 +51,7 @@ import type {
 import { copyToClipboard } from "../utils/clipboard";
 import { looksLikeHtml, sanitizeHtml } from "../utils/html";
 import { formatDateTimeFull, formatRelativeTime } from "../utils/time";
-import { waitForFreshCode } from "../utils/verification";
+import { mergeCodeBaseline, waitForFreshCode } from "../utils/verification";
 import { GoogleOAuthControls } from "./impl/GoogleOAuthControls";
 import { GoogleOAuthCreatePath } from "./impl/GoogleOAuthCreatePath";
 import { PlatformLogo } from "./impl/PlatformLogo";
@@ -826,15 +826,14 @@ const EmailCard: React.FC<{
 
   const loadBaselineCodes = async (): Promise<Set<string>> => {
     const baseline = new Set(seenCodesRef.current);
-    if (email.kind !== "temp") {
-      // Cached history only — must NOT trigger a live fetch, otherwise a code
-      // that just arrived would land in the baseline and never count as fresh.
-      const history = await api.verificationHistory(email.id);
-      for (const historyMatch of history.matches) {
-        if (historyMatch.code) baseline.add(historyMatch.code);
-      }
+    if (email.kind === "temp") {
+      const currentCodes = await api.tempCodes(email.id);
+      return mergeCodeBaseline(baseline, currentCodes);
     }
-    return baseline;
+    // Cached history only — must NOT trigger a live fetch, otherwise a code
+    // that just arrived would land in the baseline and never count as fresh.
+    const history = await api.verificationHistory(email.id);
+    return mergeCodeBaseline(baseline, history.matches);
   };
 
   const handleGetCode = async (e: React.MouseEvent) => {
@@ -848,14 +847,19 @@ const EmailCard: React.FC<{
         baselineCodes,
         isCancelled: () => codeWaitGenerationRef.current !== generation,
         onNoFreshCodeYet: async (fallbackCode: string | null) => {
-          if (fallbackCode) {
+          if (fallbackCode && email.kind !== "temp") {
             await copyCode(
               fallbackCode,
               `已复制最近验证码 ${fallbackCode} (可能为旧)，正在等待新邮件...`,
               "info",
             );
           } else {
-            toast("暂未找到验证码，正在等待新邮件...", "info");
+            toast(
+              fallbackCode
+                ? "已找到旧验证码，正在等待新邮件..."
+                : "暂未找到验证码，正在等待新邮件...",
+              "info",
+            );
           }
         },
       });

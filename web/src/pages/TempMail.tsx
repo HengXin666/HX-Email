@@ -191,8 +191,10 @@ const TempDetail: React.FC<{ emailId: number; address: string; label: string }> 
   const [links, setLinks] = useState<Array<{ message_id: string; url: string }>>([]);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const loadRequestRef = React.useRef(0);
 
-  const load = async () => {
+  const load = async (): Promise<void> => {
+    const requestId: number = ++loadRequestRef.current;
     setLoading(true);
     try {
       const [m, c, l] = await Promise.all([
@@ -200,20 +202,24 @@ const TempDetail: React.FC<{ emailId: number; address: string; label: string }> 
         api.tempCodes(emailId),
         api.tempLinks(emailId),
       ]);
+      if (requestId !== loadRequestRef.current) return;
       setMessages(m);
       setCodes(c);
       setLinks(l);
     } catch (err: any) {
-      toast(err.message, "error");
+      if (requestId === loadRequestRef.current) toast(err.message, "error");
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestRef.current) setLoading(false);
     }
   };
 
   React.useEffect(() => {
     load();
     const interval = setInterval(load, 15000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      loadRequestRef.current += 1;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [emailId]);
 
