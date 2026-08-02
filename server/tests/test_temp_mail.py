@@ -121,11 +121,12 @@ def test_temp_mail_reads_messages_codes_and_verification_links_through_cf_provid
             "subject": "Your login code is 482913",
             "text": "Use 482913 or open https://service.test/verify?token=abc123",
             "html": "",
+            "received_at": "",
         }
     ]
     assert codes.status_code == 200
     assert codes.headers["cache-control"] == "no-store, no-cache, must-revalidate, max-age=0"
-    assert codes.json() == {"codes": [{"message_id": "msg-1", "code": "482913"}]}
+    assert codes.json() == {"codes": [{"message_id": "msg-1", "code": "482913", "received_at": ""}]}
     assert links.status_code == 200
     assert links.json() == {
         "links": [{"message_id": "msg-1", "url": "https://service.test/verify?token=abc123"}]
@@ -156,7 +157,9 @@ def test_temp_mail_only_extracts_code_with_verification_context(tmp_path):
     response = client.get(f"/api/v1/temp-mail/{mailbox['id']}/codes", headers=headers)
 
     assert response.status_code == 200
-    assert response.json() == {"codes": [{"message_id": "msg-1", "code": "A7B9C2"}]}
+    assert response.json() == {
+        "codes": [{"message_id": "msg-1", "code": "A7B9C2", "received_at": ""}]
+    }
 
 
 def test_temp_mail_extracts_microsoft_chinese_security_code(tmp_path):
@@ -186,7 +189,9 @@ def test_temp_mail_extracts_microsoft_chinese_security_code(tmp_path):
     response = client.get(f"/api/v1/temp-mail/{mailbox['id']}/codes", headers=headers)
 
     assert response.status_code == 200
-    assert response.json() == {"codes": [{"message_id": "microsoft-message", "code": "432939"}]}
+    assert response.json() == {
+        "codes": [{"message_id": "microsoft-message", "code": "432939", "received_at": ""}]
+    }
 
 
 def test_temp_mail_extracts_microsoft_chinese_one_time_code(tmp_path):
@@ -217,7 +222,7 @@ def test_temp_mail_extracts_microsoft_chinese_one_time_code(tmp_path):
 
     assert response.status_code == 200
     assert response.json() == {
-        "codes": [{"message_id": "microsoft-one-time-message", "code": "797619"}]
+        "codes": [{"message_id": "microsoft-one-time-message", "code": "797619", "received_at": ""}]
     }
 
 

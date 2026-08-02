@@ -16,6 +16,8 @@ import string
 import urllib.error
 import urllib.request
 from collections.abc import Mapping
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 from hx_email.config import Settings
@@ -136,11 +138,44 @@ def _decode_json_unicode_escapes(value: str) -> str:
     return re.sub(pattern, decode_match, value)
 
 
+def _parse_message_timestamp(value: str) -> datetime:
+    """Parse ISO or RFC mail dates into comparable UTC timestamps."""
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        try:
+            parsed = parsedate_to_datetime(value)
+        except (IndexError, TypeError, ValueError):
+            return datetime.min.replace(tzinfo=UTC)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _message_sort_key(item: dict[str, Any]) -> datetime:
+    """Return the provider timestamp, falling back to the MIME Date header."""
+    for field in ("created_at", "received_at"):
+        value: str = str(item.get(field) or "").strip()
+        if value:
+            return _parse_message_timestamp(value)
+    raw: str = str(item.get("raw") or "")
+    if raw:
+        message = email.message_from_string(raw, policy=email.policy.default)
+        date_header: str = str(message.get("Date") or "").strip()
+        if date_header:
+            return _parse_message_timestamp(date_header)
+    return datetime.min.replace(tzinfo=UTC)
+
+
 def _normalize_message(item: dict[str, Any]) -> TempMailMessage:
     raw_id: Any = item.get("id")
     message_id: str = f"cf_{raw_id}" if raw_id is not None else ""
     raw_mime: str = str(item.get("raw") or "")
     subject, from_address, text, html = _parse_mime(raw_mime) if raw_mime else ("", "", "", "")
+    received_at: str = str(item.get("received_at") or item.get("created_at") or "").strip()
+    if not received_at and raw_mime:
+        parsed_message = email.message_from_string(raw_mime, policy=email.policy.default)
+        received_at = str(parsed_message.get("Date") or "").strip()
     if not from_address:
         from_address = str(item.get("source") or "")
     if not subject:
@@ -149,7 +184,12 @@ def _normalize_message(item: dict[str, Any]) -> TempMailMessage:
         text = str(item.get("text") or "")
         html = str(item.get("html") or "")
     return TempMailMessage(
-        id=message_id, from_address=from_address, subject=subject, text=text, html=html
+        id=message_id,
+        from_address=from_address,
+        subject=subject,
+        text=text,
+        html=html,
+        received_at=received_at,
     )
 
 
@@ -219,8 +259,10 @@ class CFWorkerTempMailProvider:
         raw_mails: Any = data.get("results") or data.get("mails") or []
         if not isinstance(raw_mails, list):
             raise TempMailProviderError("CF Worker 邮件列表字段格式错误")
+        items: list[dict[str, Any]] = [item for item in raw_mails if isinstance(item, dict)]
+        items.sort(key=_message_sort_key, reverse=True)
         messages: list[TempMailMessage | Mapping[str, str] | TempMailMessageLike] = [
-            _normalize_message(item) for item in raw_mails if isinstance(item, dict)
+            _normalize_message(item) for item in items
         ]
         return messages
 

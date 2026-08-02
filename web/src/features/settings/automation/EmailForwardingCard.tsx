@@ -1,18 +1,46 @@
 import type React from "react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { api } from "../../../api/client";
 import { IconMail } from "../../../components/icons";
-import { Button, Card, Input } from "../../../components/ui/Primitives";
+import { Button, Card, Input, Select } from "../../../components/ui/Primitives";
 import { SectionHeader, TestResult, ToggleRow } from "../SettingsControls";
 import type { SettingsTabProps, TestOutcome } from "../types";
+
+interface SenderAccountOption {
+  value: string;
+  label: string;
+}
+
+const getSenderAccountOptions = (accounts: SettingsTabProps["accounts"]): SenderAccountOption[] =>
+  accounts
+    .filter((account) => account.status === "active" && account.primary_address)
+    .map((account) => ({
+      value: String(account.id),
+      label: [account.primary_address, account.display_name, account.provider]
+        .filter(Boolean)
+        .join(" · "),
+    }))
+    .sort((left, right) => left.label.localeCompare(right.label));
 
 export const EmailForwardingCard: React.FC<SettingsTabProps> = ({
   settings,
   setSetting,
   toast,
+  accounts,
 }) => {
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<TestOutcome | null>(null);
+  const senderAccountOptions: SenderAccountOption[] = useMemo(
+    () => getSenderAccountOptions(accounts),
+    [accounts],
+  );
+  const senderAccountId: string = settings.email_notification_account_id || "";
+  const recipient: string = settings.email_notification_recipient || "";
+  const selectedSenderAccountId: string = senderAccountOptions.some(
+    (option) => option.value === senderAccountId,
+  )
+    ? senderAccountId
+    : "";
 
   const applyPreset = (host: string): void => {
     setSetting("email_notification_smtp_host", host);
@@ -21,10 +49,21 @@ export const EmailForwardingCard: React.FC<SettingsTabProps> = ({
 
   const handleTest = async (): Promise<void> => {
     const recipient: string = settings.email_notification_recipient || "";
+    const senderAccountId: string = settings.email_notification_account_id || "";
     const host: string = settings.email_notification_smtp_host || "";
     const port: number = Number(settings.email_notification_smtp_port || "587");
-    if (!recipient || !host) {
-      toast("请填写收件邮箱和 SMTP 主机", "error");
+    const smtpOverride: Record<string, unknown> = host
+      ? {
+          smtp_host: host,
+          smtp_port: Number.isFinite(port) ? port : 587,
+        }
+      : {};
+    if (!recipient) {
+      toast("请填写转发目标邮箱", "error");
+      return;
+    }
+    if (!senderAccountId && !host) {
+      toast("请选择发件账号或填写 SMTP 主机", "error");
       return;
     }
     setIsTesting(true);
@@ -32,10 +71,13 @@ export const EmailForwardingCard: React.FC<SettingsTabProps> = ({
     try {
       const result = await api.testEmail({
         recipient,
-        smtp_host: host,
-        smtp_port: Number.isFinite(port) ? port : 587,
-        smtp_user: settings.email_notification_smtp_user || undefined,
-        smtp_password: settings.email_notification_smtp_password || undefined,
+        ...(senderAccountId
+          ? { email_account_id: Number(senderAccountId), ...smtpOverride }
+          : {
+              ...smtpOverride,
+              smtp_user: settings.email_notification_smtp_user || undefined,
+              smtp_password: settings.email_notification_smtp_password || undefined,
+            }),
       });
       setTestResult({
         success: result.success,
@@ -57,16 +99,25 @@ export const EmailForwardingCard: React.FC<SettingsTabProps> = ({
       <div className="max-w-lg space-y-3">
         <ToggleRow
           label="收到新邮件后转发"
-          description="通过 SMTP 将新邮件正文转发到指定邮箱"
+          description="使用平台账号或手动 SMTP 将新邮件正文转发到指定邮箱"
           enabled={settings.email_notification_enabled === "true"}
           onChange={(value) => setSetting("email_notification_enabled", value ? "true" : "false")}
+        />
+        <Select
+          label="发件账号"
+          value={selectedSenderAccountId}
+          onChange={(value) => setSetting("email_notification_account_id", value)}
+          options={[{ value: "", label: "手动配置 SMTP" }, ...senderAccountOptions]}
+          placeholder={senderAccountOptions.length > 0 ? "选择平台内账号" : "暂无可用账号"}
+          disabled={senderAccountOptions.length === 0}
         />
         <Input
           label="转发到"
           type="email"
-          value={settings.email_notification_recipient || ""}
+          value={recipient}
           onChange={(event) => setSetting("email_notification_recipient", event.target.value)}
           placeholder="archive@example.com"
+          hint="也可以直接输入其他收件邮箱"
         />
         <div className="flex flex-wrap gap-1.5" role="group" aria-label="SMTP 预设">
           <Button
@@ -100,6 +151,11 @@ export const EmailForwardingCard: React.FC<SettingsTabProps> = ({
             value={settings.email_notification_smtp_host || ""}
             onChange={(event) => setSetting("email_notification_smtp_host", event.target.value)}
             placeholder="smtp.gmail.com"
+            hint={
+              senderAccountId
+                ? "内置服务商使用账号配置；自定义账号可用此处覆盖 SMTP"
+                : "未选择平台内账号时使用"
+            }
           />
           <Input
             label="端口"

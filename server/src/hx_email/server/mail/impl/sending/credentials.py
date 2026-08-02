@@ -5,6 +5,11 @@ from hx_email.config import Settings
 from hx_email.database import connect
 from hx_email.security import decrypt_secret
 from hx_email.server.mail.impl.sending.router import get_email_server
+from hx_email.server.settings_service import get_setting
+
+NATIVE_SMTP_PROVIDERS: frozenset[str] = frozenset(
+    {"outlook", "gmail", "qq", "163", "126", "yahoo", "aliyun"}
+)
 
 
 @dataclass(frozen=True)
@@ -71,16 +76,77 @@ def resolve_send_credentials(
     return CredentialResolution(True, None, build_missing_config_problem(row))
 
 
-def build_credentials(settings: Settings, row: Row) -> SendCredentials | None:
+def resolve_account_send_credentials(
+    settings: Settings,
+    user_id: int,
+    email_account_id: int,
+    smtp_host_override: str | None = None,
+    smtp_port_override: int | None = None,
+) -> CredentialResolution:
+    """Resolve the primary sending credentials for an active owned account."""
+    with connect(settings) as connection:
+        row = connection.execute(
+            """
+            SELECT COALESCE(ue.id, 0) AS usable_email_id,
+                   COALESCE(ue.address, ea.primary_address) AS usable_address,
+                   ea.id AS account_id, ea.provider, ea.primary_address,
+                   ea.imap_host, ea.username, ea.imap_password,
+                   ea.client_id, ea.refresh_token
+            FROM email_accounts ea
+            LEFT JOIN usable_emails ue
+                ON ue.email_account_id = ea.id
+               AND ue.user_id = ea.user_id
+               AND ue.kind = 'primary'
+            WHERE ea.id = ? AND ea.user_id = ? AND ea.status = 'active'
+            """,
+            (email_account_id, user_id),
+        ).fetchone()
+    if row is None:
+        return CredentialResolution(False, None, None)
+    override_host, override_port = resolve_smtp_overrides(
+        settings,
+        smtp_host_override,
+        smtp_port_override,
+    )
+    credentials = build_credentials(
+        settings,
+        row,
+        smtp_host_override=override_host,
+        smtp_port_override=override_port,
+    )
+    if credentials is not None:
+        return CredentialResolution(True, credentials, None)
+    return CredentialResolution(
+        True,
+        None,
+        build_missing_config_problem(
+            row,
+            smtp_host_override=override_host,
+            smtp_port_override=override_port,
+        ),
+    )
+
+
+def build_credentials(
+    settings: Settings,
+    row: Row,
+    *,
+    smtp_host_override: str = "",
+    smtp_port_override: int | None = None,
+) -> SendCredentials | None:
     provider: str = str(row["provider"] or "").strip().lower()
     smtp_host, smtp_port = infer_smtp_server(row)
+    if provider not in NATIVE_SMTP_PROVIDERS:
+        smtp_host = smtp_host_override or smtp_host
+        if smtp_port_override is not None:
+            smtp_port = smtp_port_override
     username: str = str(row["username"] or "").strip() or str(row["primary_address"] or "").strip()
     password: str = str(row["imap_password"] or "").strip()
     client_id: str = str(row["client_id"] or "").strip()
     refresh_token: str = decrypt_secret(settings, str(row["refresh_token"] or "")).strip()
     if provider == "outlook" and client_id and refresh_token:
         return SendCredentials(
-            usable_email_id=int(row["usable_email_id"]),
+            usable_email_id=int(row["usable_email_id"] or 0),
             email_account_id=int(row["account_id"]),
             provider=provider,
             from_address=str(row["usable_address"] or "").strip() or username,
@@ -95,7 +161,7 @@ def build_credentials(settings: Settings, row: Row) -> SendCredentials | None:
         )
     if provider == "gmail" and client_id and refresh_token:
         return SendCredentials(
-            usable_email_id=int(row["usable_email_id"]),
+            usable_email_id=int(row["usable_email_id"] or 0),
             email_account_id=int(row["account_id"]),
             provider=provider,
             from_address=str(row["usable_address"] or "").strip() or username,
@@ -113,7 +179,7 @@ def build_credentials(settings: Settings, row: Row) -> SendCredentials | None:
     if not smtp_host or not username or not password:
         return None
     return SendCredentials(
-        usable_email_id=int(row["usable_email_id"]),
+        usable_email_id=int(row["usable_email_id"] or 0),
         email_account_id=int(row["account_id"]),
         provider=provider,
         from_address=str(row["usable_address"] or "").strip() or username,
@@ -153,8 +219,18 @@ def build_unlinked_problem(row: Row) -> CredentialProblem:
     )
 
 
-def build_missing_config_problem(row: Row) -> CredentialProblem:
+def build_missing_config_problem(
+    row: Row,
+    *,
+    smtp_host_override: str = "",
+    smtp_port_override: int | None = None,
+) -> CredentialProblem:
     smtp_host, smtp_port = infer_smtp_server(row)
+    provider: str = str(row["provider"] or "").strip().lower()
+    if provider not in NATIVE_SMTP_PROVIDERS:
+        smtp_host = smtp_host_override or smtp_host
+        if smtp_port_override is not None:
+            smtp_port = smtp_port_override
     missing_host: bool = not smtp_host
     code: str = "missing_smtp_host" if missing_host else "missing_smtp_password"
     action: str = (
@@ -173,3 +249,25 @@ def build_missing_config_problem(row: Row) -> CredentialProblem:
         security="ssl" if smtp_port == 465 else "starttls",
         actions=(action,),
     )
+
+
+def resolve_smtp_overrides(
+    settings: Settings,
+    smtp_host_override: str | None,
+    smtp_port_override: int | None,
+) -> tuple[str, int | None]:
+    """Load optional SMTP endpoint overrides for non-native account providers."""
+    host: str = (
+        smtp_host_override.strip()
+        if smtp_host_override is not None
+        else get_setting(settings, "email_notification_smtp_host", "").strip()
+    )
+    if not host:
+        return "", None
+    if smtp_port_override is not None:
+        return host, smtp_port_override
+    raw_port: str = get_setting(settings, "email_notification_smtp_port", "587")
+    try:
+        return host, int(raw_port)
+    except ValueError:
+        return host, 587

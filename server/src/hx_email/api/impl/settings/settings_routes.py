@@ -14,6 +14,7 @@ from hx_email.api.dependencies import require_admin, require_user
 from hx_email.api.schemas import SettingsUpdate
 from hx_email.config import Settings
 from hx_email.server.external_api import get_pool_stats
+from hx_email.server.mail.email_accounts import has_active_email_account
 from hx_email.server.mail.impl.fetch.scheduler import get_polling_status
 from hx_email.server.notifications import get_delivery_status
 from hx_email.server.settings_service import (
@@ -26,6 +27,27 @@ from hx_email.server.settings_service import (
 )
 
 _GITHUB_RELEASES_API = "https://api.github.com/repos/HengXin666/HX-Email/releases/latest"
+
+
+def _validate_email_sender_account(
+    settings: Settings,
+    user_id: int,
+    updates: dict[str, Any],
+) -> None:
+    configured_value: object = updates.get(
+        "email_notification_account_id",
+        get_setting(settings, "email_notification_account_id", ""),
+    )
+    if configured_value is None or configured_value == "":
+        return
+    try:
+        account_id: int = int(str(configured_value).strip())
+    except ValueError:
+        return
+    if not has_active_email_account(settings, user_id, account_id):
+        raise ValueError(
+            "email_notification_account_id must reference an active account owned by you"
+        )
 
 
 def _normalize_version(value: str) -> tuple[int, ...]:
@@ -87,9 +109,10 @@ def register_settings_routes(router: APIRouter, settings: Settings) -> None:
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, str]:
         """Update settings with any subset of fields."""
-        require_admin(settings, authorization)
+        user = require_admin(settings, authorization)
         updates: dict[str, Any] = payload.model_dump()
         try:
+            _validate_email_sender_account(settings, user.id, updates)
             update_settings(settings, updates)
         except ValueError as error:
             raise HTTPException(

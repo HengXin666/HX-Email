@@ -1,5 +1,6 @@
 from hx_email.server.mail.impl.sending.base import EmailServerBase
 from hx_email.server.mail.impl.sending.providers import (
+    AliyunEmailServer,
     GmailEmailServer,
     NetEase126EmailServer,
     NetEase163EmailServer,
@@ -18,6 +19,7 @@ server_map: dict[str, EmailServerBase] = {
         NetEase163EmailServer(),
         NetEase126EmailServer(),
         YahooEmailServer(),
+        AliyunEmailServer(),
     )
 }
 

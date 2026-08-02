@@ -34,6 +34,16 @@ ESCAPED_UNICODE_MIME = (
 )
 
 
+def raw_code_message(code: str) -> str:
+    return (
+        "From: sender@example.com\r\n"
+        "Subject: Verification code\r\n"
+        "Content-Type: text/plain; charset=utf-8\r\n"
+        "\r\n"
+        f"Verification code: {code}\r\n"
+    )
+
+
 def make_provider(tmp_path) -> tuple[CFWorkerTempMailProvider, Settings]:
     settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
     migrate(settings)
@@ -114,6 +124,41 @@ def test_list_messages_parses_raw_mime(tmp_path) -> None:
     assert method == "GET"
     assert url.startswith("https://worker.example.dev/api/mails")
     assert headers["Authorization"] == "Bearer user-jwt"
+
+
+def test_list_messages_sorts_by_created_at_newest_first(tmp_path) -> None:
+    provider, _settings = make_provider(tmp_path)
+    response = json.dumps(
+        {
+            "results": [
+                {
+                    "id": 4515,
+                    "created_at": "2026-08-01 16:56:23",
+                    "raw": raw_code_message("899261"),
+                },
+                {
+                    "id": 4566,
+                    "created_at": "2026-08-01 19:42:37",
+                    "raw": raw_code_message("068320"),
+                },
+            ]
+        }
+    )
+    mailbox_id = json.dumps({"id": "3769", "jwt": "user-jwt"})
+
+    with patch(MOCK_TARGET, return_value=(200, response)):
+        messages = provider.list_messages(mailbox_id)
+
+    assert [message.id for message in messages] == ["cf_4566", "cf_4515"]
+    assert [message.received_at for message in messages] == [
+        "2026-08-01 19:42:37",
+        "2026-08-01 16:56:23",
+    ]
+    assert [code.code for code in extract_codes(tuple(messages))] == ["068320", "899261"]
+    assert [code.received_at for code in extract_codes(tuple(messages))] == [
+        "2026-08-01 19:42:37",
+        "2026-08-01 16:56:23",
+    ]
 
 
 def test_list_messages_bypasses_cached_mail_list_responses(tmp_path) -> None:

@@ -32,6 +32,7 @@ SETTINGS_DEFAULTS: dict[str, str] = {
     "enable_auto_polling": "false",
     "polling_interval": "30",
     "email_notification_enabled": "false",
+    "email_notification_account_id": "",
     "email_notification_recipient": "",
     "email_notification_smtp_host": "",
     "email_notification_smtp_port": "587",
@@ -82,6 +83,25 @@ def decode_value(value: str) -> str:
         return value
 
 
+def normalize_external_api_keys(value: object) -> str:
+    """Validate and serialize external API keys, migrating legacy maps."""
+    api_keys: object = value
+    if isinstance(value, str):
+        try:
+            api_keys = json.loads(value)
+        except json.JSONDecodeError as error:
+            raise ValueError("external_api_keys must be a JSON array") from error
+    if isinstance(api_keys, dict):
+        if not all(
+            isinstance(name, str) and isinstance(key, str) for name, key in api_keys.items()
+        ):
+            raise ValueError("external_api_keys must be a JSON array of strings")
+        api_keys = list(api_keys.values())
+    if not isinstance(api_keys, list) or not all(isinstance(key, str) for key in api_keys):
+        raise ValueError("external_api_keys must be a JSON array of strings")
+    return json.dumps(api_keys, ensure_ascii=False)
+
+
 def get_setting(settings: Settings, key: str, default: str = "") -> str:
     """Read a single setting, decoding sensitive values transparently."""
     with connect(settings) as connection:
@@ -92,13 +112,19 @@ def get_setting(settings: Settings, key: str, default: str = "") -> str:
     if row is None:
         return default
     value: str = str(row["value"])
-    if key in SENSITIVE_KEYS:
-        return (
-            decrypt_secret(settings, value)
-            if value.startswith(ENCRYPTED_PREFIX)
-            else decode_value(value)
-        )
-    return value
+    decoded_value: str = (
+        decrypt_secret(settings, value)
+        if key in SENSITIVE_KEYS and value.startswith(ENCRYPTED_PREFIX)
+        else decode_value(value)
+        if key in SENSITIVE_KEYS
+        else value
+    )
+    if key == "external_api_keys":
+        try:
+            return normalize_external_api_keys(decoded_value)
+        except ValueError:
+            return default
+    return decoded_value
 
 
 def set_setting(settings: Settings, key: str, value: str) -> None:
@@ -124,13 +150,19 @@ def get_all_settings(settings: Settings) -> dict[str, str]:
         key: str = row["key"]
         value: str = str(row["value"])
         if key in SETTINGS_DEFAULTS:
-            result[key] = (
+            decoded_value: str = (
                 decrypt_secret(settings, value)
                 if key in SENSITIVE_KEYS and value.startswith(ENCRYPTED_PREFIX)
                 else decode_value(value)
                 if key in SENSITIVE_KEYS
                 else value
             )
+            if key == "external_api_keys":
+                try:
+                    decoded_value = normalize_external_api_keys(decoded_value)
+                except ValueError:
+                    decoded_value = SETTINGS_DEFAULTS[key]
+            result[key] = decoded_value
     return result
 
 
@@ -181,7 +213,19 @@ def normalize_settings_updates(
     for key, value in updates.items():
         if key not in SETTINGS_DEFAULTS:
             continue
-        string_value: str = stringify_setting_value(value)
+        string_value: str = (
+            normalize_external_api_keys(value)
+            if key == "external_api_keys"
+            else stringify_setting_value(value)
+        )
+        if key == "email_notification_account_id" and string_value:
+            try:
+                account_id: int = int(string_value)
+            except ValueError as error:
+                raise ValueError("email_notification_account_id must be an integer") from error
+            if account_id < 1:
+                raise ValueError("email_notification_account_id must be a positive integer")
+            string_value = str(account_id)
         if key in BOOLEAN_SETTING_KEYS:
             lowered: str = string_value.lower()
             if lowered not in {"true", "false", "1", "0"}:
@@ -207,8 +251,12 @@ def normalize_settings_updates(
     if merged["email_notification_enabled"] == "true":
         if not merged["email_notification_recipient"]:
             raise ValueError("email_notification_recipient is required for email forwarding")
-        if not merged["email_notification_smtp_host"]:
-            raise ValueError("email_notification_smtp_host is required for email forwarding")
+        if not any(
+            (merged["email_notification_account_id"], merged["email_notification_smtp_host"])
+        ):
+            raise ValueError(
+                "email_notification_account_id or email_notification_smtp_host is required"
+            )
     if merged["telegram_notification_enabled"] == "true" and (
         not merged["telegram_bot_token"] or not merged["telegram_chat_id"]
     ):
@@ -217,19 +265,15 @@ def normalize_settings_updates(
         script_path: str = merged["script_notification_path"]
         if not script_path or not script_path.lower().endswith(".sh"):
             raise ValueError("script_notification_path must point to a .sh file")
-    if "external_api_keys" in normalized:
-        try:
-            api_keys: object = json.loads(normalized["external_api_keys"])
-        except json.JSONDecodeError as error:
-            raise ValueError("external_api_keys must be a JSON array") from error
-        if not isinstance(api_keys, list) or not all(isinstance(key, str) for key in api_keys):
-            raise ValueError("external_api_keys must be a JSON array of strings")
     if merged["pool_external_enabled"] == "true" and not merged["external_api_key"]:
         normalized["external_api_key"] = secrets.token_urlsafe(32)
     return normalized
 
 
-def update_settings(settings: Settings, updates: dict[str, Any]) -> None:
+def update_settings(
+    settings: Settings,
+    updates: dict[str, Any],
+) -> None:
     """Batch-update settings, encoding sensitive values transparently."""
     normalized: dict[str, str] = normalize_settings_updates(settings, updates)
     with connect(settings) as connection:

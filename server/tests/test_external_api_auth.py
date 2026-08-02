@@ -1,8 +1,12 @@
 """External API auth contract: X-API-Key primary, Authorization compat, RFC-style 401s."""
 
+import json
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 from hx_email.app import create_app
 from hx_email.config import Settings
+from hx_email.database import migrate
 from hx_email.server.settings_service import set_setting
 
 
@@ -18,6 +22,18 @@ def test_external_api_accepts_standard_x_api_key_header(tmp_path):
     client = make_client(tmp_path)
 
     response = client.get("/api/external/health", headers={"X-API-Key": "test-key-123"})
+
+    assert response.status_code == 200
+    assert response.json()["success"] is True
+
+
+def test_external_api_accepts_key_from_json_array(tmp_path: Path) -> None:
+    settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
+    migrate(settings)
+    set_setting(settings, "external_api_key", "")
+    set_setting(settings, "external_api_keys", json.dumps(["array-key-123"]))
+    with TestClient(create_app(settings)) as client:
+        response = client.get("/api/external/health", headers={"X-API-Key": "array-key-123"})
 
     assert response.status_code == 200
     assert response.json()["success"] is True
@@ -43,6 +59,17 @@ def test_external_api_rejects_missing_or_invalid_key_with_www_authenticate(tmp_p
     assert invalid.status_code == 401
     assert missing.headers["WWW-Authenticate"] == "ApiKey"
     assert invalid.headers["WWW-Authenticate"] == "ApiKey"
+
+
+def test_external_api_rejects_non_array_external_api_keys(tmp_path: Path) -> None:
+    settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
+    migrate(settings)
+    set_setting(settings, "external_api_key", "")
+    set_setting(settings, "external_api_keys", json.dumps({"test-key-123": True}))
+    with TestClient(create_app(settings)) as client:
+        response = client.get("/api/external/health", headers={"X-API-Key": "test-key-123"})
+
+    assert response.status_code == 401
 
 
 def test_business_api_401_carries_www_authenticate_bearer(tmp_path):

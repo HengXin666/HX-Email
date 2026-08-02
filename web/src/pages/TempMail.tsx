@@ -16,7 +16,7 @@ import { Topbar } from "../components/layout";
 import { Badge, Button, Card, Input, Modal } from "../components/ui/Primitives";
 import { useToast } from "../components/ui/Toast";
 import { useApp } from "../store/AppContext";
-import type { TempMessage } from "../types";
+import type { TempCode, TempMessage } from "../types";
 import { copyToClipboard } from "../utils/clipboard";
 import { looksLikeHtml, sanitizeHtml } from "../utils/html";
 
@@ -187,7 +187,7 @@ const TempDetail: React.FC<{ emailId: number; address: string; label: string }> 
 }) => {
   const { toast } = useToast();
   const [messages, setMessages] = useState<TempMessage[]>([]);
-  const [codes, setCodes] = useState<Array<{ message_id: string; code: string }>>([]);
+  const [codes, setCodes] = useState<TempCode[]>([]);
   const [links, setLinks] = useState<Array<{ message_id: string; url: string }>>([]);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);

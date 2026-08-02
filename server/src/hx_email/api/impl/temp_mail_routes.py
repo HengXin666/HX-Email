@@ -199,6 +199,7 @@ def register_temp_mail_read_routes(
                     "subject": message.subject,
                     "text": message.text,
                     "html": message.html,
+                    "received_at": message.received_at,
                 }
                 for message in messages
             ]
@@ -215,7 +216,11 @@ def register_temp_mail_read_routes(
         messages = load_temp_messages(settings, user.id, usable_email_id, temp_mail_providers)
         return {
             "codes": [
-                {"message_id": code.message_id, "code": code.code}
+                {
+                    "message_id": code.message_id,
+                    "code": code.code,
+                    "received_at": code.received_at,
+                }
                 for code in extract_codes(messages)
             ]
         }

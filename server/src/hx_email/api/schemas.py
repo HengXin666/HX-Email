@@ -146,6 +146,7 @@ class TelegramTestRequest(BaseModel):
 
 class EmailTestRequest(BaseModel):
     recipient: str
+    email_account_id: int | None = None
     smtp_host: str | None = None
     smtp_port: int | None = None
     smtp_user: str | None = None

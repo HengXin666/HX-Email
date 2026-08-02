@@ -31,7 +31,7 @@ const ADMIN_TABS = [
 ] as const;
 
 export const Settings: React.FC = () => {
-  const { user } = useApp();
+  const { user, accounts } = useApp();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<SettingsTab>("basic");
   const [settings, setSettings] = useState<Record<string, string>>({});
@@ -73,7 +73,7 @@ export const Settings: React.FC = () => {
     { key: "basic", label: "基础", icon: IconSettings },
     ...(user?.is_admin ? ADMIN_TABS : []),
   ] as const;
-  const tabProps: SettingsTabProps = { settings, setSetting, toast, user };
+  const tabProps: SettingsTabProps = { settings, setSetting, toast, user, accounts };
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">

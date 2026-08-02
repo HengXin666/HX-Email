@@ -4,20 +4,28 @@ from __future__ import annotations
 
 import json
 import os
-import smtplib
 import subprocess
 import urllib.error
 import urllib.request
-from email.message import EmailMessage
 from pathlib import Path
 
 from hx_email.config import Settings
+from hx_email.server.mail.impl.sending.credentials import (
+    SendCredentials,
+    resolve_account_send_credentials,
+)
+from hx_email.server.mail.impl.sending.delivery import deliver_debug_email, deliver_smtp_email
 from hx_email.server.mail.verification.extract import extract_verification_code
+from hx_email.server.notifications.impl.recipient_guard import is_monitored_recipient
 from hx_email.server.notifications.models import DeliveryChannel, StoredMessageEvent
 from hx_email.server.settings_service import get_setting
 
 DEFAULT_TIMEOUT_SECONDS: int = 15
 MAX_RESPONSE_CHARS: int = 1000
+
+
+class DeliverySkippedError(RuntimeError):
+    """Raised when delivery is intentionally suppressed by a safety rule."""
 
 
 def _event_payload(event: StoredMessageEvent) -> dict[str, object]:
@@ -53,18 +61,34 @@ def _smtp_port(settings: Settings) -> int:
 
 def _send_email(settings: Settings, event: StoredMessageEvent) -> None:
     recipient: str = get_setting(settings, "email_notification_recipient", "")
+    if not recipient:
+        raise RuntimeError("Email forwarding requires a recipient")
+    if is_monitored_recipient(settings, event.user_id, recipient):
+        raise DeliverySkippedError(
+            "Email forwarding skipped because the recipient is a monitored mailbox"
+        )
+    account_id_value: str = get_setting(settings, "email_notification_account_id", "")
+    if account_id_value:
+        try:
+            account_id: int = int(account_id_value)
+        except ValueError as error:
+            raise RuntimeError("email_notification_account_id must be an integer") from error
+        resolution = resolve_account_send_credentials(settings, event.user_id, account_id)
+        if not resolution.exists:
+            raise RuntimeError("The selected email sending account is unavailable")
+        if resolution.problem is not None:
+            raise RuntimeError(resolution.problem.message)
+        credentials = resolution.credentials
+        if credentials is None:
+            raise RuntimeError("The selected email sending account has no usable credentials")
+        _send_account_email(settings, event, credentials, recipient)
+        return
     smtp_host: str = get_setting(settings, "email_notification_smtp_host", "")
     smtp_user: str = get_setting(settings, "email_notification_smtp_user", "")
     smtp_password: str = get_setting(settings, "email_notification_smtp_password", "")
     smtp_port: int = _smtp_port(settings)
     if not recipient or not smtp_host:
         raise RuntimeError("Email forwarding requires recipient and SMTP host")
-    message = EmailMessage()
-    message["Subject"] = f"Fwd: {event.subject or '(no subject)'}"
-    message["From"] = smtp_user or "hx-email@localhost"
-    message["To"] = recipient
-    if event.from_address:
-        message["Reply-To"] = event.from_address
     body: str = (
         f"Forwarded by HX Email\n\n"
         f"Mailbox: {event.address}\n"
@@ -73,18 +97,40 @@ def _send_email(settings: Settings, event: StoredMessageEvent) -> None:
         f"Received: {event.received_at}\n"
         f"Subject: {event.subject}\n\n{event.body}"
     )
-    message.set_content(body)
-    if smtp_port == 465:
-        with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=DEFAULT_TIMEOUT_SECONDS) as client:
-            if smtp_user and smtp_password:
-                client.login(smtp_user, smtp_password)
-            client.send_message(message)
-        return
-    with smtplib.SMTP(smtp_host, smtp_port, timeout=DEFAULT_TIMEOUT_SECONDS) as client:
-        client.starttls()
-        if smtp_user and smtp_password:
-            client.login(smtp_user, smtp_password)
-        client.send_message(message)
+    deliver_smtp_email(
+        smtp_host,
+        smtp_port,
+        smtp_user,
+        smtp_password,
+        recipient,
+        f"Fwd: {event.subject or '(no subject)'}",
+        body,
+        reply_to=event.from_address,
+    )
+
+
+def _send_account_email(
+    settings: Settings,
+    event: StoredMessageEvent,
+    credentials: SendCredentials,
+    recipient: str,
+) -> None:
+    """Send forwarded content through credentials selected in the settings UI."""
+    body: str = (
+        f"Forwarded by HX Email\n\n"
+        f"Mailbox: {event.address}\n"
+        f"From: {event.from_address}\n"
+        f"To: {event.recipient_address or event.address}\n"
+        f"Received: {event.received_at}\n"
+        f"Subject: {event.subject}\n\n{event.body}"
+    )
+    deliver_debug_email(
+        settings,
+        credentials,
+        recipient,
+        f"Fwd: {event.subject or '(no subject)'}",
+        body,
+    )
 
 
 def _open_json_request(

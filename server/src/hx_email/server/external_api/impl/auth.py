@@ -2,7 +2,6 @@
 
 import json
 import time
-from typing import Any
 
 from fastapi import HTTPException, status
 
@@ -31,8 +30,10 @@ def validate_api_key(settings: Settings, api_key: str) -> bool:
         return True
     keys_json: str = get_setting(settings, "external_api_keys", "[]")
     try:
-        keys_list: list[Any] = json.loads(keys_json)
+        keys_list: object = json.loads(keys_json)
     except (json.JSONDecodeError, TypeError):
+        return False
+    if not isinstance(keys_list, list) or not all(isinstance(key, str) for key in keys_list):
         return False
     return api_key in keys_list
 

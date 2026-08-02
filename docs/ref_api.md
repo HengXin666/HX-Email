@@ -223,7 +223,7 @@
 - `external_api_disable_raw_content` / `external_api_disable_wait_message` — 对外 API 功能开关
 - `pool_external_enabled` — 外部邮箱池开关
 - `enable_auto_polling` / `polling_interval` — 自动轮询
-- `email_notification_enabled` / `email_notification_recipient` / `email_notification_smtp_*` — 邮件转发
+- `email_notification_enabled` / `email_notification_account_id` / `email_notification_recipient` / `email_notification_smtp_*` — 邮件转发；优先使用当前用户拥有的邮箱账号发送
 - `webhook_notification_enabled` / `webhook_notification_url` / `webhook_notification_token` — Webhook 通知
 - `telegram_notification_enabled` / `telegram_bot_token` / `telegram_chat_id` / `telegram_proxy_url` — Telegram 通知
 - `script_notification_enabled` / `script_notification_path` / `script_notification_timeout` — Shell 流水线
@@ -235,7 +235,7 @@
 | ---- | ------------------------------------------ | ------- | -------------------------------------------------------------------------------------------------- | ----------------------------------- | ------------------------- |
 | POST | `/api/settings/telegram-test`              | Session | — (使用已保存配置)                                                                                 | `{"success": true}`                 | 测试 Telegram 通知        |
 | POST | `/api/settings/test-telegram-proxy`        | Session | JSON `{"proxy_url": str}`                                                                          | `{"success": true}`                 | 测试 Telegram 代理连通性  |
-| POST | `/api/settings/email-test`                 | Session | — (使用已保存配置)                                                                                 | `{"success": true}`                 | 测试邮件通知              |
+| POST | `/api/settings/email-test`                 | Session | JSON `{"recipient": str, "email_account_id": int}`（或使用已保存配置）                             | `{"success": true}`                 | 测试邮件通知              |
 | POST | `/api/settings/webhook-test`               | Session | — (使用已保存配置)                                                                                 | `{"success": true}`                 | 测试 Webhook 通知         |
 | POST | `/api/settings/verification-ai-test`       | Session | JSON `{"subject?": str, "body?": str, "body_html?": str, "code_length?": int, "code_regex?": str}` | `{"success": true}`                 | 测试 AI 验证码提取        |
 | POST | `/api/settings/cf-worker-sync-domains`     | Session | —                                                                                                  | `{"success": true}`                 | 从 CF Worker 同步域名列表 |

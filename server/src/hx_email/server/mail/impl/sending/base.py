@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from email.mime.text import MIMEText
+from email.message import Message
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -19,12 +19,21 @@ class EmailServerBase(ABC):
         subject: str,
         body: str,
     ) -> None:
-        message = MIMEText(body, "plain", "utf-8")
+        from email.message import EmailMessage
+
+        message = EmailMessage()
         message["Subject"] = subject
         message["From"] = credentials.from_address
         message["To"] = recipient
+        message.set_content(body)
         self.deliver(credentials, message)
 
     @abstractmethod
-    def deliver(self, credentials: "SendCredentials", message: MIMEText) -> None:
+    def deliver(
+        self,
+        credentials: "SendCredentials",
+        message: Message,
+        *,
+        proxy_url: str = "",
+    ) -> None:
         raise NotImplementedError

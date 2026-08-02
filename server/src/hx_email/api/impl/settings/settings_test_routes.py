@@ -1,10 +1,8 @@
 """Settings test endpoints for external delivery channels and AI extraction."""
 
 import json
-import smtplib
 import urllib.error
 import urllib.request
-from email.mime.text import MIMEText
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Header, HTTPException, status
@@ -18,6 +16,8 @@ from hx_email.api.schemas import (
     WebhookTestRequest,
 )
 from hx_email.config import Settings
+from hx_email.server.mail.impl.sending.credentials import resolve_account_send_credentials
+from hx_email.server.mail.impl.sending.delivery import deliver_debug_email, deliver_smtp_email
 from hx_email.server.notifications import test_script_pipeline
 from hx_email.server.settings_service import get_setting
 
@@ -95,7 +95,52 @@ def register_settings_test_routes(router: APIRouter, settings: Settings) -> None
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
         """Send a test email via SMTP."""
-        require_admin(settings, authorization)
+        user = require_admin(settings, authorization)
+        if not payload.recipient:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="recipient is required",
+            )
+        selected_account_id: int | None = payload.email_account_id
+        if selected_account_id is None:
+            stored_account_id: str = get_setting(settings, "email_notification_account_id", "")
+            if stored_account_id:
+                try:
+                    selected_account_id = int(stored_account_id)
+                except ValueError as error:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail="email_notification_account_id must be an integer",
+                    ) from error
+        if selected_account_id is not None:
+            resolution = resolve_account_send_credentials(
+                settings,
+                user.id,
+                selected_account_id,
+                smtp_host_override=payload.smtp_host,
+                smtp_port_override=payload.smtp_port,
+            )
+            if not resolution.exists:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="The selected email sending account is unavailable",
+                )
+            if resolution.problem is not None:
+                return {"success": False, "message": resolution.problem.message}
+            credentials = resolution.credentials
+            if credentials is None:
+                return {"success": False, "message": "Sending credentials are missing."}
+            try:
+                deliver_debug_email(
+                    settings,
+                    credentials,
+                    payload.recipient,
+                    "HX-Email Test",
+                    "This is a test email from HX-Email.",
+                )
+                return {"success": True, "message": f"Test email sent to {payload.recipient}"}
+            except Exception as exc:
+                return {"success": False, "message": str(exc)}
         smtp_host: str | None = (
             payload.smtp_host or get_setting(settings, "email_notification_smtp_host") or None
         )
@@ -116,22 +161,16 @@ def register_settings_test_routes(router: APIRouter, settings: Settings) -> None
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="smtp_host and recipient are required",
             )
-        msg = MIMEText("This is a test email from HX-Email.", "plain", "utf-8")
-        msg["Subject"] = "HX-Email Test"
-        msg["From"] = smtp_user or "test@example.com"
-        msg["To"] = payload.recipient
         try:
-            if smtp_port == 465:
-                with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15) as server:
-                    if smtp_user and smtp_password:
-                        server.login(smtp_user, smtp_password)
-                    server.send_message(msg)
-            else:
-                with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
-                    server.starttls()
-                    if smtp_user and smtp_password:
-                        server.login(smtp_user, smtp_password)
-                    server.send_message(msg)
+            deliver_smtp_email(
+                smtp_host,
+                smtp_port,
+                smtp_user or "",
+                smtp_password or "",
+                payload.recipient,
+                "HX-Email Test",
+                "This is a test email from HX-Email.",
+            )
             return {"success": True, "message": f"Test email sent to {payload.recipient}"}
         except Exception as exc:
             return {"success": False, "message": str(exc)}

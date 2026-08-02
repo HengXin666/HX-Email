@@ -1,5 +1,8 @@
+import smtplib
+from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from hx_email.config import Settings
 from hx_email.database import connect, migrate
 from hx_email.server.mail.imap.message_store import save_messages
@@ -46,6 +49,43 @@ def create_mail_target(
             ).lastrowid
         )
     return email_id
+
+
+def create_sending_account(settings: Settings) -> int:
+    with connect(settings) as connection:
+        account_id: int = int(
+            connection.execute(
+                "INSERT INTO email_accounts"
+                " (user_id, provider, primary_address, username, imap_password)"
+                " VALUES (1, 'qq', 'sender@example.com', 'sender@example.com', 'app-password')"
+            ).lastrowid
+        )
+        connection.execute(
+            "INSERT INTO usable_emails"
+            " (user_id, email_account_id, address, kind, status)"
+            " VALUES (1, ?, 'sender@example.com', 'primary', 'active')",
+            (account_id,),
+        )
+    return account_id
+
+
+def create_custom_sending_account(settings: Settings) -> int:
+    with connect(settings) as connection:
+        account_id: int = int(
+            connection.execute(
+                "INSERT INTO email_accounts"
+                " (user_id, provider, primary_address, imap_host, username, imap_password)"
+                " VALUES (1, 'custom', 'sender@example.com', 'imap.custom.example',"
+                " 'sender@example.com', 'app-password')"
+            ).lastrowid
+        )
+        connection.execute(
+            "INSERT INTO usable_emails"
+            " (user_id, email_account_id, address, kind, status)"
+            " VALUES (1, ?, 'sender@example.com', 'primary', 'active')",
+            (account_id,),
+        )
+    return account_id
 
 
 def new_message() -> MailboxMessage:
@@ -181,7 +221,7 @@ def test_email_delivery_forwards_original_message_body(tmp_path) -> None:
     set_setting(settings, "email_notification_smtp_user", "sender@example.com")
     set_setting(settings, "email_notification_smtp_password", "secret")
 
-    with patch("hx_email.server.notifications.impl.channels.smtplib.SMTP") as smtp:
+    with patch("hx_email.server.mail.impl.sending.providers.smtplib.SMTP") as smtp:
         send_delivery(settings, stored_event(), "email")
 
     client = smtp.return_value.__enter__.return_value
@@ -189,6 +229,63 @@ def test_email_delivery_forwards_original_message_body(tmp_path) -> None:
     assert forwarded["To"] == "archive@example.com"
     assert forwarded["Subject"] == "Fwd: Verification code"
     assert "Your code is 482913" in forwarded.get_content()
+
+
+def test_email_delivery_uses_selected_account_as_sender(tmp_path) -> None:
+    settings = Settings(data_dir=tmp_path)
+    migrate(settings)
+    create_mail_target(settings)
+    account_id: int = create_sending_account(settings)
+    set_setting(settings, "email_notification_account_id", str(account_id))
+    set_setting(settings, "email_notification_recipient", "archive@example.com")
+
+    with patch("hx_email.server.mail.impl.sending.providers.smtplib.SMTP") as smtp:
+        send_delivery(settings, stored_event(), "email")
+
+    client = smtp.return_value.__enter__.return_value
+    forwarded = client.send_message.call_args.args[0]
+    assert forwarded["From"] == "sender@example.com"
+    assert forwarded["To"] == "archive@example.com"
+    client.login.assert_called_once_with("sender@example.com", "app-password")
+
+
+def test_email_delivery_reports_smtp_connection_stage(tmp_path: Path) -> None:
+    settings = Settings(data_dir=tmp_path)
+    migrate(settings)
+    create_mail_target(settings)
+    account_id: int = create_sending_account(settings)
+    set_setting(settings, "email_notification_account_id", str(account_id))
+    set_setting(settings, "email_notification_recipient", "archive@example.com")
+
+    with patch("hx_email.server.mail.impl.sending.providers.smtplib.SMTP") as smtp:
+        smtp.return_value.__enter__.return_value.starttls.side_effect = (
+            smtplib.SMTPServerDisconnected("Connection unexpectedly closed.")
+        )
+        with pytest.raises(RuntimeError) as error:
+            send_delivery(settings, stored_event(), "email")
+
+    message: str = str(error.value)
+    assert "STARTTLS handshake" in message
+    assert "smtp.qq.com:587" in message
+
+
+def test_email_delivery_uses_saved_smtp_override_for_custom_account(tmp_path: Path) -> None:
+    settings = Settings(data_dir=tmp_path)
+    migrate(settings)
+    create_mail_target(settings)
+    account_id: int = create_custom_sending_account(settings)
+    set_setting(settings, "email_notification_account_id", str(account_id))
+    set_setting(settings, "email_notification_recipient", "archive@example.com")
+    set_setting(settings, "email_notification_smtp_host", "smtp.custom.example")
+    set_setting(settings, "email_notification_smtp_port", "465")
+
+    with patch("hx_email.server.mail.impl.sending.providers.smtplib.SMTP_SSL") as smtp_ssl:
+        send_delivery(settings, stored_event(), "email")
+
+    smtp_ssl.assert_called_once_with("smtp.custom.example", 465, timeout=15)
+    smtp_ssl.return_value.__enter__.return_value.login.assert_called_once_with(
+        "sender@example.com", "app-password"
+    )
 
 
 def test_shell_pipeline_receives_json_on_stdin(tmp_path) -> None:

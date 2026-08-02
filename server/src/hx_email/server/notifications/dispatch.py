@@ -6,7 +6,11 @@ import threading
 from collections.abc import Sequence
 
 from hx_email.config import Settings
-from hx_email.server.notifications.impl.channels import run_script_test, send_delivery
+from hx_email.server.notifications.impl.channels import (
+    DeliverySkippedError,
+    run_script_test,
+    send_delivery,
+)
 from hx_email.server.notifications.impl.jobs import (
     claim_delivery_jobs,
     delivery_status,
@@ -69,6 +73,9 @@ def process_delivery_jobs(
                 continue
             try:
                 send_delivery(settings, event, job.channel)
+            except DeliverySkippedError as error:
+                mark_delivery_skipped(settings, job.id, str(error))
+                skipped += 1
             except Exception as error:
                 mark_delivery_failed(settings, job.id, str(error) or type(error).__name__)
                 failed += 1

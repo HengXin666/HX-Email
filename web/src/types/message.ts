@@ -7,6 +7,12 @@ export interface TempMessage {
   received_at?: string;
 }
 
+export interface TempCode {
+  message_id: string;
+  code: string;
+  received_at?: string;
+}
+
 export interface StoredEmailMessage {
   id: number;
   from_address: string;

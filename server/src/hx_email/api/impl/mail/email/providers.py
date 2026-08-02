@@ -70,6 +70,16 @@ SUPPORTED_PROVIDERS: list[dict[str, object]] = [
         "smtp_port": 587,
     },
     {
+        "id": "aliyun",
+        "name": "Aliyun Mail",
+        "type": "password",
+        "domains": ["aliyun.com", "alimail.com"],
+        "imap_host": "imap.aliyun.com",
+        "imap_port": 993,
+        "smtp_host": "smtp.aliyun.com",
+        "smtp_port": 465,
+    },
+    {
         "id": "custom",
         "name": "Custom IMAP",
         "type": "custom",

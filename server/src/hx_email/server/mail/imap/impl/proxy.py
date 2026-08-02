@@ -7,11 +7,25 @@ import logging
 import socket
 import ssl as _ssl
 from typing import TYPE_CHECKING
+from urllib.parse import urlsplit
 
 if TYPE_CHECKING:
     from hx_email.config import Settings
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_proxy_endpoint(proxy_url: str) -> tuple[str, int]:
+    value: str = proxy_url.strip()
+    parsed = urlsplit(value if "://" in value else f"//{value}")
+    proxy_host: str | None = parsed.hostname
+    if not proxy_host:
+        raise ValueError("代理 URL 缺少主机名")
+    try:
+        proxy_port: int = parsed.port or 8080
+    except ValueError as error:
+        raise ValueError("代理 URL 端口无效") from error
+    return proxy_host, proxy_port
 
 
 def load_group_proxy(settings: Settings, account_id: int) -> str:
@@ -61,32 +75,36 @@ def load_group_proxy(settings: Settings, account_id: int) -> str:
     return ""
 
 
+def http_connect_via_proxy(
+    proxy_url: str, host: str, port: int, timeout: float = 30
+) -> socket.socket:
+    """Open a raw socket to a target through an HTTP CONNECT proxy."""
+    proxy_host, proxy_port = _parse_proxy_endpoint(proxy_url)
+    sock = socket.create_connection((proxy_host, proxy_port), timeout=timeout)
+    try:
+        connect_cmd = f"CONNECT {host}:{port} HTTP/1.1\r\nHost: {host}:{port}\r\n\r\n"
+        sock.sendall(connect_cmd.encode("ascii"))
+        response = b""
+        while b"\r\n\r\n" not in response:
+            chunk = sock.recv(4096)
+            if not chunk:
+                break
+            response += chunk
+        status_parts: list[bytes] = response.split(b"\r\n", 1)[0].split()
+        if len(status_parts) < 2 or status_parts[1] != b"200":
+            status_line = response.split(b"\r\n", 1)[0].decode(errors="replace")
+            raise RuntimeError(f"代理 CONNECT 失败: {status_line}")
+        return sock
+    except Exception:
+        sock.close()
+        raise
+
+
 def imap_connect_via_proxy(
     proxy_url: str, host: str, port: int, timeout: int = 30
 ) -> imaplib.IMAP4:
     """Create an IMAP4 connection through an HTTP CONNECT proxy tunnel."""
-    proxy = proxy_url
-    if "://" in proxy:
-        proxy = proxy.split("://", 1)[1]
-    if ":" in proxy:
-        proxy_host, proxy_port_str = proxy.rsplit(":", 1)
-        proxy_port_num = int(proxy_port_str)
-    else:
-        proxy_host = proxy
-        proxy_port_num = 8080
-    sock = socket.create_connection((proxy_host, proxy_port_num), timeout=timeout)
-    connect_cmd = f"CONNECT {host}:{port} HTTP/1.1\r\nHost: {host}:{port}\r\n\r\n"
-    sock.sendall(connect_cmd.encode())
-    response = b""
-    while b"\r\n\r\n" not in response:
-        chunk = sock.recv(4096)
-        if not chunk:
-            break
-        response += chunk
-    status_line = response.split(b"\r\n")[0].decode(errors="replace")
-    if "200" not in status_line:
-        sock.close()
-        raise RuntimeError(f"代理 CONNECT 失败: {status_line}")
+    sock = http_connect_via_proxy(proxy_url, host, port, timeout)
     ctx = _ssl.create_default_context()
     ssl_sock = ctx.wrap_socket(sock, server_hostname=host)
     # Use __new__ to create IMAP4 without triggering its open() which

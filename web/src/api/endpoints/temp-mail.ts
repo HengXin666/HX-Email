@@ -1,4 +1,4 @@
-import type { TempMessage, UsableEmail } from "../../types";
+import type { TempCode, TempMessage, UsableEmail } from "../../types";
 import { request } from "../core";
 
 const TEMP_MAIL_REQUEST_OPTIONS: RequestInit = { cache: "no-store" };
@@ -20,10 +20,9 @@ export const tempMailApi = {
     ).then((r) => r.messages),
 
   tempCodes: (id: number) =>
-    request<{ codes: Array<{ message_id: string; code: string }> }>(
-      `/temp-mail/${id}/codes`,
-      TEMP_MAIL_REQUEST_OPTIONS,
-    ).then((r) => r.codes),
+    request<{ codes: TempCode[] }>(`/temp-mail/${id}/codes`, TEMP_MAIL_REQUEST_OPTIONS).then(
+      (r) => r.codes,
+    ),
 
   tempLinks: (id: number) =>
     request<{ links: Array<{ message_id: string; url: string }> }>(

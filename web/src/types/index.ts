@@ -26,6 +26,7 @@ export type {
   LatestMailMessage,
   MailNotification,
   StoredEmailMessage,
+  TempCode,
   TempMessage,
   VerificationMatch,
   VerificationReading,

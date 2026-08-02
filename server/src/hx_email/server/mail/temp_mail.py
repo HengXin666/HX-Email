@@ -36,12 +36,14 @@ class TempMailMessage:
     subject: str
     text: str
     html: str = ""
+    received_at: str = ""
 
 
 @dataclass(frozen=True)
 class TempMailCode:
     message_id: str
     code: str
+    received_at: str = ""
 
 
 @dataclass(frozen=True)
@@ -101,6 +103,7 @@ def message_from_result(
             subject=result["subject"],
             text=result["text"],
             html=result.get("html", ""),
+            received_at=str(result.get("received_at") or result.get("created_at") or ""),
         )
     return TempMailMessage(
         id=result.id,
@@ -108,6 +111,7 @@ def message_from_result(
         subject=result.subject,
         text=result.text,
         html=result.html,
+        received_at=str(getattr(result, "received_at", "") or ""),
     )
 
 
@@ -239,7 +243,13 @@ def extract_codes(messages: tuple[TempMailMessage, ...]) -> tuple[TempMailCode, 
         content = f"{message.subject}\n{message.text}\n{message.html}"
         code: str | None = extract_verification_code(content)
         if code is not None:
-            codes.append(TempMailCode(message_id=message.id, code=code))
+            codes.append(
+                TempMailCode(
+                    message_id=message.id,
+                    code=code,
+                    received_at=message.received_at,
+                )
+            )
     return tuple(codes)
 
 

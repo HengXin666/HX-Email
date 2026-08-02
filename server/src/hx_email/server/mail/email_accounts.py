@@ -20,6 +20,7 @@ __all__ = [
     "add_email_account",
     "deactivate_email_account",
     "get_email_account",
+    "has_active_email_account",
     "list_email_accounts",
     "usable_email_from_row",
 ]
@@ -44,6 +45,15 @@ class EmailAccount:
     telegram_enabled: bool = True
     last_refresh_at: str | None = None
     usable_emails: tuple[UsableEmail, ...] = ()
+
+
+def has_active_email_account(settings: Settings, user_id: int, account_id: int) -> bool:
+    with connect(settings) as connection:
+        row = connection.execute(
+            "SELECT 1 FROM email_accounts WHERE id = ? AND user_id = ? AND status = 'active'",
+            (account_id, user_id),
+        ).fetchone()
+    return row is not None
 
 
 def add_email_account(

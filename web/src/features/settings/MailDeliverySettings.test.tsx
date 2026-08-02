@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, test, vi } from "vitest";
+import { EmailForwardingCard } from "./automation/EmailForwardingCard";
 import { DeliveryRuntimeCard } from "./DeliveryRuntimeCard";
 import { ScriptPipelineCard } from "./ScriptPipelineCard";
 
@@ -72,4 +73,46 @@ test("shell pipeline controls update settings and execute the configured path", 
   expect(setSetting).toHaveBeenCalledWith("script_notification_enabled", "true");
   await waitFor(() => expect(testScript).toHaveBeenCalledWith("/data/pipelines/new-mail.sh", 15));
   expect(await screen.findByText("ok")).toBeInTheDocument();
+});
+
+test("email forwarding selects an existing account as the sender", async () => {
+  const setSetting = vi.fn();
+  render(
+    <EmailForwardingCard
+      settings={{ email_notification_account_id: "", email_notification_recipient: "" }}
+      setSetting={setSetting}
+      toast={vi.fn()}
+      user={{ is_admin: true, username: "admin" }}
+      accounts={[
+        {
+          id: 1,
+          provider: "outlook",
+          primary_address: "owner@example.com",
+          display_name: "工作邮箱",
+          status: "active",
+          usable_emails: [
+            {
+              id: 1,
+              address: "owner@example.com",
+              label: "工作邮箱",
+              kind: "primary",
+              status: "active",
+            },
+          ],
+        },
+      ]}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("combobox", { name: "发件账号" }));
+  fireEvent.keyDown(await screen.findByRole("option", { name: /owner@example\.com/ }), {
+    key: "Enter",
+  });
+
+  expect(setSetting).toHaveBeenCalledWith("email_notification_account_id", "1");
+
+  fireEvent.change(screen.getByRole("textbox", { name: "转发到" }), {
+    target: { value: "archive@example.com" },
+  });
+  expect(setSetting).toHaveBeenCalledWith("email_notification_recipient", "archive@example.com");
 });

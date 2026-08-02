@@ -1,3 +1,5 @@
+import smtplib
+from pathlib import Path
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -18,7 +20,7 @@ def login_admin(client: TestClient, settings: Settings) -> dict[str, str]:
     return {"Authorization": f"Bearer {session['access_token']}"}
 
 
-def test_send_debug_email_route_uses_account_smtp_credentials(tmp_path) -> None:
+def test_send_debug_email_route_uses_account_smtp_credentials(tmp_path: Path) -> None:
     settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
     migrate(settings)
     client = TestClient(create_app(settings))
@@ -58,7 +60,7 @@ def test_send_debug_email_route_uses_account_smtp_credentials(tmp_path) -> None:
     smtp.return_value.__enter__.return_value.send_message.assert_called_once()
 
 
-def test_send_debug_email_uses_xoauth2_for_gmail_oauth_credentials(tmp_path) -> None:
+def test_send_debug_email_uses_xoauth2_for_gmail_oauth_credentials(tmp_path: Path) -> None:
     settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
     migrate(settings)
     client = TestClient(create_app(settings))
@@ -109,7 +111,7 @@ def test_send_debug_email_uses_xoauth2_for_gmail_oauth_credentials(tmp_path) -> 
     connection.send_message.assert_called_once()
 
 
-def test_send_debug_email_uses_selected_alias_from_address(tmp_path) -> None:
+def test_send_debug_email_uses_selected_alias_from_address(tmp_path: Path) -> None:
     settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
     migrate(settings)
     client = TestClient(create_app(settings))
@@ -150,7 +152,7 @@ def test_send_debug_email_uses_selected_alias_from_address(tmp_path) -> None:
     assert message["From"] == "alias@gmail.com"
 
 
-def test_send_debug_email_returns_guidance_when_credentials_are_missing(tmp_path) -> None:
+def test_send_debug_email_returns_guidance_when_credentials_are_missing(tmp_path: Path) -> None:
     settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
     migrate(settings)
     client = TestClient(create_app(settings))
@@ -180,7 +182,7 @@ def test_send_debug_email_returns_guidance_when_credentials_are_missing(tmp_path
     assert payload["actions"]
 
 
-def test_send_debug_email_uses_graph_for_outlook_oauth_credentials(tmp_path) -> None:
+def test_send_debug_email_uses_graph_for_outlook_oauth_credentials(tmp_path: Path) -> None:
     settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
     migrate(settings)
     client = TestClient(create_app(settings))
@@ -239,7 +241,7 @@ def test_send_debug_email_uses_graph_for_outlook_oauth_credentials(tmp_path) -> 
     assert decrypt_secret(settings, stored) == "rotated-refresh-token"
 
 
-def test_outlook_send_failure_explains_mail_send_reauthorization(tmp_path) -> None:
+def test_outlook_send_failure_explains_mail_send_reauthorization(tmp_path: Path) -> None:
     settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
     migrate(settings)
     client = TestClient(create_app(settings))
@@ -273,3 +275,72 @@ def test_outlook_send_failure_explains_mail_send_reauthorization(tmp_path) -> No
     assert payload["code"] == "delivery_failed"
     assert any("Mail.Send" in action for action in payload["actions"])
     assert any("重新授权" in action for action in payload["actions"])
+
+
+def test_send_debug_email_uses_ssl_for_aliyun_password_credentials(tmp_path: Path) -> None:
+    settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
+    migrate(settings)
+    client = TestClient(create_app(settings))
+    headers = login_admin(client, settings)
+    account = add_email_account(
+        settings,
+        1,
+        "aliyun",
+        "sender@aliyun.com",
+        "Sender",
+        "imap.aliyun.com",
+        993,
+        "sender@aliyun.com",
+        "app-password",
+    )
+
+    with patch("hx_email.server.mail.impl.sending.providers.smtplib.SMTP_SSL") as smtp_ssl:
+        response = client.post(
+            f"{API}/usable-emails/{account.primary_usable_email.id}/send-debug-email",
+            json={"recipient": "receiver@example.com", "subject": "Debug", "body": "Hello"},
+            headers=headers,
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["success"] is True
+    assert payload["smtp_host"] == "smtp.aliyun.com"
+    assert payload["smtp_port"] == 465
+    assert payload["security"] == "ssl"
+    smtp_ssl.assert_called_once_with("smtp.aliyun.com", 465, timeout=15)
+
+
+def test_send_debug_email_explains_connection_closure_stage(tmp_path: Path) -> None:
+    settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
+    migrate(settings)
+    client = TestClient(create_app(settings))
+    headers = login_admin(client, settings)
+    account = add_email_account(
+        settings,
+        1,
+        "qq",
+        "sender@qq.com",
+        "Sender",
+        "imap.qq.com",
+        993,
+        "sender@qq.com",
+        "app-password",
+    )
+
+    with patch("hx_email.server.mail.impl.sending.providers.smtplib.SMTP") as smtp:
+        smtp.return_value.__enter__.return_value.starttls.side_effect = (
+            smtplib.SMTPServerDisconnected("Connection unexpectedly closed.")
+        )
+        response = client.post(
+            f"{API}/usable-emails/{account.primary_usable_email.id}/send-debug-email",
+            json={"recipient": "receiver@example.com", "subject": "Debug", "body": "Hello"},
+            headers=headers,
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["success"] is False
+    assert payload["code"] == "delivery_failed"
+    assert "STARTTLS handshake" in payload["message"]
+    assert "smtp.qq.com:587" in payload["message"]
+    assert "465=SSL" in payload["message"]

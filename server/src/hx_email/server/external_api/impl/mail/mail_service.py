@@ -83,11 +83,20 @@ def get_latest_message(
     if not filtered:
         return {"found": False, "message": None}
 
-    latest: MailboxMessage = filtered[-1]
+    latest: MailboxMessage = filtered[0]
+    latest_index: int = _message_index(all_msgs, latest)
     return {
         "found": True,
-        "message": build_summary(latest, len(all_msgs) - 1),
+        "message": build_summary(latest, latest_index),
     }
+
+
+def _message_index(messages: list[MailboxMessage], target: MailboxMessage) -> int:
+    """Return the original provider position for a filtered message."""
+    for index, message in enumerate(messages):
+        if message is target:
+            return index
+    return 0
 
 
 def get_message_detail(
