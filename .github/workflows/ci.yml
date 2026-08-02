@@ -27,3 +27,20 @@ jobs:
           name: playwright-report
           path: web/playwright-report/
           retention-days: 14
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate compose files
+        run: |
+          docker compose config --quiet
+          docker compose -f docker-compose.bridge.yml config --quiet
+      - name: Build and smoke test bridge deployment
+        run: |
+          docker compose -f docker-compose.bridge.yml up -d --build
+          curl --fail --retry 15 --retry-delay 2 http://127.0.0.1:8080/healthz
+      - name: Tear down deployment
+        if: ${{ always() }}
+        run: docker compose -f docker-compose.bridge.yml down -v

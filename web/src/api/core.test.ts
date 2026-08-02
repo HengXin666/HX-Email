@@ -1,7 +1,7 @@
 import { beforeEach, expect, test, vi } from "vitest";
 
 import type { SSERefreshEvent } from "../types";
-import { streamRefresh } from "./core";
+import { requestBlob, streamRefresh } from "./core";
 
 beforeEach(() => {
   window.localStorage.setItem("hx_token", "test-token");
@@ -49,4 +49,24 @@ test("streamRefresh preserves SSE event types through a chunked complete event",
     },
     { type: "complete", total: 7, success: 7, failed: 0 },
   ]);
+});
+
+test("requestBlob sends the bearer token and returns binary content", async () => {
+  const backupBlob: Blob = new Blob(["backup"], { type: "application/zip" });
+  const response: Response = {
+    blob: vi.fn().mockResolvedValue(backupBlob),
+    ok: true,
+    status: 200,
+  } as unknown as Response;
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(response);
+
+  const backup: Blob = await requestBlob("/admin/backup/export");
+
+  expect(backup).toBe(backupBlob);
+  expect(fetchMock).toHaveBeenCalledWith(
+    "/api/v1/admin/backup/export",
+    expect.objectContaining({
+      headers: { Authorization: "Bearer test-token" },
+    }),
+  );
 });

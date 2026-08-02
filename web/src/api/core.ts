@@ -92,6 +92,25 @@ async function requestText(path: string, init: RequestInit = {}): Promise<string
   return res.text();
 }
 
+async function requestBlob(path: string, init: RequestInit = {}): Promise<Blob> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {
+    ...(init.headers as Record<string, string>),
+  };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await apiFetch(path, { ...init, headers });
+  if (res.status === 401 && token) {
+    handleSessionExpired();
+    throw new Error("登录已过期，请重新登录");
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    const msg = typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail);
+    throw new Error(msg || "请求失败");
+  }
+  return res.blob();
+}
+
 function parseRefreshEvent(record: string): SSERefreshEvent | null {
   const lines: string[] = record.split("\n");
   const eventLine: string | undefined = lines.find((line: string) => line.startsWith("event:"));
@@ -159,4 +178,4 @@ async function streamRefresh(
   }
 }
 
-export { API_BASE, request, requestText, streamRefresh };
+export { API_BASE, request, requestBlob, requestText, streamRefresh };

@@ -54,6 +54,18 @@ class MailPollingScheduler:
             self.thread.join(timeout=5)
         unregister_polling_scheduler(self.settings, self)
 
+    def pause(self) -> bool:
+        """Stop polling when active and return whether it should be resumed."""
+        was_running: bool = self.thread is not None and self.thread.is_alive()
+        if was_running:
+            self.stop()
+        return was_running
+
+    def resume(self, should_resume: bool) -> None:
+        """Resume polling only when it was active before a controlled pause."""
+        if should_resume:
+            self.start()
+
     def wake(self) -> None:
         self.wake_event.set()
 

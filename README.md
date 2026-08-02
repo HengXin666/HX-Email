@@ -59,6 +59,13 @@ The SQLite data directory defaults to `data`; configure it in `.env`:
 HX_EMAIL_DATA_DIR=data
 ```
 
+Keep the entire data directory, including hidden files, when moving an
+instance. It contains the SQLite database, generated secret key, settings,
+users, credentials, messages and static files. Stop the containers before
+copying it so SQLite WAL state is consistent. If `HX_EMAIL_SECRET_KEY` is set,
+the same value must be supplied at the destination; when it is empty, the
+generated `.hx_email_secret_key` inside the data directory is sufficient.
+
 ## Frontend
 
 ```bash
@@ -119,8 +126,12 @@ docker compose -f docker-compose.bridge.yml up -d --build
 `http://host.docker.internal:7890`(compose 已通过 `host-gateway` 映射)。
 
 数据(SQLite 与静态图片)持久化在仓库根目录 `./data`,与本地开发共用同一
-目录;备份即拷贝该目录。端口可通过 `.env` 中的 `HX_EMAIL_HTTP_PORT` /
-`HX_EMAIL_BACKEND_PORT` 覆盖。
+目录;完整迁移前停止容器并拷贝整个目录(包含隐藏文件)。端口可通过 `.env`
+中的 `HX_EMAIL_HTTP_PORT` / `HX_EMAIL_BACKEND_PORT` 覆盖。
+
+管理员也可以在“设置 → 用户管理 → 实例备份”中下载完整实例 ZIP，或上传
+ZIP 恢复。恢复会替换当前数据并使所有登录失效；恢复后使用备份中的管理员
+账号重新登录。该 ZIP 包含敏感凭据，应像数据库备份一样保管。
 
 ## Whole Repo Checks
 
@@ -145,7 +156,8 @@ canaries stay outside the PR gate.
 ## Migration Scope
 
 The rewrite preserves the first-phase core data model. Import/export is scoped
-to the authenticated user's email accounts, usable emails, aliases, groups,
-tags, platforms and platform bindings. Browser extension features, closed-page
+to administrator-only instance backups. The legacy `/data/export` and
+`/data/import` endpoints are also administrator-only and remain limited to the
+core data model for compatibility. Browser extension features, closed-page
 VAPID push, one-click updates and plugin-based temporary mail providers remain
 deferred follow-up capabilities.

@@ -1,5 +1,6 @@
 export { auditApi } from "./audit";
 export { authApi } from "./auth";
+export { backupApi } from "./backup";
 export { emailsApi } from "./emails";
 export { groupsApi } from "./groups";
 export { overviewApi } from "./overview";

@@ -5,6 +5,7 @@ import { IconRefresh } from "../../../components/icons";
 import { Button, Card } from "../../../components/ui/Primitives";
 import { SectionHeader, SettingsTabFrame, SettingsToggle } from "../SettingsControls";
 import type { SettingsTabProps } from "../types";
+import { InstanceBackupCard } from "./InstanceBackupCard";
 
 interface AdminUserSummary {
   id: number;
@@ -71,6 +72,8 @@ export const UserManagementSettingsTab: React.FC<SettingsTabProps> = ({ toast, u
           />
         </div>
       </Card>
+
+      <InstanceBackupCard toast={toast} />
 
       <Card className="overflow-hidden">
         <div className="flex items-center justify-between gap-3 border-b border-gh-border px-5 py-4">

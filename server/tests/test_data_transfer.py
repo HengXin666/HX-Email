@@ -18,7 +18,7 @@ def register_user(client: TestClient, username: str) -> dict[str, object]:
     ).json()
 
 
-def test_user_can_export_and_import_core_data_without_cross_user_leaks(tmp_path) -> None:
+def test_admin_can_export_and_import_core_data_without_cross_user_leaks(tmp_path) -> None:
     source_settings = Settings(
         data_dir=tmp_path / "source", admin_username="admin", admin_password="admin"
     )
@@ -28,8 +28,9 @@ def test_user_can_export_and_import_core_data_without_cross_user_leaks(tmp_path)
     source.put("/api/v1/admin/settings/registration", json={"enabled": True}, headers=admin_headers)
     alice = register_user(source, "alice")
     bob = register_user(source, "bob")
-    alice_headers = {"Authorization": f"Bearer {alice['access_token']}"}
     bob_headers = {"Authorization": f"Bearer {bob['access_token']}"}
+    alice_headers = {"Authorization": f"Bearer {alice['access_token']}"}
+    assert source.get("/api/v1/data/export", headers=alice_headers).status_code == 403
     account = source.post(
         "/api/v1/email-accounts",
         json={
@@ -42,36 +43,36 @@ def test_user_can_export_and_import_core_data_without_cross_user_leaks(tmp_path)
             "imap_password": "app-password",
             "alias_addresses": ["alias@example.com"],
         },
-        headers=alice_headers,
+        headers=admin_headers,
     ).json()
     group = source.post(
-        "/api/v1/groups", json={"name": "Register", "color": "#58a6ff"}, headers=alice_headers
+        "/api/v1/groups", json={"name": "Register", "color": "#58a6ff"}, headers=admin_headers
     ).json()
     source.put(
         f"/api/v1/groups/{group['id']}/notify",
         json={"enabled": False},
-        headers=alice_headers,
+        headers=admin_headers,
     )
     source.put(
         f"/api/v1/groups/{group['id']}/polling",
         json={"enabled": False},
-        headers=alice_headers,
+        headers=admin_headers,
     )
     tag = source.post(
-        "/api/v1/tags", json={"name": "GitHub", "color": "#238636"}, headers=alice_headers
+        "/api/v1/tags", json={"name": "GitHub", "color": "#238636"}, headers=admin_headers
     ).json()
     source.put(
         f"/api/v1/usable-emails/{account['usable_emails'][1]['id']}/organize",
         json={"label": "Alias", "group_id": group["id"], "tag_ids": [tag["id"]]},
-        headers=alice_headers,
+        headers=admin_headers,
     )
     platform = source.post(
-        "/api/v1/platforms", json={"name": "GitHub"}, headers=alice_headers
+        "/api/v1/platforms", json={"name": "GitHub"}, headers=admin_headers
     ).json()
     source.post(
         f"/api/v1/usable-emails/{account['usable_emails'][1]['id']}/platform-bindings",
         json={"platform_id": platform["id"], "status": "active", "notes": "login"},
-        headers=alice_headers,
+        headers=admin_headers,
     )
     source.post(
         "/api/v1/email-accounts",
@@ -79,7 +80,7 @@ def test_user_can_export_and_import_core_data_without_cross_user_leaks(tmp_path)
         headers=bob_headers,
     )
 
-    exported = source.get("/api/v1/data/export", headers=alice_headers)
+    exported = source.get("/api/v1/data/export", headers=admin_headers)
 
     target_settings = Settings(
         data_dir=tmp_path / "target", admin_username="admin", admin_password="admin"

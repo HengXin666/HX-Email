@@ -1,9 +1,10 @@
+from collections.abc import Callable
 from typing import Annotated, Any
 
-from fastapi import APIRouter, FastAPI, Header, HTTPException, Response, status
+from fastapi import APIRouter, Body, FastAPI, Header, HTTPException, Response, status
 
 from hx_email.api.audit_routes import register_audit_middleware, register_audit_routes
-from hx_email.api.dependencies import require_user
+from hx_email.api.dependencies import require_admin, require_user
 from hx_email.api.impl.auth_routes import register_auth_routes
 from hx_email.api.impl.external import (
     register_external_message_routes,
@@ -35,6 +36,11 @@ from hx_email.server.data_transfer import (
     export_core_data,
     import_core_data,
 )
+from hx_email.server.instance_backup import (
+    InstanceBackupError,
+    create_instance_backup,
+    restore_instance_backup,
+)
 from hx_email.server.mail.impl.fetch.scheduler import get_polling_status
 from hx_email.server.mail.temp_mail import TempMailProvider
 from hx_email.server.mail.verification import MailboxProvider
@@ -45,6 +51,8 @@ def register_routes(
     settings: Settings,
     mailbox_provider: MailboxProvider,
     temp_mail_providers: dict[str, TempMailProvider],
+    pause_scheduler: Callable[[], bool] | None = None,
+    resume_scheduler: Callable[[bool], None] | None = None,
 ) -> None:
     register_audit_middleware(app, settings)
 
@@ -67,7 +75,7 @@ def register_routes(
     register_settings_routes(api, settings)
     register_settings_test_routes(api, settings)
     register_cf_worker_sync_route(api, settings)
-    register_data_transfer_routes(api, settings)
+    register_data_transfer_routes(api, settings, pause_scheduler, resume_scheduler)
     register_pool_admin_routes(api, settings)
     register_audit_routes(api, settings)
     register_plugin_crud_routes(api, settings)
@@ -176,12 +184,17 @@ def register_system_routes(router: APIRouter, settings: Settings) -> None:
         return {"db_version": db_version, "upgrade_needed": False}
 
 
-def register_data_transfer_routes(router: APIRouter, settings: Settings) -> None:
+def register_data_transfer_routes(
+    router: APIRouter,
+    settings: Settings,
+    pause_scheduler: Callable[[], bool] | None = None,
+    resume_scheduler: Callable[[bool], None] | None = None,
+) -> None:
     @router.get("/data/export")
     def export_data(
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        user = require_user(settings, authorization)
+        user = require_admin(settings, authorization)
         return export_core_data(settings, user.id)
 
     @router.post("/data/import", status_code=status.HTTP_201_CREATED)
@@ -189,7 +202,7 @@ def register_data_transfer_routes(router: APIRouter, settings: Settings) -> None
         payload: dict[str, Any],
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        user = require_user(settings, authorization)
+        user = require_admin(settings, authorization)
         try:
             return import_core_data(settings, user.id, payload)
         except DataImportConflictError as error:
@@ -198,3 +211,29 @@ def register_data_transfer_routes(router: APIRouter, settings: Settings) -> None
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)
             ) from error
+
+    @router.get("/admin/backup/export")
+    def export_instance_backup_data(
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> Response:
+        require_admin(settings, authorization)
+        archive: bytes = create_instance_backup(settings)
+        headers: dict[str, str] = {
+            "Cache-Control": "no-store",
+            "Content-Disposition": 'attachment; filename="hx-email-instance-backup.zip"',
+        }
+        return Response(content=archive, media_type="application/zip", headers=headers)
+
+    @router.post("/admin/backup/import")
+    def import_instance_backup_data(
+        archive: Annotated[bytes, Body(media_type="application/zip")],
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        require_admin(settings, authorization)
+        try:
+            restore_instance_backup(settings, archive, pause_scheduler, resume_scheduler)
+        except InstanceBackupError as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)
+            ) from error
+        return {"restored": True, "requires_relogin": True}

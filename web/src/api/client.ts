@@ -5,6 +5,7 @@ export { streamRefresh } from "./core";
 
 import { auditApi } from "./endpoints/audit";
 import { authApi } from "./endpoints/auth";
+import { backupApi } from "./endpoints/backup";
 import { emailsApi } from "./endpoints/emails";
 import { groupsApi } from "./endpoints/groups";
 import { overviewApi } from "./endpoints/overview";
@@ -17,6 +18,7 @@ import { tokenApi } from "./endpoints/token";
 
 export const api = {
   ...authApi,
+  ...backupApi,
   ...overviewApi,
   ...groupsApi,
   ...emailsApi,

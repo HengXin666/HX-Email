@@ -29,6 +29,7 @@
 - **请求体**: 无
 
 **返回值** (200):
+
 ```json
 {
   "status": "ok",
@@ -38,56 +39,52 @@
 
 ---
 
-### GET /data/export
+### GET /admin/backup/export
 
-**描述**: 导出当前用户的所有核心数据 (邮箱账户、可用邮箱、分组、标签、平台、绑定关系等)。
+**描述**: 导出完整实例 ZIP，包括 SQLite 数据库、密钥文件和数据目录中的静态文件。
 
-- **认证**: Bearer Token
+- **认证**: 管理员 Bearer Token
 - **请求参数**: 无
 - **请求体**: 无
 
-**返回值** (200):
-```json
-{
-  "version": 1,
-  "email_accounts": [{ "id": 1, "provider": "gmail", "primary_address": "a@b.com", ... }],
-  "usable_emails": [{ "id": 1, "address": "x@y.com", "label": "主邮箱", ... }],
-  "groups": [{ "id": 1, "name": "Work", "color": "#58a6ff" }],
-  "tags": [{ "id": 1, "name": "重要", "color": "#238636" }],
-  "usable_email_tags": [{ "usable_email_id": 1, "tag_id": 1 }],
-  "platforms": [{ "id": 1, "name": "GitHub" }],
-  "platform_bindings": [{ "id": 1, "usable_email_id": 1, "platform_id": 1, "status": "active", "notes": "" }],
-  "deferred_capabilities": []
-}
-```
+**返回值** (200): `application/zip` 文件下载。
+
+ZIP 是敏感实例备份。复制运行中的 SQLite 目录前应先停止服务；如果
+`HX_EMAIL_SECRET_KEY` 非空，目标环境必须使用相同的值。
 
 ---
 
-### POST /data/import
+### POST /admin/backup/import
 
-**描述**: 导入数据到当前用户账户 (格式与 `/data/export` 输出一致)。
+**描述**: 管理员恢复完整实例 ZIP。恢复前会校验 ZIP 路径、数据库完整性和密钥模式，
+然后原子替换数据目录。
 
-- **认证**: Bearer Token
+- **认证**: 管理员 Bearer Token
 - **请求参数**: 无
-- **请求体**: 与 `/data/export` 返回值结构一致
+- **请求头**: `Content-Type: application/zip`
+- **请求体**: `/admin/backup/export` 返回的 ZIP 二进制内容
+
+**返回值** (200):
+
 ```json
-{
-  "email_accounts": [...],
-  "usable_emails": [...],
-  "groups": [...],
-  "tags": [...],
-  "usable_email_tags": [...],
-  "platforms": [...],
-  "platform_bindings": [...]
-}
+{ "restored": true, "requires_relogin": true }
 ```
 
-**返回值** (201 Created): 与 `/data/export` 返回值相同 (导入后的重新导出)
-
 **错误**:
-| 状态码 | 说明 |
-|--------|------|
-| 409 | 导入数据与已有数据冲突 |
+
+| 状态码 | 说明                                   |
+| ------ | -------------------------------------- |
+| 403    | 当前用户不是管理员                     |
+| 422    | ZIP 格式、数据库完整性或密钥模式不正确 |
+
+---
+
+### GET/POST /data/export and /data/import
+
+**描述**: 兼容旧版的管理员核心数据 JSON 导入导出接口，仅覆盖邮箱账户、可用邮箱、
+别名、分组、标签、平台和平台绑定；完整实例迁移请使用 `/admin/backup/*`。
+
+- **认证**: 管理员 Bearer Token
 
 ---
 
@@ -100,6 +97,7 @@
 - **认证**: 无
 - **请求参数**: 无
 - **请求体**:
+
 ```json
 {
   "username": "string",
@@ -108,6 +106,7 @@
 ```
 
 **返回值** (200):
+
 ```json
 {
   "access_token": "eyJ...",
@@ -120,9 +119,10 @@
 ```
 
 **错误**:
-| 状态码 | 说明 |
-|--------|------|
-| 401 | 用户名或密码错误 `{"detail": "Invalid username or password"}` |
+
+| 状态码 | 说明                                                          |
+| ------ | ------------------------------------------------------------- |
+| 401    | 用户名或密码错误 `{"detail": "Invalid username or password"}` |
 
 ---
 
@@ -133,6 +133,7 @@
 - **认证**: 无
 - **请求参数**: 无
 - **请求体**:
+
 ```json
 {
   "username": "string",
@@ -141,6 +142,7 @@
 ```
 
 **返回值** (201 Created):
+
 ```json
 {
   "access_token": "eyJ...",
@@ -153,9 +155,10 @@
 ```
 
 **错误**:
-| 状态码 | 说明 |
-|--------|------|
-| 403 | 注册功能已关闭 `{"detail": "Registration disabled"}` |
+
+| 状态码 | 说明                                                 |
+| ------ | ---------------------------------------------------- |
+| 403    | 注册功能已关闭 `{"detail": "Registration disabled"}` |
 
 ---
 
@@ -178,6 +181,7 @@
 - **认证**: Bearer Token
 - **请求参数**: 无
 - **请求体**:
+
 ```json
 {
   "username": "string",
@@ -186,6 +190,7 @@
 ```
 
 **返回值** (200):
+
 ```json
 {
   "user": {
@@ -205,6 +210,7 @@
 - **认证**: Bearer Token (管理员)
 - **请求参数**: 无
 - **请求体**:
+
 ```json
 {
   "enabled": true
@@ -212,6 +218,7 @@
 ```
 
 **返回值** (200):
+
 ```json
 {
   "registration_enabled": true
@@ -231,6 +238,7 @@
 - **请求体**: 无
 
 **返回值** (200):
+
 ```json
 {
   "usable_email_count": 10,
@@ -254,14 +262,16 @@
 - **认证**: Bearer Token
 - **请求参数**: 无
 - **请求体**:
+
 ```json
 {
   "name": "string",
-  "color": "string"       // 可选, 默认 "#58a6ff"
+  "color": "string" // 可选, 默认 "#58a6ff"
 }
 ```
 
 **返回值** (201 Created):
+
 ```json
 {
   "id": 1,
@@ -279,14 +289,16 @@
 - **认证**: Bearer Token
 - **请求参数**: 无
 - **请求体**:
+
 ```json
 {
   "name": "string",
-  "color": "string"       // 可选, 默认 "#238636"
+  "color": "string" // 可选, 默认 "#238636"
 }
 ```
 
 **返回值** (201 Created):
+
 ```json
 {
   "id": 1,
@@ -304,20 +316,21 @@
 - **认证**: Bearer Token
 - **请求参数** (Query, 全部可选):
 
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `kind` | str | - | 按类型筛选: `custom`, `primary`, `alias`, `temp` |
-| `status` | str | - | 按状态筛选: `active`, `inactive`, `archived` |
-| `group_id` | int | - | 按分组 ID 筛选 |
-| `tag_id` | int | - | 按标签 ID 筛选 |
-| `keyword` | str | - | 模糊搜索 address 和 label |
-| `platform_binding` | str | - | `bound` 已绑定 / `unbound` 未绑定 |
-| `page` | int | 1 | 页码 |
-| `page_size` | int | 50 | 每页条数 (最大 200) |
+| 参数               | 类型 | 默认值 | 说明                                             |
+| ------------------ | ---- | ------ | ------------------------------------------------ |
+| `kind`             | str  | -      | 按类型筛选: `custom`, `primary`, `alias`, `temp` |
+| `status`           | str  | -      | 按状态筛选: `active`, `inactive`, `archived`     |
+| `group_id`         | int  | -      | 按分组 ID 筛选                                   |
+| `tag_id`           | int  | -      | 按标签 ID 筛选                                   |
+| `keyword`          | str  | -      | 模糊搜索 address 和 label                        |
+| `platform_binding` | str  | -      | `bound` 已绑定 / `unbound` 未绑定                |
+| `page`             | int  | 1      | 页码                                             |
+| `page_size`        | int  | 50     | 每页条数 (最大 200)                              |
 
 - **请求体**: 无
 
 **返回值** (200):
+
 ```json
 {
   "usable_emails": [
@@ -328,9 +341,7 @@
       "kind": "primary",
       "status": "active",
       "group": { "id": 1, "name": "Work", "color": "#58a6ff" },
-      "tags": [
-        { "id": 1, "name": "重要", "color": "#238636" }
-      ],
+      "tags": [{ "id": 1, "name": "重要", "color": "#238636" }],
       "platform_binding_count": 2
     }
   ],
@@ -349,11 +360,12 @@
 - **认证**: Bearer Token
 - **路径参数**:
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `usable_email_id` | int | 可用邮箱 ID |
+| 参数              | 类型 | 说明        |
+| ----------------- | ---- | ----------- |
+| `usable_email_id` | int  | 可用邮箱 ID |
 
 - **请求体** (所有字段可选):
+
 ```json
 {
   "label": "string | null",
@@ -365,9 +377,10 @@
 **返回值** (200): 与 `/workbench/usable-emails` 中单个邮箱结构一致
 
 **错误**:
-| 状态码 | 说明 |
-|--------|------|
-| 404 | 可用邮箱不存在或分组/标签 ID 无效 `{"detail": "Usable email not found"}` |
+
+| 状态码 | 说明                                                                     |
+| ------ | ------------------------------------------------------------------------ |
+| 404    | 可用邮箱不存在或分组/标签 ID 无效 `{"detail": "Usable email not found"}` |
 
 ---
 
@@ -380,6 +393,7 @@
 - **认证**: Bearer Token
 - **请求参数**: 无
 - **请求体**:
+
 ```json
 {
   "name": "string"
@@ -387,6 +401,7 @@
 ```
 
 **返回值** (201 Created):
+
 ```json
 {
   "id": 1,
@@ -395,9 +410,10 @@
 ```
 
 **错误**:
-| 状态码 | 说明 |
-|--------|------|
-| 409 | 平台名称重复 `{"detail": "Platform name already exists"}` |
+
+| 状态码 | 说明                                                      |
+| ------ | --------------------------------------------------------- |
+| 409    | 平台名称重复 `{"detail": "Platform name already exists"}` |
 
 ---
 
@@ -408,13 +424,14 @@
 - **认证**: Bearer Token
 - **请求参数** (Query):
 
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `q` | str | - | 按平台名称模糊搜索 |
+| 参数 | 类型 | 默认值 | 说明               |
+| ---- | ---- | ------ | ------------------ |
+| `q`  | str  | -      | 按平台名称模糊搜索 |
 
 - **请求体**: 无
 
 **返回值** (200):
+
 ```json
 {
   "platforms": [
@@ -433,11 +450,12 @@
 - **认证**: Bearer Token
 - **路径参数**:
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `platform_id` | int | 平台 ID |
+| 参数          | 类型 | 说明    |
+| ------------- | ---- | ------- |
+| `platform_id` | int  | 平台 ID |
 
 - **请求体**:
+
 ```json
 {
   "name": "string"
@@ -445,6 +463,7 @@
 ```
 
 **返回值** (200):
+
 ```json
 {
   "id": 1,
@@ -453,10 +472,11 @@
 ```
 
 **错误**:
-| 状态码 | 说明 |
-|--------|------|
-| 404 | 平台不存在 `{"detail": "Platform not found"}` |
-| 409 | 平台名称重复 `{"detail": "Platform name already exists"}` |
+
+| 状态码 | 说明                                                      |
+| ------ | --------------------------------------------------------- |
+| 404    | 平台不存在 `{"detail": "Platform not found"}`             |
+| 409    | 平台名称重复 `{"detail": "Platform name already exists"}` |
 
 ---
 
@@ -467,6 +487,7 @@
 - **认证**: Bearer Token
 - **请求参数**: 无
 - **请求体** (所有字段可选, 默认空字符串):
+
 ```json
 {
   "sender": "noreply@github.com",
@@ -476,11 +497,10 @@
 ```
 
 **返回值** (200):
+
 ```json
 {
-  "platform_candidates": [
-    { "name": "github.com", "source": "sender_domain" }
-  ]
+  "platform_candidates": [{ "name": "github.com", "source": "sender_domain" }]
 }
 ```
 
@@ -493,20 +513,22 @@
 - **认证**: Bearer Token
 - **路径参数**:
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `usable_email_id` | int | 可用邮箱 ID |
+| 参数              | 类型 | 说明        |
+| ----------------- | ---- | ----------- |
+| `usable_email_id` | int  | 可用邮箱 ID |
 
 - **请求体**:
+
 ```json
 {
   "platform_id": 1,
-  "status": "active",           // active | pending_verification | risk | disabled | archived, 默认 "active"
-  "notes": "string"             // 可选, 默认 ""
+  "status": "active", // active | pending_verification | risk | disabled | archived, 默认 "active"
+  "notes": "string" // 可选, 默认 ""
 }
 ```
 
 **返回值** (201 Created):
+
 ```json
 {
   "id": 1,
@@ -518,11 +540,12 @@
 ```
 
 **错误**:
-| 状态码 | 说明 |
-|--------|------|
-| 404 | 可用邮箱或平台不存在 |
-| 409 | 绑定已存在 `{"detail": "Platform binding already exists"}` |
-| 422 | 绑定状态值无效 `{"detail": "Invalid platform binding status"}` |
+
+| 状态码 | 说明                                                           |
+| ------ | -------------------------------------------------------------- |
+| 404    | 可用邮箱或平台不存在                                           |
+| 409    | 绑定已存在 `{"detail": "Platform binding already exists"}`     |
+| 422    | 绑定状态值无效 `{"detail": "Invalid platform binding status"}` |
 
 ---
 
@@ -533,14 +556,15 @@
 - **认证**: Bearer Token
 - **路径参数**:
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `usable_email_id` | int | 可用邮箱 ID |
+| 参数              | 类型 | 说明        |
+| ----------------- | ---- | ----------- |
+| `usable_email_id` | int  | 可用邮箱 ID |
 
 - **请求参数**: 无
 - **请求体**: 无
 
 **返回值** (200):
+
 ```json
 {
   "platform_bindings": [
@@ -556,9 +580,10 @@
 ```
 
 **错误**:
-| 状态码 | 说明 |
-|--------|------|
-| 404 | 可用邮箱不存在 `{"detail": "Usable email not found"}` |
+
+| 状态码 | 说明                                                  |
+| ------ | ----------------------------------------------------- |
+| 404    | 可用邮箱不存在 `{"detail": "Usable email not found"}` |
 
 ---
 
@@ -569,11 +594,12 @@
 - **认证**: Bearer Token
 - **路径参数**:
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `binding_id` | int | 平台绑定 ID |
+| 参数         | 类型 | 说明        |
+| ------------ | ---- | ----------- |
+| `binding_id` | int  | 平台绑定 ID |
 
 - **请求体**:
+
 ```json
 {
   "status": "disabled",
@@ -584,10 +610,11 @@
 **返回值** (200): 与平台绑定对象结构一致 (参见 POST 创建绑定返回值)
 
 **错误**:
-| 状态码 | 说明 |
-|--------|------|
-| 404 | 绑定不存在 `{"detail": "Platform binding not found"}` |
-| 422 | 绑定状态值无效 `{"detail": "Invalid platform binding status"}` |
+
+| 状态码 | 说明                                                           |
+| ------ | -------------------------------------------------------------- |
+| 404    | 绑定不存在 `{"detail": "Platform binding not found"}`          |
+| 422    | 绑定状态值无效 `{"detail": "Invalid platform binding status"}` |
 
 ---
 
@@ -600,14 +627,16 @@
 - **认证**: Bearer Token
 - **请求参数**: 无
 - **请求体**:
+
 ```json
 {
   "address": "my@custom.com",
-  "label": "自定义邮箱"         // 可选, 默认 ""
+  "label": "自定义邮箱" // 可选, 默认 ""
 }
 ```
 
 **返回值** (201 Created):
+
 ```json
 {
   "id": 1,
@@ -629,6 +658,7 @@
 - **请求体**: 无
 
 **返回值** (200):
+
 ```json
 {
   "usable_emails": [
@@ -652,9 +682,9 @@
 - **认证**: Bearer Token
 - **路径参数**:
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `usable_email_id` | int | 可用邮箱 ID |
+| 参数              | 类型 | 说明        |
+| ----------------- | ---- | ----------- |
+| `usable_email_id` | int  | 可用邮箱 ID |
 
 - **请求参数**: 无
 - **请求体**: 无
@@ -662,9 +692,10 @@
 **返回值** (200): 同上单个邮箱结构
 
 **错误**:
-| 状态码 | 说明 |
-|--------|------|
-| 404 | 可用邮箱不存在 `{"detail": "Usable email not found"}` |
+
+| 状态码 | 说明                                                  |
+| ------ | ----------------------------------------------------- |
+| 404    | 可用邮箱不存在 `{"detail": "Usable email not found"}` |
 
 ---
 
@@ -680,9 +711,10 @@
 **返回值** (200): 邮箱对象 (status 变为 "inactive")
 
 **错误**:
-| 状态码 | 说明 |
-|--------|------|
-| 404 | 可用邮箱不存在 `{"detail": "Usable email not found"}` |
+
+| 状态码 | 说明                                                  |
+| ------ | ----------------------------------------------------- |
+| 404    | 可用邮箱不存在 `{"detail": "Usable email not found"}` |
 
 ---
 
@@ -696,6 +728,7 @@
 - **请求体**: 无
 
 **返回值** (200):
+
 ```json
 {
   "usable_email": {
@@ -718,9 +751,10 @@
 ```
 
 **错误**:
-| 状态码 | 说明 |
-|--------|------|
-| 404 | 可用邮箱不存在 `{"detail": "Usable email not found"}` |
+
+| 状态码 | 说明                                                  |
+| ------ | ----------------------------------------------------- |
+| 404    | 可用邮箱不存在 `{"detail": "Usable email not found"}` |
 
 ---
 
@@ -736,9 +770,10 @@
 **返回值** (200): 同上 (验证读取返回值结构)
 
 **错误**:
-| 状态码 | 说明 |
-|--------|------|
-| 404 | 可用邮箱不存在 `{"detail": "Usable email not found"}` |
+
+| 状态码 | 说明                                                  |
+| ------ | ----------------------------------------------------- |
+| 404    | 可用邮箱不存在 `{"detail": "Usable email not found"}` |
 
 ---
 
@@ -751,6 +786,7 @@
 - **认证**: Bearer Token
 - **请求参数**: 无
 - **请求体**:
+
 ```json
 {
   "usable_email_id": 1
@@ -758,6 +794,7 @@
 ```
 
 **返回值** (201 Created):
+
 ```json
 {
   "id": 1,
@@ -776,10 +813,11 @@
 ```
 
 **错误**:
-| 状态码 | 说明 |
-|--------|------|
-| 404 | 可用邮箱不存在 `{"detail": "Usable email not found"}` |
-| 409 | 邮箱已在池中 `{"detail": "Usable email is already in the mail pool"}` |
+
+| 状态码 | 说明                                                                  |
+| ------ | --------------------------------------------------------------------- |
+| 404    | 可用邮箱不存在 `{"detail": "Usable email not found"}`                 |
+| 409    | 邮箱已在池中 `{"detail": "Usable email is already in the mail pool"}` |
 
 ---
 
@@ -792,11 +830,10 @@
 - **请求体**: 无
 
 **返回值** (200):
+
 ```json
 {
-  "entries": [
-    { /* MailPoolEntry 对象, 结构同上 */ }
-  ]
+  "entries": [{/* MailPoolEntry 对象, 结构同上 */}]
 }
 ```
 
@@ -809,19 +846,21 @@
 - **认证**: Bearer Token
 - **请求参数**: 无
 - **请求体**:
+
 ```json
 {
   "project_key": "my-project",
-  "claim_key": ""               // 可选, 默认 ""
+  "claim_key": "" // 可选, 默认 ""
 }
 ```
 
 **返回值** (200): MailPoolEntry 对象 (status 变为 "claimed", project_key 被记录)
 
 **错误**:
-| 状态码 | 说明 |
-|--------|------|
-| 404 | 没有可用邮箱 `{"detail": "No usable email available"}` |
+
+| 状态码 | 说明                                                   |
+| ------ | ------------------------------------------------------ |
+| 404    | 没有可用邮箱 `{"detail": "No usable email available"}` |
 
 > 逻辑: 返回 status="available" 且 completed_project_key 不等于当前 project_key 的第一个条目。
 
@@ -839,9 +878,10 @@
 **返回值** (200): MailPoolEntry 对象 (status 重置为 "available", claim 信息清除)
 
 **错误**:
-| 状态码 | 说明 |
-|--------|------|
-| 404 | 邮箱池条目不存在 `{"detail": "Mail pool entry not found"}` |
+
+| 状态码 | 说明                                                       |
+| ------ | ---------------------------------------------------------- |
+| 404    | 邮箱池条目不存在 `{"detail": "Mail pool entry not found"}` |
 
 ---
 
@@ -852,6 +892,7 @@
 - **认证**: Bearer Token
 - **路径参数**: `usable_email_id` (int)
 - **请求体**:
+
 ```json
 {
   "project_key": "my-project"
@@ -861,9 +902,10 @@
 **返回值** (200): MailPoolEntry 对象 (status 变为 "completed")
 
 **错误**:
-| 状态码 | 说明 |
-|--------|------|
-| 404 | 邮箱池条目不存在 `{"detail": "Mail pool entry not found"}` |
+
+| 状态码 | 说明                                                       |
+| ------ | ---------------------------------------------------------- |
+| 404    | 邮箱池条目不存在 `{"detail": "Mail pool entry not found"}` |
 
 ---
 
@@ -879,9 +921,10 @@
 **返回值** (200): MailPoolEntry 对象 (status 变为 "cooling")
 
 **错误**:
-| 状态码 | 说明 |
-|--------|------|
-| 404 | 邮箱池条目不存在 `{"detail": "Mail pool entry not found"}` |
+
+| 状态码 | 说明                                                       |
+| ------ | ---------------------------------------------------------- |
+| 404    | 邮箱池条目不存在 `{"detail": "Mail pool entry not found"}` |
 
 ---
 
@@ -894,19 +937,21 @@
 - **认证**: Bearer Token
 - **请求参数**: 无
 - **请求体**:
+
 ```json
 {
   "provider": "gmail",
   "primary_address": "user@gmail.com",
   "display_name": "User",
-  "imap_host": "",              // 可选, 默认 ""
-  "imap_port": null,            // 可选, 默认 null
-  "username": "",               // 可选, 默认 ""
-  "alias_addresses": []         // 可选, 默认 []
+  "imap_host": "", // 可选, 默认 ""
+  "imap_port": null, // 可选, 默认 null
+  "username": "", // 可选, 默认 ""
+  "alias_addresses": [] // 可选, 默认 []
 }
 ```
 
 **返回值** (201 Created):
+
 ```json
 {
   "id": 1,
@@ -922,18 +967,31 @@
     "status": "active"
   },
   "usable_emails": [
-    { "id": 1, "address": "user@gmail.com", "label": "User", "kind": "primary", "status": "active" },
-    { "id": 2, "address": "alias@domain.com", "label": "别名", "kind": "alias", "status": "active" }
+    {
+      "id": 1,
+      "address": "user@gmail.com",
+      "label": "User",
+      "kind": "primary",
+      "status": "active"
+    },
+    {
+      "id": 2,
+      "address": "alias@domain.com",
+      "label": "别名",
+      "kind": "alias",
+      "status": "active"
+    }
   ]
 }
 ```
 
 **错误**:
-| 状态码 | 说明 |
-|--------|------|
-| 409 | 主地址已存在 `{"detail": "Email account primary address already exists for this user"}` |
-| 409 | 可用邮箱地址已存在 `{"detail": "Usable email address already exists for this user"}` |
-| 422 | 别名字段使用了 plus 子地址 `{"detail": "Alias address must be a real mailbox address"}` |
+
+| 状态码 | 说明                                                                                    |
+| ------ | --------------------------------------------------------------------------------------- |
+| 409    | 主地址已存在 `{"detail": "Email account primary address already exists for this user"}` |
+| 409    | 可用邮箱地址已存在 `{"detail": "Usable email address already exists for this user"}`    |
+| 422    | 别名字段使用了 plus 子地址 `{"detail": "Alias address must be a real mailbox address"}` |
 
 ---
 
@@ -946,11 +1004,10 @@
 - **请求体**: 无
 
 **返回值** (200):
+
 ```json
 {
-  "email_accounts": [
-    { /* EmailAccount 对象, 结构同上 */ }
-  ]
+  "email_accounts": [{/* EmailAccount 对象, 结构同上 */}]
 }
 ```
 
@@ -968,9 +1025,10 @@
 **返回值** (200): EmailAccount 对象 (结构同上)
 
 **错误**:
-| 状态码 | 说明 |
-|--------|------|
-| 404 | 邮箱账户不存在 `{"detail": "Email account not found"}` |
+
+| 状态码 | 说明                                                   |
+| ------ | ------------------------------------------------------ |
+| 404    | 邮箱账户不存在 `{"detail": "Email account not found"}` |
 
 ---
 
@@ -981,14 +1039,16 @@
 - **认证**: Bearer Token
 - **路径参数**: `account_id` (int)
 - **请求体**:
+
 ```json
 {
   "address": "alias@domain.com",
-  "label": "别名"              // 可选, 默认取 address
+  "label": "别名" // 可选, 默认取 address
 }
 ```
 
 **返回值** (201 Created):
+
 ```json
 {
   "id": 2,
@@ -1000,11 +1060,12 @@
 ```
 
 **错误**:
-| 状态码 | 说明 |
-|--------|------|
-| 404 | 邮箱账户不存在 `{"detail": "Email account not found"}` |
-| 409 | 地址重复 `{"detail": "Usable email address already exists for this user"}` |
-| 422 | 使用了 plus 子地址 `{"detail": "Alias address must be a real mailbox address"}` |
+
+| 状态码 | 说明                                                                            |
+| ------ | ------------------------------------------------------------------------------- |
+| 404    | 邮箱账户不存在 `{"detail": "Email account not found"}`                          |
+| 409    | 地址重复 `{"detail": "Usable email address already exists for this user"}`      |
+| 422    | 使用了 plus 子地址 `{"detail": "Alias address must be a real mailbox address"}` |
 
 ---
 
@@ -1020,9 +1081,10 @@
 **返回值** (200): EmailAccount 对象 (status 变为 "inactive", 所有 usable_emails 也变为 inactive)
 
 **错误**:
-| 状态码 | 说明 |
-|--------|------|
-| 404 | 邮箱账户不存在 `{"detail": "Email account not found"}` |
+
+| 状态码 | 说明                                                   |
+| ------ | ------------------------------------------------------ |
+| 404    | 邮箱账户不存在 `{"detail": "Email account not found"}` |
 
 ---
 
@@ -1035,14 +1097,16 @@
 - **认证**: Bearer Token
 - **请求参数**: 无
 - **请求体**:
+
 ```json
 {
-  "address": null,              // null = 自动生成地址; 也可指定
+  "address": null, // null = 自动生成地址; 也可指定
   "label": "临时用"
 }
 ```
 
 **返回值** (201 Created):
+
 ```json
 {
   "id": 1,
@@ -1056,10 +1120,11 @@
 ```
 
 **错误**:
-| 状态码 | 说明 |
-|--------|------|
-| 409 | 地址重复 `{"detail": "Usable email address already exists for this user"}` |
-| 503 | CF 临时邮箱未配置 `{"detail": "CF temp mail provider not configured"}` |
+
+| 状态码 | 说明                                                                       |
+| ------ | -------------------------------------------------------------------------- |
+| 409    | 地址重复 `{"detail": "Usable email address already exists for this user"}` |
+| 503    | CF 临时邮箱未配置 `{"detail": "CF temp mail provider not configured"}`     |
 
 ---
 
@@ -1075,9 +1140,10 @@
 **返回值** (200): 临时邮箱对象 (status 变为 "archived")
 
 **错误**:
-| 状态码 | 说明 |
-|--------|------|
-| 404 | 临时邮箱不存在 `{"detail": "Temp mailbox not found"}` |
+
+| 状态码 | 说明                                                  |
+| ------ | ----------------------------------------------------- |
+| 404    | 临时邮箱不存在 `{"detail": "Temp mailbox not found"}` |
 
 ---
 
@@ -1091,6 +1157,7 @@
 - **请求体**: 无
 
 **返回值** (200):
+
 ```json
 {
   "messages": [
@@ -1106,10 +1173,11 @@
 ```
 
 **错误**:
-| 状态码 | 说明 |
-|--------|------|
-| 404 | 临时邮箱不存在 `{"detail": "Temp mailbox not found"}` |
-| 503 | 临时邮箱提供商未配置 `{"detail": "Temp mail provider is not configured: cf"}` |
+
+| 状态码 | 说明                                                                          |
+| ------ | ----------------------------------------------------------------------------- |
+| 404    | 临时邮箱不存在 `{"detail": "Temp mailbox not found"}`                         |
+| 503    | 临时邮箱提供商未配置 `{"detail": "Temp mail provider is not configured: cf"}` |
 
 ---
 
@@ -1123,11 +1191,10 @@
 - **请求体**: 无
 
 **返回值** (200):
+
 ```json
 {
-  "codes": [
-    { "message_id": "msg_001", "code": "123456" }
-  ]
+  "codes": [{ "message_id": "msg_001", "code": "123456" }]
 }
 ```
 
@@ -1145,6 +1212,7 @@
 - **请求体**: 无
 
 **返回值** (200):
+
 ```json
 {
   "links": [
@@ -1159,51 +1227,53 @@
 
 ## 接口总览
 
-| # | 方法 | 路径 | 认证 | 说明 |
-|---|------|------|------|------|
-| 1 | GET | `/health` | 无 | 健康检查 |
-| 2 | GET | `/data/export` | 用户 | 导出全部数据 |
-| 3 | POST | `/data/import` | 用户 | 导入数据 |
-| 4 | POST | `/auth/login` | 无 | 登录 |
-| 5 | POST | `/auth/register` | 无 | 注册 |
-| 6 | POST | `/auth/logout` | 用户 | 注销 |
-| 7 | PUT | `/auth/me/credentials` | 用户 | 修改密码 |
-| 8 | PUT | `/admin/settings/registration` | 管理员 | 注册开关 |
-| 9 | GET | `/workbench/overview` | 用户 | 工作台概览 |
-| 10 | POST | `/groups` | 用户 | 创建分组 |
-| 11 | POST | `/tags` | 用户 | 创建标签 |
-| 12 | GET | `/workbench/usable-emails` | 用户 | 工作台邮箱列表 |
-| 13 | PUT | `/usable-emails/{id}/organize` | 用户 | 整理邮箱 |
-| 14 | POST | `/platforms` | 用户 | 创建平台 |
-| 15 | GET | `/platforms` | 用户 | 平台列表 |
-| 16 | PUT | `/platforms/{id}` | 用户 | 更新平台 |
-| 17 | POST | `/platform-candidates` | 用户 | 智能推测平台 |
-| 18 | POST | `/usable-emails/{id}/platform-bindings` | 用户 | 绑定平台 |
-| 19 | GET | `/usable-emails/{id}/platform-bindings` | 用户 | 查看绑定 |
-| 20 | PUT | `/platform-bindings/{id}` | 用户 | 更新绑定 |
-| 21 | POST | `/usable-emails` | 用户 | 创建自定义邮箱 |
-| 22 | GET | `/usable-emails` | 用户 | 可用邮箱列表 |
-| 23 | GET | `/usable-emails/{id}` | 用户 | 可用邮箱详情 |
-| 24 | POST | `/usable-emails/{id}/deactivate` | 用户 | 停用邮箱 |
-| 25 | POST | `/usable-emails/{id}/verification/read` | 用户 | 读取验证码 |
-| 26 | GET | `/usable-emails/{id}/verification/history` | 用户 | 验证历史 |
-| 27 | POST | `/mail-pool/entries` | 用户 | 加入邮箱池 |
-| 28 | GET | `/mail-pool/entries` | 用户 | 邮箱池列表 |
-| 29 | POST | `/mail-pool/claim` | 用户 | 领取邮箱 |
-| 30 | POST | `/mail-pool/entries/{id}/release` | 用户 | 释放邮箱 |
-| 31 | POST | `/mail-pool/entries/{id}/complete` | 用户 | 完成使用 |
-| 32 | POST | `/mail-pool/entries/{id}/cooldown` | 用户 | 冷却邮箱 |
-| 33 | POST | `/email-accounts` | 用户 | 添加邮箱账户 |
-| 34 | GET | `/email-accounts` | 用户 | 邮箱账户列表 |
-| 35 | GET | `/email-accounts/{id}` | 用户 | 邮箱账户详情 |
-| 36 | POST | `/email-accounts/{id}/aliases` | 用户 | 添加别名 |
-| 37 | POST | `/email-accounts/{id}/deactivate` | 用户 | 停用账户 |
-| 38 | POST | `/temp-mail/cf/mailboxes` | 用户 | 创建临时邮箱 |
-| 39 | POST | `/temp-mail/{id}/archive` | 用户 | 归档临时邮箱 |
-| 40 | GET | `/temp-mail/{id}/messages` | 用户 | 查看消息 |
-| 41 | GET | `/temp-mail/{id}/codes` | 用户 | 提取验证码 |
-| 42 | GET | `/temp-mail/{id}/verification-links` | 用户 | 提取验证链接 |
+| #   | 方法 | 路径                                       | 认证   | 说明                 |
+| --- | ---- | ------------------------------------------ | ------ | -------------------- |
+| 1   | GET  | `/health`                                  | 无     | 健康检查             |
+| 2   | GET  | `/admin/backup/export`                     | 管理员 | 导出完整实例 ZIP     |
+| 3   | POST | `/admin/backup/import`                     | 管理员 | 恢复完整实例 ZIP     |
+| 4   | GET  | `/data/export`                             | 管理员 | 兼容接口导出核心数据 |
+| 5   | POST | `/data/import`                             | 管理员 | 兼容接口导入核心数据 |
+| 6   | POST | `/auth/login`                              | 无     | 登录                 |
+| 7   | POST | `/auth/register`                           | 无     | 注册                 |
+| 8   | POST | `/auth/logout`                             | 用户   | 注销                 |
+| 9   | PUT  | `/auth/me/credentials`                     | 用户   | 修改密码             |
+| 10  | PUT  | `/admin/settings/registration`             | 管理员 | 注册开关             |
+| 11  | GET  | `/workbench/overview`                      | 用户   | 工作台概览           |
+| 12  | POST | `/groups`                                  | 用户   | 创建分组             |
+| 13  | POST | `/tags`                                    | 用户   | 创建标签             |
+| 14  | GET  | `/workbench/usable-emails`                 | 用户   | 工作台邮箱列表       |
+| 15  | PUT  | `/usable-emails/{id}/organize`             | 用户   | 整理邮箱             |
+| 16  | POST | `/platforms`                               | 用户   | 创建平台             |
+| 17  | GET  | `/platforms`                               | 用户   | 平台列表             |
+| 18  | PUT  | `/platforms/{id}`                          | 用户   | 更新平台             |
+| 19  | POST | `/platform-candidates`                     | 用户   | 智能推测平台         |
+| 20  | POST | `/usable-emails/{id}/platform-bindings`    | 用户   | 绑定平台             |
+| 21  | GET  | `/usable-emails/{id}/platform-bindings`    | 用户   | 查看绑定             |
+| 22  | PUT  | `/platform-bindings/{id}`                  | 用户   | 更新绑定             |
+| 23  | POST | `/usable-emails`                           | 用户   | 创建自定义邮箱       |
+| 24  | GET  | `/usable-emails`                           | 用户   | 可用邮箱列表         |
+| 25  | GET  | `/usable-emails/{id}`                      | 用户   | 可用邮箱详情         |
+| 26  | POST | `/usable-emails/{id}/deactivate`           | 用户   | 停用邮箱             |
+| 27  | POST | `/usable-emails/{id}/verification/read`    | 用户   | 读取验证码           |
+| 28  | GET  | `/usable-emails/{id}/verification/history` | 用户   | 验证历史             |
+| 29  | POST | `/mail-pool/entries`                       | 用户   | 加入邮箱池           |
+| 30  | GET  | `/mail-pool/entries`                       | 用户   | 邮箱池列表           |
+| 31  | POST | `/mail-pool/claim`                         | 用户   | 领取邮箱             |
+| 32  | POST | `/mail-pool/entries/{id}/release`          | 用户   | 释放邮箱             |
+| 33  | POST | `/mail-pool/entries/{id}/complete`         | 用户   | 完成使用             |
+| 34  | POST | `/mail-pool/entries/{id}/cooldown`         | 用户   | 冷却邮箱             |
+| 35  | POST | `/email-accounts`                          | 用户   | 添加邮箱账户         |
+| 36  | GET  | `/email-accounts`                          | 用户   | 邮箱账户列表         |
+| 37  | GET  | `/email-accounts/{id}`                     | 用户   | 邮箱账户详情         |
+| 38  | POST | `/email-accounts/{id}/aliases`             | 用户   | 添加别名             |
+| 39  | POST | `/email-accounts/{id}/deactivate`          | 用户   | 停用账户             |
+| 40  | POST | `/temp-mail/cf/mailboxes`                  | 用户   | 创建临时邮箱         |
+| 41  | POST | `/temp-mail/{id}/archive`                  | 用户   | 归档临时邮箱         |
+| 42  | GET  | `/temp-mail/{id}/messages`                 | 用户   | 查看消息             |
+| 43  | GET  | `/temp-mail/{id}/codes`                    | 用户   | 提取验证码           |
+| 44  | GET  | `/temp-mail/{id}/verification-links`       | 用户   | 提取验证链接         |
 
 ---
 
-> 共 **42 个接口**。3 个系统接口, 5 个认证接口, 5 个工作台接口, 7 个平台接口, 6 个可用邮箱接口, 6 个邮箱池接口, 5 个邮箱账户接口, 5 个临时邮箱接口。
+> 共 **44 个接口**。5 个系统/迁移接口, 4 个认证接口, 5 个工作台接口, 7 个平台接口, 6 个可用邮箱接口, 6 个邮箱池接口, 5 个邮箱账户接口, 5 个临时邮箱接口。

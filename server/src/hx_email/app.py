@@ -115,6 +115,8 @@ def create_app(
         resolved_settings,
         resolved_mailbox_provider,
         resolved_temp_mail_providers,
+        pause_scheduler=polling_scheduler.pause,
+        resume_scheduler=polling_scheduler.resume,
     )
     install_openapi_schema(app)
 
