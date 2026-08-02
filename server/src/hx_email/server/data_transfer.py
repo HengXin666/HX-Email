@@ -2,7 +2,7 @@ import sqlite3
 from typing import Any
 
 from hx_email.config import Settings
-from hx_email.database import connect
+from hx_email.database import connect, utc_now_iso
 from hx_email.security import decrypt_secret, encrypt_secret
 
 
@@ -10,8 +10,7 @@ class DataImportConflictError(ValueError):
     pass
 
 
-class DataImportInvalidError(ValueError):
-    """Payload 内部引用不一致 (tag/binding 指向不存在的邮箱/平台/标签)."""
+class DataImportInvalidError(ValueError): ...
 
 
 def resolve_ref(ids: dict[int, int], old_id: object, entity: str) -> int:
@@ -45,7 +44,7 @@ def export_core_data(settings: Settings, user_id: int) -> dict[str, object]:
             connection,
             """
             SELECT id, email_account_id, address, label, kind, status, group_id,
-                   notify_enabled
+                   notify_enabled, created_at
             FROM usable_emails
             WHERE user_id = ?
             ORDER BY id
@@ -211,9 +210,9 @@ def import_usable_emails(
             """
             INSERT INTO usable_emails (
                 user_id, email_account_id, address, label, kind, status, active, group_id,
-                notify_enabled
+                notify_enabled, created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 user_id,
@@ -225,6 +224,7 @@ def import_usable_emails(
                 1 if email.get("status", "active") == "active" else 0,
                 group_ids.get(int(old_group_id)) if old_group_id is not None else None,
                 int(email.get("notify_enabled", 1)),
+                email.get("created_at") or utc_now_iso(),
             ),
         )
         ids[int(email["id"])] = inserted_id(cursor)

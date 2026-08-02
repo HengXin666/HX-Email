@@ -164,7 +164,7 @@ def create_oauth_account(
     address: str,
     client_id: str,
     refresh_token: str,
-) -> int:
+) -> tuple[int, str]:
     account = add_email_account(
         settings,
         user_id,
@@ -179,7 +179,7 @@ def create_oauth_account(
         refresh_token,
         [],
     )
-    return account.id
+    return account.id, account.primary_usable_email.created_at
 
 
 def normalize_lines(text: str) -> list[str]:

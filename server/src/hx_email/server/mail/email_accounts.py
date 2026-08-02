@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 from hx_email.config import Settings
-from hx_email.database import connect
+from hx_email.database import connect, utc_now_iso
 from hx_email.security import decrypt_secret, encrypt_secret
 from hx_email.server.auth import require_inserted_id
 from hx_email.server.mail.impl.accounts.account_helpers import (
@@ -72,6 +72,7 @@ def add_email_account(
     group_id: int | None = None,
 ) -> EmailAccount:
     alias_addresses = alias_addresses or []
+    created_at: str = utc_now_iso()
     with connect(settings) as connection:
         try:
             account_cursor = connection.execute(
@@ -105,11 +106,12 @@ def add_email_account(
             email_cursor = connection.execute(
                 """
                 INSERT INTO usable_emails (
-                    user_id, email_account_id, address, label, kind, status, active, group_id
+                    user_id, email_account_id, address, label, kind, status, active, group_id,
+                    created_at
                 )
-                VALUES (?, ?, ?, ?, 'primary', 'active', 1, ?)
+                VALUES (?, ?, ?, ?, 'primary', 'active', 1, ?, ?)
                 """,
-                (user_id, account_id, primary_address, display_name, group_id),
+                (user_id, account_id, primary_address, display_name, group_id, created_at),
             )
         except Exception as error:
             raise DuplicateUsableEmailError(
@@ -124,6 +126,8 @@ def add_email_account(
         label=display_name,
         kind="primary",
         status="active",
+        created_at=created_at,
+        email_account_id=account_id,
     )
     return EmailAccount(
         id=account_id,
@@ -169,7 +173,7 @@ def deactivate_email_account(
             """
             UPDATE usable_emails SET status = 'inactive', active = 0
             WHERE user_id = ? AND email_account_id = ?
-            RETURNING id, address, label, kind, status
+            RETURNING id, address, label, kind, status, created_at
             """,
             (user_id, account_id),
         ).fetchall()
@@ -212,7 +216,7 @@ def get_email_account(settings: Settings, user_id: int, account_id: int) -> Emai
             return None
         rows = connection.execute(
             """
-            SELECT id, address, label, kind, status
+            SELECT id, address, label, kind, status, created_at
             FROM usable_emails
             WHERE user_id = ? AND email_account_id = ?
             ORDER BY id

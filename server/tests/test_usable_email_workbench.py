@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 from hx_email.app import create_app
 from hx_email.config import Settings
-from hx_email.database import migrate
+from hx_email.database import connect, migrate
 
 
 class FakeMailboxProvider:
@@ -90,6 +90,7 @@ def test_workbench_filters_usable_emails_by_kind_group_tag_keyword_and_paginates
                 "label": "Campaign alias",
                 "kind": "alias",
                 "status": "active",
+                "created_at": campaign_alias["created_at"],
                 "group": {
                     "id": group["id"],
                     "name": "注册用途",
@@ -109,6 +110,57 @@ def test_workbench_filters_usable_emails_by_kind_group_tag_keyword_and_paginates
     assert next_page.json()["total"] == 2
     assert [email["address"] for email in next_page.json()["usable_emails"]] == [
         "billing@example.com"
+    ]
+
+
+def test_usable_email_created_at_is_returned_and_sortable(tmp_path):
+    settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
+    migrate(settings)
+    client = TestClient(create_app(settings))
+    headers = login_admin(client)
+
+    first = client.post(
+        "/api/v1/usable-emails",
+        json={"address": "first@example.com", "label": "First"},
+        headers=headers,
+    ).json()
+    second = client.post(
+        "/api/v1/usable-emails",
+        json={"address": "second@example.com", "label": "Second"},
+        headers=headers,
+    ).json()
+    with connect(settings) as connection:
+        connection.execute(
+            "UPDATE usable_emails SET created_at = CASE id WHEN ? THEN ? WHEN ? THEN ? END",
+            (
+                first["id"],
+                "2026-01-01T00:00:00.000Z",
+                second["id"],
+                "2026-01-02T00:00:00.000Z",
+            ),
+        )
+
+    ascending = client.get(
+        "/api/v1/usable-emails",
+        params={"sort_by": "created_at", "sort_order": "asc"},
+        headers=headers,
+    )
+    descending = client.get(
+        "/api/v1/workbench/usable-emails",
+        params={"sort_by": "created_at", "sort_order": "desc"},
+        headers=headers,
+    )
+
+    assert ascending.status_code == 200
+    assert [email["address"] for email in ascending.json()["usable_emails"]] == [
+        "first@example.com",
+        "second@example.com",
+    ]
+    assert ascending.json()["usable_emails"][0]["created_at"] == "2026-01-01T00:00:00.000Z"
+    assert descending.status_code == 200
+    assert [email["address"] for email in descending.json()["usable_emails"]] == [
+        "second@example.com",
+        "first@example.com",
     ]
 
 

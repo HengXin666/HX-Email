@@ -75,7 +75,8 @@ def list_mail_pool_entries(settings: Settings, user_id: int) -> tuple[MailPoolEn
                    usable_emails.address,
                    usable_emails.label,
                    usable_emails.kind,
-                   usable_emails.status AS usable_email_status
+                   usable_emails.status AS usable_email_status,
+                   usable_emails.created_at
             FROM mail_pool_entries
             JOIN usable_emails ON usable_emails.id = mail_pool_entries.usable_email_id
                 AND usable_emails.user_id = mail_pool_entries.user_id
@@ -208,7 +209,8 @@ def get_mail_pool_entry(settings: Settings, user_id: int, entry_id: int) -> Mail
                    usable_emails.address,
                    usable_emails.label,
                    usable_emails.kind,
-                   usable_emails.status AS usable_email_status
+                   usable_emails.status AS usable_email_status,
+                   usable_emails.created_at
             FROM mail_pool_entries
             JOIN usable_emails ON usable_emails.id = mail_pool_entries.usable_email_id
                 AND usable_emails.user_id = mail_pool_entries.user_id
@@ -230,6 +232,7 @@ def entry_from_row(row: sqlite3.Row) -> MailPoolEntry:
             label=row["label"],
             kind=row["kind"],
             status=row["usable_email_status"],
+            created_at=row["created_at"],
         ),
         status=row["status"],
         claim_key=row["claim_key"],

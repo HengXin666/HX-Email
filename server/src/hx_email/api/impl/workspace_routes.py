@@ -227,6 +227,8 @@ def register_workspace_routes(router: APIRouter, settings: Settings) -> None:
         tag_id: int | None = None,
         keyword: str | None = None,
         platform_binding: str | None = None,
+        sort_by: str | None = None,
+        sort_order: str | None = None,
         page: int = 1,
         page_size: int = 50,
     ) -> dict[str, object]:
@@ -240,6 +242,8 @@ def register_workspace_routes(router: APIRouter, settings: Settings) -> None:
             tag_id=tag_id,
             keyword=keyword,
             platform_binding=platform_binding,
+            sort_by=sort_by,
+            sort_order=sort_order,
             page=page,
             page_size=page_size,
         )

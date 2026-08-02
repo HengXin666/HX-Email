@@ -62,6 +62,7 @@ def apply_temp_email(
         "detail": "",
         "usable_email_id": str(mailbox.usable_email_id),
         "address": mailbox.address,
+        "created_at": mailbox.created_at,
     }
 
     return {
@@ -69,6 +70,7 @@ def apply_temp_email(
         "email": mailbox.address,
         "task_token": task_token,
         "usable_email_id": mailbox.usable_email_id,
+        "created_at": mailbox.created_at,
     }
 
 
@@ -90,4 +92,5 @@ def finish_temp_email(
         "message": "Task finished",
         "task_token": task_token,
         "status": "completed",
+        "created_at": task["created_at"],
     }

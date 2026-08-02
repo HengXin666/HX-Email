@@ -26,6 +26,7 @@ def serialize_usable_email(usable_email: UsableEmail) -> dict[str, object]:
         "label": usable_email.label,
         "kind": usable_email.kind,
         "status": usable_email.status,
+        "created_at": usable_email.created_at,
         "group": serialize_group(usable_email.group),
         "email_account_id": usable_email.email_account_id,
         "notify_enabled": usable_email.notify_enabled,
@@ -74,6 +75,7 @@ def serialize_workbench_email(usable_email: WorkbenchEmail) -> dict[str, object]
         "label": usable_email.label,
         "kind": usable_email.kind,
         "status": usable_email.status,
+        "created_at": usable_email.created_at,
         "group": serialize_group(usable_email.group),
         "tags": [serialize_tag(tag) for tag in usable_email.tags],
         "platform_binding_count": usable_email.platform_binding_count,
@@ -101,6 +103,7 @@ def serialize_temp_mailbox(mailbox: TempMailbox) -> dict[str, object]:
         "label": mailbox.label,
         "kind": "temp",
         "status": mailbox.status,
+        "created_at": mailbox.created_at,
         "provider": mailbox.provider,
         "email_account_id": mailbox.email_account_id,
     }

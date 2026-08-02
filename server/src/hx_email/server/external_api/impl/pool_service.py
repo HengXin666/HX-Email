@@ -36,7 +36,7 @@ def claim_random(
         row = connection.execute(
             f"""
             SELECT mpe.id AS entry_id, ue.id AS usable_email_id,
-                   ue.address, ue.status AS ue_status,
+                   ue.address, ue.status AS ue_status, ue.created_at,
                    COALESCE(ea.provider, '') AS provider
             FROM mail_pool_entries mpe
             JOIN usable_emails ue ON ue.id = mpe.usable_email_id
@@ -66,6 +66,7 @@ def claim_random(
     return {
         "account_id": row["usable_email_id"],
         "email": row["address"],
+        "created_at": row["created_at"],
         "provider": row["provider"],
         "status": row["ue_status"],
         "claim_token": claim_token,

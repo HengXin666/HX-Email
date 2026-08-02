@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from hx_email.config import Settings
-from hx_email.database import connect
+from hx_email.database import connect, utc_now_iso
 from hx_email.server.auth import require_inserted_id
 from hx_email.server.mail.email_accounts import DuplicateUsableEmailError
 from hx_email.server.mail.verification import extract_verification_code
@@ -24,6 +24,7 @@ class TempMailbox:
     address: str
     label: str
     status: str
+    created_at: str
     provider: str
     provider_mailbox_id: str
     email_account_id: None = None
@@ -125,16 +126,17 @@ def create_cf_temp_mailbox(
 ) -> TempMailbox:
     provider_mailbox = provider_mailbox_from_result(provider.create_mailbox(address))
     label = label or provider_mailbox.address
+    created_at: str = utc_now_iso()
     with connect(settings) as connection:
         try:
             email_cursor = connection.execute(
                 """
                 INSERT INTO usable_emails (
-                    user_id, email_account_id, address, label, kind, status, active
+                    user_id, email_account_id, address, label, kind, status, active, created_at
                 )
-                VALUES (?, NULL, ?, ?, 'temp', 'active', 1)
+                VALUES (?, NULL, ?, ?, 'temp', 'active', 1, ?)
                 """,
-                (user_id, provider_mailbox.address, label),
+                (user_id, provider_mailbox.address, label, created_at),
             )
         except sqlite3.IntegrityError as error:
             raise DuplicateUsableEmailError(
@@ -154,6 +156,7 @@ def create_cf_temp_mailbox(
         address=provider_mailbox.address,
         label=label,
         status="active",
+        created_at=created_at,
         provider="cf",
         provider_mailbox_id=provider_mailbox.provider_mailbox_id,
     )
@@ -164,7 +167,8 @@ def get_temp_mailbox(settings: Settings, user_id: int, usable_email_id: int) -> 
         row = connection.execute(
             """
             SELECT temp_mailboxes.id, temp_mailboxes.usable_email_id, usable_emails.address,
-                   usable_emails.label, usable_emails.status, temp_mailboxes.provider,
+                   usable_emails.label, usable_emails.status, usable_emails.created_at,
+                   temp_mailboxes.provider,
                    temp_mailboxes.provider_mailbox_id
             FROM temp_mailboxes
             JOIN usable_emails
@@ -183,6 +187,7 @@ def get_temp_mailbox(settings: Settings, user_id: int, usable_email_id: int) -> 
         address=row["address"],
         label=row["label"],
         status=row["status"],
+        created_at=row["created_at"],
         provider=row["provider"],
         provider_mailbox_id=row["provider_mailbox_id"],
     )
@@ -212,6 +217,7 @@ def archive_temp_mailbox(
         address=row["address"],
         label=row["label"],
         status=row["status"],
+        created_at=mailbox.created_at,
         provider=mailbox.provider,
         provider_mailbox_id=mailbox.provider_mailbox_id,
     )

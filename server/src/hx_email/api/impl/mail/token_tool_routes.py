@@ -5,6 +5,7 @@ from fastapi import APIRouter, Header, HTTPException, Response
 from pydantic import BaseModel
 
 from hx_email.api.dependencies import require_user
+from hx_email.api.impl.mail.oauth.token_callback import token_callback_html
 from hx_email.api.schemas import (
     TokenToolConfigWrite,
     TokenToolExchange,
@@ -31,6 +32,7 @@ class TokenAccount(BaseModel):
     email: str
     status: str
     provider: str
+    created_at: str
 
 
 DEFAULT_SCOPE: str = MICROSOFT_MAIL_SCOPE
@@ -102,16 +104,16 @@ def register_token_tool_routes(router: APIRouter, settings: Settings) -> None:
         error_description: str = "",
     ) -> Response:
         if error:
-            body = callback_html(f"授权失败: {error} {error_description}", is_error=True)
+            body = token_callback_html(f"授权失败: {error} {error_description}", is_error=True)
             return Response(body, media_type="text/html; charset=utf-8")
         if not code or not state:
-            body = callback_html("回调缺少 code 或 state 参数", is_error=True)
+            body = token_callback_html("回调缺少 code 或 state 参数", is_error=True)
             return Response(body, media_type="text/html; charset=utf-8")
         flow = peek_flow(state)
         if flow is None:
-            body = callback_html("授权流程已过期, 请重新生成授权链接", is_error=True)
+            body = token_callback_html("授权流程已过期, 请重新生成授权链接", is_error=True)
             return Response(body, media_type="text/html; charset=utf-8")
-        body = callback_html("授权成功, 请回到 Token 工具页面继续换取并保存 refresh_token")
+        body = token_callback_html("授权成功, 请回到 Token 工具页面继续换取并保存 refresh_token")
         return Response(body, media_type="text/html; charset=utf-8")
 
     @router.post("/token-tool/exchange")
@@ -141,14 +143,21 @@ def register_token_tool_routes(router: APIRouter, settings: Settings) -> None:
         if payload.mode == "create":
             if not payload.email:
                 raise HTTPException(status_code=422, detail="Email is required")
-            account_id = create_oauth_account(
+            account_id, created_at = create_oauth_account(
                 settings,
                 user.id,
                 payload.email,
                 payload.client_id,
                 payload.refresh_token,
             )
-            return {"success": True, "data": {"account_id": account_id, "email": payload.email}}
+            return {
+                "success": True,
+                "data": {
+                    "account_id": account_id,
+                    "email": payload.email,
+                    "created_at": created_at,
+                },
+            }
         if payload.mode == "update":
             if payload.account_id is None:
                 raise HTTPException(status_code=422, detail="Account id is required")
@@ -161,9 +170,18 @@ def register_token_tool_routes(router: APIRouter, settings: Settings) -> None:
             )
             if not saved:
                 raise HTTPException(status_code=404, detail="Email account not found")
+            updated = next(
+                account
+                for account in list_token_accounts(settings, user.id)
+                if account.id == payload.account_id
+            )
             return {
                 "success": True,
-                "data": {"account_id": payload.account_id, "email": payload.email},
+                "data": {
+                    "account_id": payload.account_id,
+                    "email": payload.email,
+                    "created_at": updated.created_at,
+                },
             }
         raise HTTPException(status_code=422, detail="Mode must be create or update")
 
@@ -257,10 +275,12 @@ def list_token_accounts(settings: Settings, user_id: int) -> list[TokenAccount]:
     with connect(settings) as connection:
         rows = connection.execute(
             """
-            SELECT id, primary_address, status, provider
-            FROM email_accounts
-            WHERE user_id = ? AND provider IN ('outlook', 'gmail')
-            ORDER BY id
+            SELECT ea.id, ea.primary_address, ea.status, ea.provider, ue.created_at
+            FROM email_accounts ea
+            JOIN usable_emails ue
+              ON ue.email_account_id = ea.id AND ue.user_id = ea.user_id AND ue.kind = 'primary'
+            WHERE ea.user_id = ? AND ea.provider IN ('outlook', 'gmail')
+            ORDER BY ea.id
             """,
             (user_id,),
         ).fetchall()
@@ -270,17 +290,7 @@ def list_token_accounts(settings: Settings, user_id: int) -> list[TokenAccount]:
             email=row["primary_address"],
             status=row["status"],
             provider=row["provider"],
+            created_at=row["created_at"],
         )
         for row in rows
     ]
-
-
-def callback_html(message: str, is_error: bool = False) -> str:
-    color = "#f85149" if is_error else "#3fb950"
-    return (
-        "<!doctype html><html><head><meta charset='utf-8'><title>OAuth Callback</title>"
-        "</head><body style='font-family:sans-serif;background:#0d1117;color:#c9d1d9;"
-        "display:grid;place-items:center;min-height:100vh;margin:0'>"
-        f"<main style='max-width:520px'><h1 style='color:{color};font-size:20px'>"
-        f"{message}</h1><p>可以关闭此页面。</p></main></body></html>"
-    )

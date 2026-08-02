@@ -259,6 +259,7 @@ def test_platform_bindings_are_workspace_scoped_and_visible_in_workbench_filters
             "label": "Alice",
             "kind": "custom",
             "status": "active",
+            "created_at": alice_email["created_at"],
             "group": None,
             "tags": [],
             "platform_binding_count": 1,

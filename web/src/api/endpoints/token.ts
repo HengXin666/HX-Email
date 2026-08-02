@@ -65,7 +65,10 @@ export const tokenApi = {
     client_id: string;
     refresh_token: string;
   }) =>
-    request<{ success: boolean; data: { account_id: number; email: string } }>("/token-tool/save", {
+    request<{
+      success: boolean;
+      data: { account_id: number; email: string; created_at: string };
+    }>("/token-tool/save", {
       method: "POST",
       body: JSON.stringify(data),
     }),

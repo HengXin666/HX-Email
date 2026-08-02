@@ -22,9 +22,9 @@ function getEmailDisplayName(email: UsableEmail, accounts: EmailAccount[]): stri
   return email.label || account?.display_name || email.address;
 }
 
-function getRelativeUpdatedAt(email: UsableEmail): string {
-  if (!email.updated_at) return "未记录";
-  return formatRelativeTime(email.updated_at);
+function getRelativeCreatedAt(email: UsableEmail): string {
+  if (!email.created_at) return "未记录";
+  return formatRelativeTime(email.created_at);
 }
 
 export const OverviewEmailList: React.FC<OverviewEmailListProps> = ({
@@ -83,7 +83,7 @@ export const OverviewEmailList: React.FC<OverviewEmailListProps> = ({
                     {bindingCount} 绑定
                   </span>
                   <span className="text-xs text-gh-text-muted whitespace-nowrap">
-                    {getRelativeUpdatedAt(email)}
+                    添加 {getRelativeCreatedAt(email)}
                   </span>
                 </span>
               </span>

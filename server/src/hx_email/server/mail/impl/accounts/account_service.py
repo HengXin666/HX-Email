@@ -193,7 +193,6 @@ def _build_enhanced_query(
     sort_by: str | None = None,
     sort_order: str | None = None,
 ) -> tuple[str, list[object]]:
-    """Build the parameterized query for enhanced account listing."""
     where = ["ea.user_id = ?"]
     params: list[object] = [user_id]
     joins: list[str] = []
@@ -227,18 +226,19 @@ def _build_enhanced_query(
               AND ut_multi.tag_id IN ({placeholders})"""
         )
         params.extend(tag_set)
-    where_sql = " AND ".join(where)
-    join_sql = " ".join(joins)
+    where_sql, join_sql = " AND ".join(where), " ".join(joins)
     allowed_sort = {"id", "primary_address", "provider", "status", "created_at", "remark"}
-    sort_col = sort_by if sort_by in allowed_sort else "id"
     order = "DESC" if sort_order and sort_order.upper() == "DESC" else "ASC"
+    sort_expr: str = "(SELECT MIN(created_at) FROM usable_emails WHERE email_account_id=ea.id)"
+    if sort_by != "created_at":
+        sort_expr = f"ea.{sort_by if sort_by in allowed_sort else 'id'}"
     return (
         f"""
         SELECT DISTINCT ea.id
         FROM email_accounts ea
         {join_sql}
         WHERE {where_sql}
-        ORDER BY ea.{sort_col} {order}
+        ORDER BY {sort_expr} {order}, ea.id {order}
         """,
         params,
     )

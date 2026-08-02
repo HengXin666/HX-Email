@@ -70,6 +70,7 @@ def test_creating_cf_temp_mail_adds_temp_usable_email_without_email_account(tmp_
         "label": "Signup temp",
         "kind": "temp",
         "status": "active",
+        "created_at": created.json()["created_at"],
         "provider": "cf",
         "email_account_id": None,
     }
@@ -81,6 +82,7 @@ def test_creating_cf_temp_mail_adds_temp_usable_email_without_email_account(tmp_
             "label": "Signup temp",
             "kind": "temp",
             "status": "active",
+            "created_at": created.json()["created_at"],
             "group": None,
             "tags": [],
             "platform_binding_count": 0,

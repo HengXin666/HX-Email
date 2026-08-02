@@ -13,8 +13,14 @@ import { request, requestText } from "../core";
 
 export const emailsApi = {
   // Usable Emails
-  listUsableEmails: () =>
-    request<{ usable_emails: UsableEmail[] }>("/usable-emails").then((r) => r.usable_emails),
+  listUsableEmails: (sortOrder?: "asc" | "desc") => {
+    const query = sortOrder
+      ? `?sort_by=created_at&sort_order=${encodeURIComponent(sortOrder)}`
+      : "";
+    return request<{ usable_emails: UsableEmail[] }>(`/usable-emails${query}`).then(
+      (r) => r.usable_emails,
+    );
+  },
 
   getUsableEmail: (id: number) => request<UsableEmail>(`/usable-emails/${id}`),
 

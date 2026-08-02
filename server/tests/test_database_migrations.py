@@ -49,11 +49,13 @@ def test_migrate_creates_sqlite_database_in_configured_data_dir(tmp_path):
             row[1] for row in connection.execute("PRAGMA table_info(message_deliveries)").fetchall()
         }
 
-    assert version == 10
+    assert version == 11
     assert registration_enabled == "false"
     assert admin == (settings.admin_username, 1)
     assert {"provider", "primary_address", "status"}.issubset(email_accounts_columns)
-    assert {"email_account_id", "kind", "status", "group_id"}.issubset(usable_email_columns)
+    assert {"email_account_id", "kind", "status", "group_id", "created_at"}.issubset(
+        usable_email_columns
+    )
     assert {"notify_enabled", "polling_enabled"}.issubset(group_columns)
     assert {"user_id", "usable_email_id", "provider", "provider_mailbox_id"}.issubset(
         temp_mailbox_columns
@@ -99,6 +101,6 @@ def test_migrate_upgrades_v9_polling_and_delivery_schema(tmp_path) -> None:
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'message_deliveries'"
         ).fetchone()
 
-    assert version == 10
+    assert version == 11
     assert "polling_enabled" in group_columns
     assert delivery_table == ("message_deliveries",)

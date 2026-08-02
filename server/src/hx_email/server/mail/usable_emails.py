@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from hx_email.config import Settings
-from hx_email.database import connect
+from hx_email.database import connect, utc_now_iso
 from hx_email.server.auth import require_inserted_id
 from hx_email.server.mail.imap.message_store import delete_messages_for_email
 
@@ -23,6 +23,7 @@ class UsableEmail:
     label: str
     kind: str = "custom"
     status: str = "active"
+    created_at: str = ""
     group: GroupInfo | None = None
     email_account_id: int | None = None
     notify_enabled: bool = True
@@ -51,13 +52,14 @@ def group_info_from_row(row: Mapping[str, Any]) -> GroupInfo | None:
 
 
 def add_usable_email(settings: Settings, user_id: int, address: str, label: str) -> UsableEmail:
+    created_at: str = utc_now_iso()
     with connect(settings) as connection:
         cursor = connection.execute(
             """
-            INSERT INTO usable_emails (user_id, address, label, kind, status, active)
-            VALUES (?, ?, ?, 'custom', 'active', 1)
+            INSERT INTO usable_emails (user_id, address, label, kind, status, active, created_at)
+            VALUES (?, ?, ?, 'custom', 'active', 1, ?)
             """,
-            (user_id, address, label),
+            (user_id, address, label, created_at),
         )
 
     return UsableEmail(
@@ -66,21 +68,32 @@ def add_usable_email(settings: Settings, user_id: int, address: str, label: str)
         label=label,
         kind="custom",
         status="active",
+        created_at=created_at,
     )
 
 
-def list_usable_emails(settings: Settings, user_id: int) -> list[UsableEmail]:
+def list_usable_emails(
+    settings: Settings,
+    user_id: int,
+    sort_by: str | None = None,
+    sort_order: str | None = None,
+) -> list[UsableEmail]:
+    order_sql: str = "ue.active DESC, ue.id ASC"
+    if sort_by == "created_at":
+        direction: str = "DESC" if sort_order and sort_order.upper() == "DESC" else "ASC"
+        order_sql = f"ue.created_at {direction}, ue.id {direction}"
     with connect(settings) as connection:
         rows = connection.execute(
-            """
+            f"""
             SELECT ue.id, ue.address, ue.label, ue.kind, ue.status,
+                   ue.created_at,
                    ue.email_account_id, ue.notify_enabled,
                    ue.group_id, g.name AS group_name, g.color AS group_color,
                    g.proxy_url AS group_proxy_url
             FROM usable_emails ue
             LEFT JOIN groups g ON g.id = ue.group_id
             WHERE ue.user_id = ?
-            ORDER BY ue.active DESC, ue.id
+            ORDER BY {order_sql}
             """,
             (user_id,),
         ).fetchall()
@@ -92,6 +105,7 @@ def list_usable_emails(settings: Settings, user_id: int) -> list[UsableEmail]:
             label=row["label"],
             kind=row["kind"],
             status=row["status"],
+            created_at=row["created_at"],
             group=group_info_from_row(row),
             email_account_id=row["email_account_id"],
             notify_enabled=bool(row["notify_enabled"]),
@@ -105,6 +119,8 @@ def get_usable_email(settings: Settings, user_id: int, usable_email_id: int) -> 
         row = connection.execute(
             """
             SELECT ue.id, ue.address, ue.label, ue.kind, ue.status,
+                   ue.created_at,
+                   ue.email_account_id,
                    ue.notify_enabled,
                    ue.group_id, g.name AS group_name, g.color AS group_color,
                    g.proxy_url AS group_proxy_url
@@ -124,6 +140,8 @@ def get_usable_email(settings: Settings, user_id: int, usable_email_id: int) -> 
         label=row["label"],
         kind=row["kind"],
         status=row["status"],
+        created_at=row["created_at"],
+        email_account_id=row["email_account_id"],
         group=group_info_from_row(row),
         notify_enabled=bool(row["notify_enabled"]),
     )
@@ -138,7 +156,7 @@ def deactivate_usable_email(
             UPDATE usable_emails
             SET status = 'inactive', active = 0
             WHERE id = ? AND user_id = ?
-            RETURNING id, address, label, kind, status, group_id
+            RETURNING id, address, label, kind, status, created_at, group_id
             """,
             (usable_email_id, user_id),
         ).fetchone()
@@ -152,6 +170,7 @@ def deactivate_usable_email(
         label=row["label"],
         kind=row["kind"],
         status=row["status"],
+        created_at=row["created_at"],
         group=group_info_from_row(row),
     )
 

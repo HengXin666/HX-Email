@@ -47,6 +47,7 @@ export interface TokenToolAccount {
   email: string;
   status: string;
   provider: "outlook" | "gmail";
+  created_at: string;
 }
 
 export interface TokenPrepareResult {

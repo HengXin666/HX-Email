@@ -9,6 +9,7 @@ export interface UsableEmail {
   label: string;
   kind: UsableEmailKind;
   status: UsableEmailStatus;
+  created_at?: string;
   group?: Group | null;
   tags?: Tag[];
   platform_binding_count?: number;

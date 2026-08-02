@@ -55,9 +55,16 @@ def register_usable_email_routes(
     @router.get("/usable-emails")
     def get_usable_emails(
         authorization: Annotated[str | None, Header()] = None,
+        sort_by: str | None = None,
+        sort_order: str | None = None,
     ) -> dict[str, list[dict[str, object]]]:
         user = require_user(settings, authorization)
-        items = [serialize_usable_email(email) for email in list_usable_emails(settings, user.id)]
+        items = [
+            serialize_usable_email(email)
+            for email in list_usable_emails(
+                settings, user.id, sort_by=sort_by, sort_order=sort_order
+            )
+        ]
         return {"usable_emails": enrich_fetch_account_info(settings, user.id, items)}
 
     @router.get("/usable-emails/{usable_email_id}")
@@ -120,7 +127,7 @@ def register_usable_email_routes(
             row = connection.execute(
                 "UPDATE usable_emails SET status = 'active', active = 1 "
                 "WHERE id = ? AND user_id = ? "
-                "RETURNING id, address, label, kind, status, email_account_id",
+                "RETURNING id, address, label, kind, status, created_at, email_account_id",
                 (usable_email_id, user.id),
             ).fetchone()
         if row is None:
@@ -135,6 +142,7 @@ def register_usable_email_routes(
                 "label": row["label"],
                 "kind": row["kind"],
                 "status": row["status"],
+                "created_at": row["created_at"],
                 "email_account_id": account_info.email_account_id,
                 "last_refresh_at": account_info.last_refresh_at,
             }

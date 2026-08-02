@@ -3,7 +3,7 @@ from urllib.parse import parse_qs, urlparse
 from fastapi.testclient import TestClient
 from hx_email.app import create_app
 from hx_email.config import Settings
-from hx_email.database import migrate
+from hx_email.database import connect, migrate
 
 
 def register_user(client: TestClient, username: str) -> dict[str, object]:
@@ -66,6 +66,7 @@ def test_adding_email_account_creates_primary_usable_email_in_current_workspace(
             "label": "Alice IMAP",
             "kind": "primary",
             "status": "active",
+            "created_at": alice_create.json()["primary_usable_email"]["created_at"],
             "group": None,
             "email_account_id": alice_create.json()["id"],
             "notify_enabled": True,
@@ -79,11 +80,74 @@ def test_adding_email_account_creates_primary_usable_email_in_current_workspace(
             "label": "Bob Outlook",
             "kind": "primary",
             "status": "active",
+            "created_at": bob_create.json()["primary_usable_email"]["created_at"],
             "group": None,
             "email_account_id": bob_create.json()["id"],
             "notify_enabled": True,
             "last_refresh_at": None,
         }
+    ]
+
+
+def test_email_accounts_can_sort_by_primary_usable_email_created_at(tmp_path):
+    settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
+    migrate(settings)
+    client = TestClient(create_app(settings))
+    session = client.post(
+        "/api/v1/auth/login",
+        json={"username": "admin", "password": "admin"},
+    ).json()
+    headers = {"Authorization": f"Bearer {session['access_token']}"}
+
+    first = client.post(
+        "/api/v1/email-accounts",
+        json={
+            "provider": "imap",
+            "primary_address": "first@example.com",
+            "display_name": "First",
+        },
+        headers=headers,
+    ).json()
+    second = client.post(
+        "/api/v1/email-accounts",
+        json={
+            "provider": "imap",
+            "primary_address": "second@example.com",
+            "display_name": "Second",
+        },
+        headers=headers,
+    ).json()
+    with connect(settings) as connection:
+        connection.execute(
+            "UPDATE usable_emails SET created_at = CASE id WHEN ? THEN ? WHEN ? THEN ? END",
+            (
+                first["primary_usable_email"]["id"],
+                "2026-01-01T00:00:00.000Z",
+                second["primary_usable_email"]["id"],
+                "2026-01-02T00:00:00.000Z",
+            ),
+        )
+
+    ascending = client.get(
+        "/api/v1/email-accounts",
+        params={"sort_by": "created_at", "sort_order": "asc"},
+        headers=headers,
+    )
+    descending = client.get(
+        "/api/v1/email-accounts",
+        params={"sort_by": "created_at", "sort_order": "desc"},
+        headers=headers,
+    )
+
+    assert ascending.status_code == 200
+    assert [account["primary_address"] for account in ascending.json()["accounts"]] == [
+        "first@example.com",
+        "second@example.com",
+    ]
+    assert descending.status_code == 200
+    assert [account["primary_address"] for account in descending.json()["accounts"]] == [
+        "second@example.com",
+        "first@example.com",
     ]
 
 
@@ -414,18 +478,21 @@ def test_token_tool_config_callback_accounts_and_create_flow(tmp_path):
     assert callback.status_code == 200
     assert "授权成功" in callback.text
     assert created.status_code == 200
+    assert created.json()["data"]["created_at"]
     assert accounts.json()["data"] == [
         {
             "id": created.json()["data"]["account_id"],
             "email": "created@outlook.com",
             "status": "active",
             "provider": "outlook",
+            "created_at": created.json()["data"]["created_at"],
         },
         {
             "id": gmail.json()["id"],
             "email": "created@gmail.com",
             "status": "active",
             "provider": "gmail",
+            "created_at": gmail.json()["primary_usable_email"]["created_at"],
         },
     ]
 

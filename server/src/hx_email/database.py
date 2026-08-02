@@ -1,4 +1,5 @@
 import sqlite3
+from datetime import UTC, datetime
 from pathlib import Path
 
 from hx_email.config import Settings
@@ -15,6 +16,7 @@ COLUMN_MIGRATIONS: tuple[tuple[str, str, str], ...] = (
     ("usable_emails", "email_account_id", "INTEGER REFERENCES email_accounts(id)"),
     ("usable_emails", "kind", "TEXT NOT NULL DEFAULT 'custom'"),
     ("usable_emails", "status", "TEXT NOT NULL DEFAULT 'active'"),
+    ("usable_emails", "created_at", "TEXT NOT NULL DEFAULT ''"),
     ("usable_emails", "group_id", "INTEGER REFERENCES groups(id)"),
     ("usable_emails", "notify_enabled", "INTEGER NOT NULL DEFAULT 1"),
     ("email_accounts", "imap_password", "TEXT NOT NULL DEFAULT ''"),
@@ -28,6 +30,10 @@ COLUMN_MIGRATIONS: tuple[tuple[str, str, str], ...] = (
     ("groups", "notify_enabled", "INTEGER NOT NULL DEFAULT 1"),
     ("fetched_messages", "message_id", "TEXT NOT NULL DEFAULT ''"),
 )
+
+
+def utc_now_iso() -> str:
+    return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 def apply_column_migrations(connection: sqlite3.Connection) -> None:
@@ -84,6 +90,7 @@ def migrate(settings: Settings) -> Path:
                 kind TEXT NOT NULL DEFAULT 'primary',
                 status TEXT NOT NULL DEFAULT 'active',
                 active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
                 UNIQUE(user_id, address)
             )
             """
@@ -253,6 +260,10 @@ def migrate(settings: Settings) -> Path:
             """
         )
         apply_column_migrations(connection)
+        connection.execute(
+            "UPDATE usable_emails SET created_at = ? WHERE created_at = ''",
+            (utc_now_iso(),),
+        )
         migrate_polling_schema(connection)
         migrate_message_delivery_schema(connection)
         connection.execute(
@@ -274,6 +285,6 @@ def migrate(settings: Settings) -> Path:
             """,
             (settings.admin_username, hash_password(settings.admin_password)),
         )
-        connection.execute("PRAGMA user_version = 10")
+        connection.execute("PRAGMA user_version = 11")
         migrate_stored_secrets(settings, connection)
     return database_path

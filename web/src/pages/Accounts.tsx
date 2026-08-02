@@ -68,6 +68,20 @@ const COLORS = [
 ];
 
 const MESSAGE_PAGE_SIZE = 30;
+type EmailSortOrder = "asc" | "desc";
+
+function compareEmailCreatedAt(
+  left: UsableEmail,
+  right: UsableEmail,
+  order: EmailSortOrder,
+): number {
+  const leftTime: number = Date.parse(left.created_at || "") || 0;
+  const rightTime: number = Date.parse(right.created_at || "") || 0;
+  if (leftTime !== rightTime) {
+    return order === "asc" ? leftTime - rightTime : rightTime - leftTime;
+  }
+  return order === "asc" ? left.id - right.id : right.id - left.id;
+}
 
 const EmailProviderIcon: React.FC<{
   provider?: string;
@@ -541,6 +555,7 @@ const EmailList: React.FC<{
   const [showAdd, setShowAdd] = useState(false);
   const [showSettings, setShowSettings] = useState<number | null>(null);
   const [query, setQuery] = useState("");
+  const [sortOrder, setSortOrder] = useState<EmailSortOrder>("desc");
 
   const filtered = useMemo(() => {
     let list: UsableEmail[] = emails.filter((email: UsableEmail) => email.kind !== "alias");
@@ -564,8 +579,8 @@ const EmailList: React.FC<{
         );
       });
     }
-    return list;
-  }, [accounts, emails, groupId, query]);
+    return list.sort((left, right) => compareEmailCreatedAt(left, right, sortOrder));
+  }, [accounts, emails, groupId, query, sortOrder]);
 
   const group = groups.find((g) => g.id === groupId);
 
@@ -636,27 +651,39 @@ const EmailList: React.FC<{
       </div>
 
       <div className="px-3 py-2 border-b border-gh-border">
-        <div className="relative">
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索邮箱..."
-            className="w-full bg-gh-canvas-inset border border-gh-border rounded-md pl-8 pr-3 py-1.5 text-sm text-gh-text placeholder-gh-text-secondary focus:outline-none focus:border-gh-accent"
+        <div className="flex items-center gap-2">
+          <div className="relative min-w-0 flex-1">
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="搜索邮箱..."
+              className="w-full bg-gh-canvas-inset border border-gh-border rounded-md pl-8 pr-3 py-1.5 text-sm text-gh-text placeholder-gh-text-secondary focus:outline-none focus:border-gh-accent"
+            />
+            <svg
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gh-text-secondary"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+          </div>
+          <Select
+            value={sortOrder}
+            onChange={(value) => setSortOrder(value as EmailSortOrder)}
+            options={[
+              { value: "desc", label: "最新添加" },
+              { value: "asc", label: "最早添加" },
+            ]}
+            className="w-28 shrink-0"
+            selectClassName="px-2 py-1.5 text-xs"
           />
-          <svg
-            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gh-text-secondary"
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="11" cy="11" r="8" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
         </div>
       </div>
 
@@ -732,6 +759,7 @@ const EmailCard: React.FC<{
   const refreshTimeLabel = account?.last_refresh_at
     ? formatRelativeTime(account.last_refresh_at)
     : "";
+  const createdTimeLabel = email.created_at ? formatDateTimeFull(email.created_at) : "未记录";
   const [loadingCode, setLoadingCode] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   // Codes already shown to the user this session — anything else counts as fresh.
@@ -1053,9 +1081,17 @@ const EmailCard: React.FC<{
         )}
 
         <div className="flex items-center justify-between mt-3 pt-2 border-t border-gh-border/60">
-          <span className="text-[11px] text-gh-text-secondary flex items-center gap-1">
-            <IconClock size={10} /> {refreshTimeLabel || "—"}
-          </span>
+          <div className="min-w-0 text-[11px] text-gh-text-secondary">
+            <span
+              className="flex items-center gap-1 truncate"
+              title={`添加时间：${createdTimeLabel}`}
+            >
+              <IconClock size={10} /> 添加于 {createdTimeLabel}
+            </span>
+            <span className="block truncate pl-3.5 text-[10px] text-gh-text-muted">
+              刷新 {refreshTimeLabel || "—"}
+            </span>
+          </div>
           <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
             <button
               onClick={handleGetCode}

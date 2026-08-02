@@ -12,6 +12,7 @@ class WorkbenchEmail:
     label: str
     kind: str
     status: str
+    created_at: str
     group: Group | None
     tags: tuple[Tag, ...]
     platform_binding_count: int
@@ -99,6 +100,8 @@ def list_workbench_emails(
     tag_id: int | None = None,
     keyword: str | None = None,
     platform_binding: str | None = None,
+    sort_by: str | None = None,
+    sort_order: str | None = None,
     page: int = 1,
     page_size: int = 50,
 ) -> WorkbenchPage:
@@ -162,6 +165,10 @@ def list_workbench_emails(
     where_sql = " AND ".join(where)
     join_sql = " ".join(joins)
     offset = (page - 1) * page_size
+    order_sql: str = "usable_emails.id ASC"
+    if sort_by == "created_at":
+        direction: str = "DESC" if sort_order and sort_order.upper() == "DESC" else "ASC"
+        order_sql = f"usable_emails.created_at {direction}, usable_emails.id {direction}"
 
     with connect(settings) as connection:
         total = connection.execute(
@@ -176,7 +183,7 @@ def list_workbench_emails(
         rows = connection.execute(
             f"""
             SELECT usable_emails.id, usable_emails.address, usable_emails.label,
-                   usable_emails.kind, usable_emails.status,
+                   usable_emails.kind, usable_emails.status, usable_emails.created_at,
                    groups.id AS group_id, groups.name AS group_name, groups.color AS group_color,
                    groups.proxy_url AS group_proxy_url,
                    COUNT(DISTINCT platform_bindings.id) AS platform_binding_count
@@ -186,7 +193,7 @@ def list_workbench_emails(
                 AND platform_bindings.usable_email_id = usable_emails.id
             WHERE {where_sql}
             GROUP BY usable_emails.id
-            ORDER BY usable_emails.id
+            ORDER BY {order_sql}
             LIMIT ? OFFSET ?
             """,
             (*params, page_size, offset),
@@ -217,6 +224,7 @@ def list_workbench_emails(
             label=row["label"],
             kind=row["kind"],
             status=row["status"],
+            created_at=row["created_at"],
             group=Group(
                 id=row["group_id"],
                 name=row["group_name"],

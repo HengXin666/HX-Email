@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from sqlite3 import Connection, Row
 from typing import TYPE_CHECKING
 
+from hx_email.database import utc_now_iso
 from hx_email.server.auth import require_inserted_id
 from hx_email.server.mail.usable_emails import UsableEmail
 
@@ -80,6 +81,7 @@ def usable_email_from_row(row: Row) -> UsableEmail:
         label=row["label"],
         kind=row["kind"],
         status=row["status"],
+        created_at=row["created_at"],
     )
 
 
@@ -93,14 +95,15 @@ def add_alias_email(
     if is_plus_subaddress(address):
         raise InvalidAliasAddressError("Alias address must be a real mailbox address")
     try:
+        created_at: str = utc_now_iso()
         cursor = connection.execute(
             """
             INSERT INTO usable_emails (
-                user_id, email_account_id, address, label, kind, status, active
+                user_id, email_account_id, address, label, kind, status, active, created_at
             )
-            VALUES (?, ?, ?, ?, 'alias', 'active', 1)
+            VALUES (?, ?, ?, ?, 'alias', 'active', 1, ?)
             """,
-            (user_id, account_id, address, label),
+            (user_id, account_id, address, label, created_at),
         )
     except sqlite3.IntegrityError as error:
         raise DuplicateUsableEmailError(
@@ -112,4 +115,5 @@ def add_alias_email(
         label=label,
         kind="alias",
         status="active",
+        created_at=created_at,
     )

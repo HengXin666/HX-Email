@@ -16,7 +16,7 @@ def load_target(
 ) -> tuple[UsableEmail, EmailAccountMailbox] | None:
     with connect(settings) as connection:
         usable_row = connection.execute(
-            "SELECT id, address, label, kind, status, email_account_id "
+            "SELECT id, address, label, kind, status, created_at, email_account_id "
             "FROM usable_emails WHERE id = ? AND user_id = ?",
             (usable_email_id, user_id),
         ).fetchone()
@@ -59,6 +59,7 @@ def load_target(
             label=usable_row["label"],
             kind=usable_row["kind"],
             status=usable_row["status"],
+            created_at=usable_row["created_at"],
         ),
         EmailAccountMailbox(
             id=account_row["id"],
@@ -75,7 +76,7 @@ def load_usable_email(
 ) -> UsableEmail | None:
     with connect(settings) as connection:
         row = connection.execute(
-            "SELECT id, address, label, kind, status FROM usable_emails "
+            "SELECT id, address, label, kind, status, created_at FROM usable_emails "
             "WHERE id = ? AND user_id = ?",
             (usable_email_id, user_id),
         ).fetchone()
@@ -87,4 +88,5 @@ def load_usable_email(
         label=row["label"],
         kind=row["kind"],
         status=row["status"],
+        created_at=row["created_at"],
     )

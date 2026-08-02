@@ -41,11 +41,12 @@ def get_account_status(settings: Settings, email: str) -> dict[str, object]:
         "in_pool": False,
         "pool_status": "",
         "provider": "",
+        "created_at": None,
     }
     with connect(settings) as connection:
         row = connection.execute(
             """
-            SELECT ue.id AS usable_email_id, ue.address, ue.status AS ue_status,
+            SELECT ue.id AS usable_email_id, ue.address, ue.status AS ue_status, ue.created_at,
                    ea.provider,
                    mpe.status AS pool_status
             FROM usable_emails ue
@@ -60,6 +61,7 @@ def get_account_status(settings: Settings, email: str) -> dict[str, object]:
         result["exists"] = True
         result["active"] = row["ue_status"] == "active"
         result["provider"] = str(row["provider"] or "")
+        result["created_at"] = row["created_at"]
         pool_status: str = str(row["pool_status"] or "")
         result["in_pool"] = bool(pool_status)
         result["pool_status"] = pool_status

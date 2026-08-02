@@ -40,7 +40,7 @@ jobs:
       - name: Build and smoke test bridge deployment
         run: |
           docker compose -f docker-compose.bridge.yml up -d --build
-          curl --fail --retry 15 --retry-delay 2 http://127.0.0.1:8080/healthz
+          curl --fail --retry 15 --retry-delay 2 --retry-all-errors http://127.0.0.1:8080/healthz
       - name: Tear down deployment
         if: ${{ always() }}
         run: docker compose -f docker-compose.bridge.yml down -v
