@@ -9,7 +9,9 @@
       "!**/test-results",
       "!**/tsconfig.*.tsbuildinfo",
       "!vite.config.d.ts",
-      "!vite.config.js"
+      "!vite.config.js",
+      "!brand_redirect_plugin.d.ts",
+      "!brand_redirect_plugin.js"
     ]
   },
   "formatter": {
@@ -18,7 +20,13 @@
     "indentWidth": 2,
     "lineWidth": 100
   },
-  "assist": { "actions": { "source": { "organizeImports": "on" } } },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
   "linter": {
     "enabled": false,
     "rules": {
