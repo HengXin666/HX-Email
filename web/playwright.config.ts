@@ -6,7 +6,10 @@ const WEB_ROOT = dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = resolve(WEB_ROOT, "..");
 const SERVER_ROOT = resolve(REPOSITORY_ROOT, "server");
 const TEST_DATA_DIR = resolve(WEB_ROOT, "test-results/server-data");
-const BACKEND_URL = "http://127.0.0.1:18080";
+// Backend port is env-overridable (default 18091): 18080 collides with common
+// local services on some hosts, and the repo's own Docker backend uses 18090.
+const BACKEND_PORT = process.env.HX_EMAIL_E2E_BACKEND_PORT ?? "18091";
+const BACKEND_URL = `http://127.0.0.1:${BACKEND_PORT}`;
 const FRONTEND_URL = "http://127.0.0.1:14173";
 
 export default defineConfig({
@@ -33,7 +36,7 @@ export default defineConfig({
   webServer: [
     {
       name: "backend",
-      command: `rm -rf "${TEST_DATA_DIR}" && uv run uvicorn hx_email.app:app --host 127.0.0.1 --port 18080`,
+      command: `rm -rf "${TEST_DATA_DIR}" && uv run uvicorn hx_email.app:app --host 127.0.0.1 --port ${BACKEND_PORT}`,
       cwd: SERVER_ROOT,
       env: {
         HX_EMAIL_ADMIN_PASSWORD: "admin",
