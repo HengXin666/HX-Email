@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="HX-Email 多邮箱统一管理平台：集中管理邮箱账号、临时邮箱、平台绑定与验证码读取流程。自托管部署，数据由您完全掌控。"
+    />
+    <title>HX-Email · 多邮箱统一管理平台</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #0d1117;
+        color: #c9d1d9;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial,
+          sans-serif;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+      }
+      a {
+        color: #58a6ff;
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+      .container {
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 0 24px;
+      }
+      header {
+        border-bottom: 1px solid #21262d;
+        background: #01040999;
+        backdrop-filter: blur(8px);
+        position: sticky;
+        top: 0;
+        z-index: 10;
+      }
+      .nav {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 64px;
+      }
+      .logo {
+        font-size: 20px;
+        font-weight: 700;
+        color: #f0f6fc;
+        letter-spacing: 0.02em;
+      }
+      .logo span {
+        color: #3fb950;
+      }
+      .nav-links {
+        display: flex;
+        gap: 24px;
+        font-size: 14px;
+      }
+      .nav-links a {
+        color: #8b949e;
+      }
+      .nav-links a:hover {
+        color: #f0f6fc;
+        text-decoration: none;
+      }
+      .hero {
+        padding: 88px 0 72px;
+        text-align: center;
+      }
+      .hero .eyebrow {
+        display: inline-block;
+        padding: 4px 12px;
+        border: 1px solid #30363d;
+        border-radius: 999px;
+        color: #8b949e;
+        font-size: 13px;
+        margin-bottom: 20px;
+      }
+      .hero h1 {
+        margin: 0 0 16px;
+        font-size: 44px;
+        line-height: 1.2;
+        color: #f0f6fc;
+        font-weight: 700;
+      }
+      .hero h1 .gradient {
+        background: linear-gradient(135deg, #58a6ff 0%, #a371f7 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+      .hero .subtitle {
+        max-width: 640px;
+        margin: 0 auto 32px;
+        color: #8b949e;
+        font-size: 17px;
+      }
+      .cta-row {
+        display: flex;
+        justify-content: center;
+        gap: 14px;
+        flex-wrap: wrap;
+      }
+      .btn {
+        display: inline-block;
+        padding: 11px 26px;
+        border-radius: 8px;
+        font-size: 15px;
+        font-weight: 600;
+        border: 1px solid transparent;
+        transition: filter 0.15s ease;
+      }
+      .btn:hover {
+        text-decoration: none;
+        filter: brightness(1.1);
+      }
+      .btn-primary {
+        background: #238636;
+        color: #ffffff;
+      }
+      .btn-secondary {
+        border-color: #30363d;
+        color: #c9d1d9;
+        background: #161b22;
+      }
+      section {
+        padding: 56px 0;
+      }
+      section + section {
+        border-top: 1px solid #21262d;
+      }
+      h2 {
+        margin: 0 0 8px;
+        font-size: 28px;
+        color: #f0f6fc;
+      }
+      .section-desc {
+        margin: 0 0 36px;
+        color: #8b949e;
+        max-width: 640px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 20px;
+      }
+      .card {
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 10px;
+        padding: 24px;
+      }
+      .card h3 {
+        margin: 0 0 8px;
+        font-size: 17px;
+        color: #f0f6fc;
+      }
+      .card p {
+        margin: 0;
+        color: #8b949e;
+        font-size: 14px;
+      }
+      .card .icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+        background: #1f6feb33;
+        color: #58a6ff;
+        font-size: 20px;
+        margin-bottom: 14px;
+      }
+      .privacy-note {
+        display: flex;
+        gap: 16px;
+        align-items: flex-start;
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 10px;
+        padding: 24px;
+      }
+      .privacy-note .badge {
+        flex-shrink: 0;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: #23863633;
+        color: #3fb950;
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .privacy-note p {
+        margin: 0;
+        color: #8b949e;
+        font-size: 14px;
+      }
+      footer {
+        border-top: 1px solid #21262d;
+        padding: 32px 0;
+      }
+      .footer-inner {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+        justify-content: space-between;
+        color: #6e7681;
+        font-size: 13px;
+      }
+      .footer-inner a {
+        color: #8b949e;
+      }
+      @media (max-width: 640px) {
+        .hero {
+          padding: 56px 0 44px;
+        }
+        .hero h1 {
+          font-size: 32px;
+        }
+        .nav-links {
+          gap: 14px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="container nav">
+        <a class="logo" href="/home.html">HX<span>-Email</span></a>
+        <nav class="nav-links" aria-label="主导航">
+          <a href="/home.html">首页</a>
+          <a href="/home.html#features">功能</a>
+          <a href="/privacy.html">隐私政策</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="container">
+          <span class="eyebrow">Self-hosted · 自托管多邮箱管理平台</span>
+          <h1>
+            多邮箱，一个
+            <span class="gradient">工作台</span>
+          </h1>
+          <p class="subtitle">
+            HX-Email 集中管理您所有的邮箱账号、临时邮箱与平台绑定，自动读取验证码、按规则收发邮件，让多个账号的管理变得简单而高效。
+          </p>
+          <div class="cta-row">
+            <a class="btn btn-primary" href="/login">进入控制台</a>
+            <a class="btn btn-secondary" href="/privacy.html">查看隐私政策</a>
+          </div>
+        </div>
+      </section>
+
+      <section id="features">
+        <div class="container">
+          <h2>核心功能</h2>
+          <p class="section-desc">面向个人与小型团队的多邮箱管理工作台，覆盖从账号管理到邮件自动化的完整流程。</p>
+          <div class="grid">
+            <div class="card">
+              <span class="icon">📬</span>
+              <h3>多账号统一管理</h3>
+              <p>在一个界面集中管理多个邮箱账号，统一查看状态、刷新登录态与维护凭据。</p>
+            </div>
+            <div class="card">
+              <span class="icon">🔑</span>
+              <h3>验证码自动读取</h3>
+              <p>自动识别邮件中的验证码并高亮展示，配合浏览器脚本实现一键回填。</p>
+            </div>
+            <div class="card">
+              <span class="icon">⚙️</span>
+              <h3>邮件自动化</h3>
+              <p>定时轮询收件、SMTP 发送、邮件转发，以及 Telegram、Webhook 与自定义脚本流水线通知。</p>
+            </div>
+            <div class="card">
+              <span class="icon">🔗</span>
+              <h3>平台账号绑定</h3>
+              <p>管理您在各大平台的账号绑定关系与分组归属，随时检索与维护。</p>
+            </div>
+            <div class="card">
+              <span class="icon">🕳️</span>
+              <h3>临时邮箱</h3>
+              <p>内置临时邮箱地址池，按需创建、按策略回收，保护主邮箱隐私。</p>
+            </div>
+            <div class="card">
+              <span class="icon">🛡️</span>
+              <h3>数据自主可控</h3>
+              <p>自托管部署，数据只存储在自己服务器的本地数据库中，不依赖第三方云服务。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="container">
+          <h2>关于数据与隐私</h2>
+          <p class="section-desc">我们坚持最小化收集、透明处理与自主可控的原则。</p>
+          <div class="privacy-note">
+            <span class="badge">隐私友好</span>
+            <p>
+              HX-Email 是一款自托管服务：所有数据（账号凭据、邮件内容、设置与日志）均保存在您自己的服务器上，由您完全掌控。本服务不投放广告、不嵌入第三方跟踪脚本。具体处理方式请阅读
+              <a href="/privacy.html">隐私政策</a>。
+            </p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="container footer-inner">
+        <span>© 2026 HX-Email. All rights reserved.</span>
+        <span>
+          <a href="/home.html">首页</a>
+          <span aria-hidden="true"> · </span>
+          <a href="/privacy.html">隐私政策</a>
+          <span aria-hidden="true"> · </span>
+          <!-- TODO: 替换为真实支持邮箱 -->
+          <a href="mailto:support@example.com">support@example.com</a>
+        </span>
+      </div>
+    </footer>
+  </body>
+</html>

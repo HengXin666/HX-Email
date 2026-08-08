@@ -50,6 +50,15 @@ server {
         proxy_pass ${API_TARGET};
     }
 
+    # Static brand pages (Google OAuth brand verification).
+    # Google requires a publicly reachable homepage + privacy policy URL;
+    # clean paths redirect to the static files Vite copies from public/.
+    location = /home { return 301 /home.html; }
+    location = /home/ { return 301 /home.html; }
+    location = /privacy { return 301 /privacy.html; }
+    location = /privacy/ { return 301 /privacy.html; }
+    location = /privacy-policy { return 301 /privacy.html; }
+
     # SPA fallback for react-router paths
     location / {
         try_files $uri /index.html;

@@ -79,7 +79,7 @@ export const Login: React.FC = () => {
 
   return (
     <div
-      className="min-h-screen flex items-center justify-center overflow-hidden bg-cover bg-center px-4 py-10"
+      className="relative min-h-screen flex items-center justify-center overflow-hidden bg-cover bg-center px-4 py-10"
       style={{ backgroundImage: `url(${slidingBack})` }}
     >
       <div className="relative flex items-center justify-center w-full max-w-[860px] min-h-[600px]">
@@ -234,6 +234,16 @@ export const Login: React.FC = () => {
         >
           {mode === "login" ? "新用户? 去注册" : "已拥有账号，去登录"}
         </button>
+
+        <footer className="absolute inset-x-0 bottom-4 z-30 flex items-center justify-center gap-4 text-xs text-white/60">
+          <a href="/home.html" className="transition hover:text-white">
+            产品首页
+          </a>
+          <span aria-hidden="true">·</span>
+          <a href="/privacy.html" className="transition hover:text-white">
+            隐私政策
+          </a>
+        </footer>
       </div>
     </div>
   );
