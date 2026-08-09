@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     admin_username: str = "admin"
     admin_password: str = "admin"
     secret_key: str = ""
+    sync_url: str = ""
+    sync_token: str = ""
+    sync_interval_seconds: int = 300
 
     @property
     def database_path(self) -> Path:

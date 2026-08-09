@@ -11,6 +11,7 @@ from hx_email.server.mail.impl.fetch.scheduler import MailPollingScheduler
 from hx_email.server.mail.impl.temp_mail import CFWorkerTempMailProvider
 from hx_email.server.mail.temp_mail import TempMailProvider
 from hx_email.server.mail.verification import MailboxProvider
+from hx_email.server.sync.scheduler import SyncScheduler
 
 API_DESCRIPTION: str = (
     "多邮箱聚合与验证码读取服务。\n\n"
@@ -110,6 +111,7 @@ def create_app(
     )
     app = FastAPI(title="HX Email", version="1.0.0", description=API_DESCRIPTION)
     polling_scheduler = MailPollingScheduler(resolved_settings, resolved_mailbox_provider)
+    sync_scheduler = SyncScheduler(resolved_settings)
     register_routes(
         app,
         resolved_settings,
@@ -124,10 +126,12 @@ def create_app(
     def _start_bg_fetch() -> None:
         migrate(resolved_settings)
         polling_scheduler.start()
+        sync_scheduler.start()
 
     @app.on_event("shutdown")
     def _stop_bg_fetch() -> None:
         polling_scheduler.stop()
+        sync_scheduler.stop()
 
     return app
 

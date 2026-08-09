@@ -44,6 +44,7 @@ from hx_email.server.instance_backup import (
 from hx_email.server.mail.impl.fetch.scheduler import get_polling_status
 from hx_email.server.mail.temp_mail import TempMailProvider
 from hx_email.server.mail.verification import MailboxProvider
+from hx_email.server.sync.scheduler import get_sync_status
 
 
 def register_routes(
@@ -154,6 +155,13 @@ def register_system_routes(router: APIRouter, settings: Settings) -> None:
         require_user(settings, authorization)
         return get_polling_status(settings)
 
+    @router.get("/sync/status")
+    def sync_status(
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        require_user(settings, authorization)
+        return get_sync_status(settings)
+
     @router.get("/system/diagnostics")
     def system_diagnostics(
         authorization: Annotated[str | None, Header()] = None,
@@ -221,6 +229,18 @@ def register_data_transfer_routes(
         headers: dict[str, str] = {
             "Cache-Control": "no-store",
             "Content-Disposition": 'attachment; filename="hx-email-instance-backup.zip"',
+        }
+        return Response(content=archive, media_type="application/zip", headers=headers)
+
+    @router.get("/admin/sync/snapshot")
+    def sync_snapshot_data(
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> Response:
+        require_admin(settings, authorization)
+        archive: bytes = create_instance_backup(settings)
+        headers: dict[str, str] = {
+            "Cache-Control": "no-store",
+            "Content-Disposition": 'attachment; filename="hx-email-sync-snapshot.zip"',
         }
         return Response(content=archive, media_type="application/zip", headers=headers)
 
