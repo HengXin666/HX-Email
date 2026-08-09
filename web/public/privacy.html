@@ -214,14 +214,13 @@
       <h2>10. 联系我们</h2>
       <p>
         如果您对本政策或数据相关事宜有任何疑问，请通过以下邮箱与我们联系：
-        <!-- TODO: 替换为真实联系邮箱 -->
-        <a href="mailto:support@example.com">support@example.com</a>。
+        <a href="mailto:loli@woa.qzz.io">loli@woa.qzz.io</a>。
       </p>
     </main>
 
     <footer>
       <div class="footer-inner">
-        <span>© 2026 HX-Email. All rights reserved.</span>
+        <span>© <span id="copyright-year">2026</span> HX-Email. All rights reserved.</span>
         <span>
           <a href="/home.html">返回首页</a>
           <span aria-hidden="true"> · </span>
@@ -229,5 +228,8 @@
         </span>
       </div>
     </footer>
+    <script>
+      document.getElementById("copyright-year").textContent = new Date().getFullYear();
+    </script>
   </body>
 </html>

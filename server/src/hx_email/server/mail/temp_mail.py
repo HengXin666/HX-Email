@@ -246,8 +246,8 @@ def list_temp_messages(
 def extract_codes(messages: tuple[TempMailMessage, ...]) -> tuple[TempMailCode, ...]:
     codes: list[TempMailCode] = []
     for message in messages:
-        content = f"{message.subject}\n{message.text}\n{message.html}"
-        code: str | None = extract_verification_code(content)
+        content: str = f"{message.text}\n{message.html}"
+        code: str | None = extract_verification_code(content, subject=message.subject)
         if code is not None:
             codes.append(
                 TempMailCode(

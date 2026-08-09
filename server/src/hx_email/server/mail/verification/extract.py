@@ -1,66 +1,211 @@
-"""Verification code extraction — multi-tier with HTML stripping."""
+"""Conservative, multilingual verification-code extraction."""
 
-# ruff: noqa: RUF001  — FULLWIDTH COLON intentional in CJK regex patterns
+# ruff: noqa: RUF001  -- multilingual literals are intentional
+
+from __future__ import annotations
 
 import re
+import unicodedata
+from dataclasses import dataclass
 from html.parser import HTMLParser
 
-# ── Public patterns ───────────────────────────────────────────────────────
-
-CODE_PATTERN: re.Pattern[str] = re.compile(r"\b\d{4,8}\b")
-LINK_PATTERN: re.Pattern[str] = re.compile(r"https?://[^\s]+")
-
-# ── Tier-1 context regexes (keyword embedded in pattern) ──────────────────
-
-_CTX_RE: tuple[re.Pattern[str], ...] = (
-    re.compile(
-        r"(?:verification|confirmation|security|one[-\s]?time)\s*code"
-        r"\s*(?:is|:)?\s*([A-Z0-9]{4,8})",
-        re.IGNORECASE,
-    ),
-    re.compile(r"(?:your|the)\s*code\s*(?:is|:)?\s*([A-Z0-9]{4,8})", re.IGNORECASE),
-    re.compile(r"\bcode\s*(?:is|:)?\s*([A-Z0-9]{4,8})\b", re.IGNORECASE),
-    re.compile(r"\bOTP\s*(?:is|code|:)?\s*([A-Z0-9]{4,8})\b", re.IGNORECASE),
-    re.compile(r"一次性\s*(?:代码|验证码|密码)[是为:：]?\s*([A-Z0-9]{4,8})"),
-    re.compile(r"验证码[是为:：]?\s*([A-Z0-9]{4,8})"),
-    re.compile(r"安全代码[是为:：]?\s*([A-Z0-9]{4,8})"),
-    re.compile(r"激活码[是为:：]?\s*([A-Z0-9]{4,8})"),
-    re.compile(r"校验码[是为:：]?\s*([A-Z0-9]{4,8})"),
-    re.compile(r"动态码[是为:：]?\s*([A-Z0-9]{4,8})"),
+from hx_email.server.mail.verification.patterns import (
+    BLOCK_TAGS,
+    CONTEXT_PATTERN,
+    GROUPED_PATTERN,
+    NEGATIVE_PATTERN,
+    NOISE_PATTERNS,
+    PHONE_PATTERN,
+    TOKEN_PATTERN,
+)
+from hx_email.server.mail.verification.patterns import (
+    CODE_PATTERN as CODE_PATTERN,
+)
+from hx_email.server.mail.verification.patterns import (
+    LINK_PATTERN as LINK_PATTERN,
 )
 
-# ── Keywords for Tier-2 proximity search ─────────────────────────────────
 
-_KW: tuple[str, ...] = (
-    "verification code",
-    "验证码",
-    "安全代码",
-    "security code",
-    "confirmation code",
-    "one-time code",
-    "激活码",
-    "校验码",
-    "动态码",
-    "验证码是",
-    "一次性代码",
-    "一次性验证码",
-    "一次性密码",
-    "your code",
-    "code is",
-    "短信验证码",
-    "otp",
-    "passcode",
-    "authentication code",
-    "sign-in code",
-    "login code",
-)
+@dataclass(frozen=True)
+class _Candidate:
+    code: str
+    display: str
+    start: int
+    end: int
+    shape: str
 
-# ── False-positive filters ───────────────────────────────────────────────
+
+class _HTMLStripper(HTMLParser):
+    """Keep visible text and useful block boundaries while dropping hidden content."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self.skip_depth: int = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        lowered: str = tag.lower()
+        if lowered in {"style", "script", "head"}:
+            self.skip_depth += 1
+        elif not self.skip_depth and lowered in BLOCK_TAGS:
+            self.parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        lowered: str = tag.lower()
+        if lowered in {"style", "script", "head"} and self.skip_depth:
+            self.skip_depth -= 1
+        elif not self.skip_depth and lowered in BLOCK_TAGS:
+            self.parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if not self.skip_depth:
+            self.parts.append(data)
+
+    def text(self) -> str:
+        return "".join(self.parts)
+
+
+class VerificationCodeExtractor:
+    """Rank code-shaped tokens using semantic distance and negative evidence."""
+
+    def __init__(self, content: str, subject: str = "") -> None:
+        normalized_subject: str = self._normalize(subject)
+        normalized_content: str = self._normalize(
+            strip_html(content) if "<" in content and ">" in content else content
+        )
+        self.subject: str = normalized_subject
+        self.text: str = "\n".join(
+            part for part in (normalized_subject, normalized_content) if part
+        )
+        self.subject_end: int = len(normalized_subject)
+
+    def extract(self) -> str | None:
+        if not self.text.strip():
+            return None
+        cleaned: str = self._remove_noise(self.text)
+        contexts: list[tuple[int, int]] = [
+            match.span() for match in CONTEXT_PATTERN.finditer(cleaned)
+        ]
+        negatives: list[tuple[int, int]] = [
+            match.span() for match in NEGATIVE_PATTERN.finditer(cleaned)
+        ]
+        candidates: list[_Candidate] = self._collect_candidates(cleaned)
+        scored: dict[str, tuple[int, int, _Candidate]] = {}
+        for index, candidate in enumerate(candidates):
+            score: int = self._score(candidate, contexts, negatives)
+            if score < 7:
+                continue
+            previous: tuple[int, int, _Candidate] | None = scored.get(candidate.code)
+            ranked: tuple[int, int, _Candidate] = (score, -index, candidate)
+            if previous is None or ranked > previous:
+                scored[candidate.code] = ranked
+        ranked_candidates: list[tuple[int, int, _Candidate]] = sorted(scored.values(), reverse=True)
+        if not ranked_candidates:
+            return None
+        if len(ranked_candidates) > 1 and ranked_candidates[0][0] - ranked_candidates[1][0] <= 1:
+            return None
+        return ranked_candidates[0][2].code
+
+    def _normalize(self, source: str) -> str:
+        normalized: str = unicodedata.normalize("NFKC", source)
+        parts: list[str] = []
+        for character in normalized:
+            if unicodedata.category(character) == "Cf":
+                continue
+            if character.isdecimal() and not character.isascii():
+                parts.append(str(unicodedata.decimal(character)))
+            else:
+                parts.append(character)
+        text: str = "".join(parts).replace("\r\n", "\n").replace("\r", "\n")
+        text = re.sub(r"[^\S\n]+", " ", text)
+        return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+    def _remove_noise(self, text: str) -> str:
+        cleaned: str = text
+        for pattern in NOISE_PATTERNS:
+            cleaned = pattern.sub(lambda match: " " * len(match.group()), cleaned)
+        for match in tuple(PHONE_PATTERN.finditer(cleaned)):
+            if sum(character.isdigit() for character in match.group()) >= 9:
+                cleaned = (
+                    cleaned[: match.start()] + " " * len(match.group()) + cleaned[match.end() :]
+                )
+        return cleaned
+
+    def _collect_candidates(self, text: str) -> list[_Candidate]:
+        candidates: list[_Candidate] = []
+        occupied: list[tuple[int, int]] = []
+        for match in GROUPED_PATTERN.finditer(text):
+            code: str = re.sub(r"\D", "", match.group(1))
+            if 4 <= len(code) <= 8 and not is_junk_code(code):
+                candidates.append(_Candidate(code, match.group(1), *match.span(1), "grouped"))
+                occupied.append(match.span(1))
+        for match in TOKEN_PATTERN.finditer(text):
+            if any(match.start(1) < end and match.end(1) > start for start, end in occupied):
+                continue
+            display: str = match.group(1)
+            code = display.upper()
+            if not any(character.isdigit() for character in code) or is_junk_code(code):
+                continue
+            if code.isdigit() or (4 <= len(code) <= 8):
+                candidates.append(_Candidate(code, display, *match.span(1), "token"))
+        return candidates
+
+    def _distance(self, candidate: _Candidate, ranges: list[tuple[int, int]]) -> int | None:
+        distances: list[int] = []
+        for start, end in ranges:
+            if candidate.start < end and candidate.end > start:
+                return 0
+            distances.append(
+                start - candidate.end if candidate.end <= start else candidate.start - end
+            )
+        return min(distances) if distances else None
+
+    def _score(
+        self,
+        candidate: _Candidate,
+        contexts: list[tuple[int, int]],
+        negatives: list[tuple[int, int]],
+    ) -> int:
+        score: int = 3 if candidate.code.isdigit() and len(candidate.code) == 6 else 2
+        if len(candidate.code) in {4, 8}:
+            score -= 1
+        context_distance: int | None = self._distance(candidate, contexts)
+        if context_distance is not None:
+            score += (
+                9
+                if context_distance <= 4
+                else 7
+                if context_distance <= 20
+                else 4
+                if context_distance <= 60
+                else 2
+                if context_distance <= 120
+                else 0
+            )
+        subject_context: bool = bool(CONTEXT_PATTERN.search(self.subject))
+        in_subject: bool = bool(self.subject) and candidate.start <= self.subject_end
+        if subject_context:
+            score += 2
+        if in_subject:
+            score += 3
+        line: str = self.text[
+            self.text.rfind("\n", 0, candidate.start) + 1 : self.text.find("\n", candidate.end)
+            if "\n" in self.text[candidate.end :]
+            else len(self.text)
+        ]
+        if line.strip(" \t:：=-*#") == candidate.display:
+            score += 2
+        if self.text.strip(" \t\n:：=-*#") == candidate.display:
+            score += 5
+        negative_distance: int | None = self._distance(candidate, negatives)
+        if negative_distance is not None:
+            score -= 10 if negative_distance <= 12 else 5 if negative_distance <= 40 else 0
+        return score
 
 
 def is_junk_code(code: str) -> bool:
-    """All-same-digit, sequences, years (1900-2100), or HHMM time codes."""
-    if len(set(code)) == 1:
+    """Reject obvious placeholders, years, compact dates, and HHMM times."""
+    if code.isdigit() and len(set(code)) == 1:
         return True
     if code in {
         "012345",
@@ -76,107 +221,39 @@ def is_junk_code(code: str) -> bool:
         "543210",
     }:
         return True
-    if len(code) == 4 and code.isdigit():
-        n = int(code)
-        if 1900 <= n <= 2100:
+    if code.isdigit() and len(code) == 4:
+        value: int = int(code)
+        if 1900 <= value <= 2100 or (int(code[:2]) <= 23 and int(code[2:]) <= 59):
             return True
-        if 0 <= int(code[:2]) <= 23 and 0 <= int(code[2:]) <= 59:
+    if code.isdigit() and len(code) == 8:
+        year: int = int(code[:4])
+        month: int = int(code[4:6])
+        day: int = int(code[6:])
+        if 1900 <= year <= 2100 and 1 <= month <= 12 and 1 <= day <= 31:
             return True
     return False
 
 
-# ── HTML stripper ────────────────────────────────────────────────────────
-
-
-class _HTMLStripper(HTMLParser):
-    """Strip style/script/head/meta/link, keep visible text."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.parts: list[str] = []
-        self._skip = False
-        self._skip_tags = {"style", "script", "head", "meta", "link"}
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag.lower() in self._skip_tags:
-            self._skip = True
-
-    def handle_endtag(self, tag: str) -> None:
-        if tag.lower() in self._skip_tags:
-            self._skip = False
-
-    def handle_data(self, data: str) -> None:
-        if not self._skip and data.strip():
-            self.parts.append(data.strip())
-
-    def text(self) -> str:
-        return " ".join(self.parts)
-
-
 def strip_html(html: str) -> str:
-    p = _HTMLStripper()
-    p.feed(html)
-    return p.text()
-
-
-# ── Multi-tier extraction ────────────────────────────────────────────────
+    parser: _HTMLStripper = _HTMLStripper()
+    parser.feed(html)
+    return parser.text()
 
 
 def has_verification_context(content: str) -> bool:
-    """Return whether visible mail content contains verification semantics."""
     if not content:
         return False
-    text: str = strip_html(content) if "<" in content and ">" in content else content
-    lowered: str = text.lower()
-    return any(keyword.lower() in lowered for keyword in _KW)
+    extractor: VerificationCodeExtractor = VerificationCodeExtractor(content)
+    return bool(CONTEXT_PATTERN.search(extractor.text))
 
 
-def extract_verification_code(content: str) -> str | None:
-    """Extract a verification code from mail with explicit verification context.
-
-    Tier 1 — context regex: ``verification code is 123456``.
-    Tier 2 — keyword proximity: scan ±100 chars around known keywords.
-
-    HTML is stripped first to prevent false positives from tracking
-    pixels / inline styles. Ordinary numbers without verification semantics
-    are deliberately ignored.
-    """
-    if not content:
+def extract_verification_code(content: str, *, subject: str = "") -> str | None:
+    """Return the highest-confidence 4-8 character verification code."""
+    if not content and not subject:
         return None
-
-    text: str = strip_html(content) if "<" in content and ">" in content else content
-    if not text.strip():
-        return None
-    if not has_verification_context(text):
-        return None
-
-    # Tier 1: context-embedded regex (most specific)
-    for pat in _CTX_RE:
-        m = pat.search(text)
-        if m:
-            c = m.group(1).upper()
-            if any(ch.isdigit() for ch in c) and not is_junk_code(c):
-                return c
-
-    # Tier 2: keyword proximity ±100 chars
-    tl: str = text.lower()
-    for kw in _KW:
-        kwl: str = kw.lower()
-        pos: int = 0
-        while True:
-            pos = tl.find(kwl, pos)
-            if pos == -1:
-                break
-            ctx: str = text[max(0, pos - 100) : pos + len(kw) + 100]
-            for c in CODE_PATTERN.findall(ctx):
-                c = c.upper()
-                if any(ch.isdigit() for ch in c) and not is_junk_code(c):
-                    return c  # type: ignore[no-any-return]
-            pos += len(kw)
-
-    return None
+    return VerificationCodeExtractor(content, subject).extract()
 
 
 def first_match(pattern: re.Pattern[str], content: str) -> str | None:
-    m = pattern.search(content)
-    return m.group(0) if m else None
+    match: re.Match[str] | None = pattern.search(content)
+    return match.group(0) if match else None
