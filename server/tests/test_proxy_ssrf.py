@@ -26,18 +26,25 @@ def login_admin(client: TestClient, settings: Settings) -> dict[str, str]:
     return {"Authorization": f"Bearer {session['access_token']}"}
 
 
-def test_proxy_validation_rejects_private_and_reserved_addresses() -> None:
+def test_proxy_validation_allows_loopback_and_private_addresses() -> None:
+    """Local/private proxies are the documented deployment (127.0.0.1 / host.docker.internal)."""
     for proxy_url in [
         "http://127.0.0.1:8080",
         "10.0.0.5:3128",
         "192.168.1.1:8080",
         "http://172.16.0.1:3128",
+        "http://[::1]:8080",
+        "http://[fc00::1]:8080",
+    ]:
+        validate_proxy_endpoint(proxy_url)
+
+
+def test_proxy_validation_rejects_metadata_and_reserved_addresses() -> None:
+    for proxy_url in [
         "169.254.169.254:80",
         "http://0.0.0.0:8080",
         "100.64.0.1:8080",
-        "http://[::1]:8080",
         "http://[fe80::1]:8080",
-        "http://[fc00::1]:8080",
     ]:
         with pytest.raises(ValueError):
             validate_proxy_endpoint(proxy_url)
@@ -48,14 +55,16 @@ def test_proxy_validation_allows_public_addresses() -> None:
     assert validate_proxy_endpoint("1.1.1.1:3128") == ("1.1.1.1", 3128)
 
 
-def test_proxy_validation_rejects_ipv4_mapped_ipv6() -> None:
+def test_proxy_validation_judges_ipv4_mapped_ipv6_by_embedded_ipv4() -> None:
     for proxy_url in [
         "http://[::ffff:127.0.0.1]:8080",
         "http://[::ffff:10.0.0.1]:3128",
-        "http://[::ffff:169.254.169.254]:80",
-        "http://[::ffff:7f00:1]:8080",
-        "http://[64:ff9b::a00:1]:8080",
         "http://[::ffff:8.8.8.8]:8080",
+    ]:
+        validate_proxy_endpoint(proxy_url)
+    for proxy_url in [
+        "http://[::ffff:169.254.169.254]:80",
+        "http://[64:ff9b::a00:1]:8080",
     ]:
         with pytest.raises(ValueError):
             validate_proxy_endpoint(proxy_url)
@@ -88,7 +97,7 @@ def test_proxy_validation_allows_public_ipv6() -> None:
 def test_proxy_validation_rejects_hostname_resolving_to_private(monkeypatch) -> None:
     monkeypatch.setattr(
         "hx_email.server.mail.imap.impl.address_guard.socket.getaddrinfo",
-        lambda host, port: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.5", 0))],
+        lambda host, port: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("169.254.169.254", 0))],
     )
     with pytest.raises(ValueError):
         validate_proxy_host("metadata.internal")
@@ -118,7 +127,7 @@ def test_resolve_proxy_host_rejects_any_private_resolved_address(monkeypatch) ->
         "hx_email.server.mail.imap.impl.address_guard.socket.getaddrinfo",
         lambda host, port: [
             (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 0)),
-            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.5", 0)),
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("169.254.169.254", 0)),
         ],
     )
     with pytest.raises(ValueError):
@@ -132,7 +141,7 @@ def test_http_connect_via_proxy_connects_to_pinned_ip(monkeypatch) -> None:
         resolutions.append(host)
         if len(resolutions) == 1:
             return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 0))]
-        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.5", 0))]
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("169.254.169.254", 0))]
 
     monkeypatch.setattr(
         "hx_email.server.mail.imap.impl.address_guard.socket.getaddrinfo",
@@ -194,7 +203,7 @@ def test_proxy_test_endpoint_connects_to_public_proxy(tmp_path) -> None:
     create_connection.assert_called_once_with(("8.8.8.8", 8080), timeout=10)
 
 
-def test_group_create_rejects_private_proxy_url(tmp_path) -> None:
+def test_group_create_rejects_metadata_proxy_and_accepts_local_proxy(tmp_path) -> None:
     settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
     migrate(settings)
     client = TestClient(create_app(settings))
@@ -202,7 +211,7 @@ def test_group_create_rejects_private_proxy_url(tmp_path) -> None:
 
     rejected = client.post(
         f"{API}/groups",
-        json={"name": "Bad", "proxy_url": "http://192.168.1.1:8080"},
+        json={"name": "Bad", "proxy_url": "http://169.254.169.254:80"},
         headers=headers,
     )
     assert rejected.status_code == 400
@@ -212,12 +221,18 @@ def test_group_create_rejects_private_proxy_url(tmp_path) -> None:
         headers=headers,
     )
     assert accepted.status_code == 201
+    local = client.post(
+        f"{API}/groups",
+        json={"name": "Local", "proxy_url": "http://127.0.0.1:7890"},
+        headers=headers,
+    )
+    assert local.status_code == 201
 
 
-def test_http_connect_via_proxy_rejects_private_proxy() -> None:
+def test_http_connect_via_proxy_rejects_metadata_proxy() -> None:
     with (
         patch("hx_email.server.mail.imap.impl.proxy.socket.create_connection") as create_connection,
         pytest.raises(ValueError),
     ):
-        http_connect_via_proxy("http://127.0.0.1:2334", "smtp.gmail.com", 587)
+        http_connect_via_proxy("http://169.254.169.254:80", "smtp.gmail.com", 587)
     create_connection.assert_not_called()

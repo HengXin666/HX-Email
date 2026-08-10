@@ -1,10 +1,15 @@
 """SSRF guard for user-supplied proxy targets.
 
-Validates that proxy hosts are not private, link-local, reserved, or
-metadata addresses (RFC1918 / 169.254.0.0/16 / 127.0.0.0/8 / 0.0.0.0/8 etc.).
-Hostnames are resolved and every resolved address must be public. IPv6 is
-allowlisted to global unicast (2000::/3) with the IPv4-embedding tunnel
-ranges (6to4 / Teredo) and translation prefixes explicitly rejected.
+Blocks link-local, cloud-metadata, multicast, broadcast, unspecified and
+reserved/documentation addresses (169.254.0.0/16, 0.0.0.0/8, 224.0.0.0/4,
+TEST-NET ranges, fe80::/10, ff00::/8, NAT64/6to4/Teredo, etc.).
+
+Loopback and RFC1918/ULA private addresses are intentionally ALLOWED: the
+documented deployment runs in Docker and proxies are typically host-local
+(``http://127.0.0.1:7890`` in host-network mode, or
+``http://host.docker.internal:7890`` in bridge mode, which resolves to a
+private address). Hostnames are resolved and every resolved address must pass
+the same check; IPv4-mapped IPv6 is judged by its embedded IPv4 address.
 """
 
 from __future__ import annotations
@@ -15,14 +20,10 @@ from urllib.parse import urlsplit
 
 BLOCKED_IPV4_NETWORKS: tuple[ipaddress.IPv4Network, ...] = (
     ipaddress.IPv4Network("0.0.0.0/8"),
-    ipaddress.IPv4Network("10.0.0.0/8"),
     ipaddress.IPv4Network("100.64.0.0/10"),
-    ipaddress.IPv4Network("127.0.0.0/8"),
     ipaddress.IPv4Network("169.254.0.0/16"),
-    ipaddress.IPv4Network("172.16.0.0/12"),
     ipaddress.IPv4Network("192.0.0.0/24"),
     ipaddress.IPv4Network("192.0.2.0/24"),
-    ipaddress.IPv4Network("192.168.0.0/16"),
     ipaddress.IPv4Network("198.18.0.0/15"),
     ipaddress.IPv4Network("198.51.100.0/24"),
     ipaddress.IPv4Network("203.0.113.0/24"),
@@ -32,15 +33,18 @@ BLOCKED_IPV4_NETWORKS: tuple[ipaddress.IPv4Network, ...] = (
 
 BLOCKED_IPV6_NETWORKS: tuple[ipaddress.IPv6Network, ...] = (
     ipaddress.IPv6Network("::/128"),
-    ipaddress.IPv6Network("::1/128"),
     ipaddress.IPv6Network("::ffff:0:0/96"),
     ipaddress.IPv6Network("64:ff9b::/96"),
     ipaddress.IPv6Network("2001::/32"),
     ipaddress.IPv6Network("2002::/16"),
     ipaddress.IPv6Network("2001:db8::/32"),
-    ipaddress.IPv6Network("fc00::/7"),
     ipaddress.IPv6Network("fe80::/10"),
     ipaddress.IPv6Network("ff00::/8"),
+)
+
+ALLOWED_IPV6_LOCAL: tuple[ipaddress.IPv6Network, ...] = (
+    ipaddress.IPv6Network("::1/128"),
+    ipaddress.IPv6Network("fc00::/7"),
 )
 
 GLOBAL_UNICAST_IPV6: ipaddress.IPv6Network = ipaddress.IPv6Network("2000::/3")
@@ -49,10 +53,10 @@ GLOBAL_UNICAST_IPV6: ipaddress.IPv6Network = ipaddress.IPv6Network("2000::/3")
 def _is_blocked(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     if isinstance(ip, ipaddress.IPv4Address):
         return any(ip in network for network in BLOCKED_IPV4_NETWORKS)
-    if ip.ipv4_mapped is not None and any(
-        ip.ipv4_mapped in network for network in BLOCKED_IPV4_NETWORKS
-    ):
-        return True
+    if ip.ipv4_mapped is not None:
+        return any(ip.ipv4_mapped in network for network in BLOCKED_IPV4_NETWORKS)
+    if any(ip in network for network in ALLOWED_IPV6_LOCAL):
+        return False
     if ip not in GLOBAL_UNICAST_IPV6:
         return True
     return any(ip in network for network in BLOCKED_IPV6_NETWORKS)
