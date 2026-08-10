@@ -104,9 +104,7 @@ describe("public brand pages", () => {
     expect(HOME_HTML).toContain("Why HX-Email Needs Your Data");
     // The purpose must also be stated in English in the server-rendered HTML,
     // so keyword-based reviewers see it regardless of language or JS.
-    expect(HOME_HTML).toContain(
-      "HX-Email is a self-hosted email management application",
-    );
+    expect(HOME_HTML).toContain("HX-Email is a self-hosted email management application");
     // The JS language switcher must never rewrite the exact title.
     expect(HOME_HTML).toContain('document.title = "HX-Email";');
   });
