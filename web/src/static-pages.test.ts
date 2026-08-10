@@ -58,17 +58,20 @@ describe("public brand pages", () => {
   });
 
   it("uses one consistent app icon across favicon, manifest and nav logo", () => {
-    expect(HOME_HTML).toContain('<link rel="icon" type="image/svg+xml" href="/favicon.svg" />');
+    expect(HOME_HTML).toContain(
+      '<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />',
+    );
     expect(HOME_HTML).toContain('<link rel="apple-touch-icon" href="/icon-192.png" />');
-    expect(HOME_HTML).toContain('src="/favicon.svg"');
+    expect(HOME_HTML).toContain('src="/icon-192.png"');
     expect(MANIFEST.icons).toEqual([
       { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
       { src: "/icon-512.png", sizes: "512x512", type: "image/png" },
     ]);
-    // Favicon file itself exists next to the brand pages.
-    const FAVICON = readFileSync(new URL("../public/favicon.svg", import.meta.url), "utf8");
-    expect(FAVICON).toContain("<svg");
-    expect(FAVICON).toContain("HX");
+    // The icon PNG files themselves exist next to the brand pages.
+    const icon192 = readFileSync(new URL("../public/icon-192.png", import.meta.url));
+    const icon512 = readFileSync(new URL("../public/icon-512.png", import.meta.url));
+    expect(icon192.subarray(0, 4)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    expect(icon512.subarray(0, 4)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
   });
 
   it("does not hide the purpose behind animations or scripts", () => {
