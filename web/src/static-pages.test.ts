@@ -11,7 +11,11 @@ const PRIVACY_HTML = readFileSync(new URL("../public/privacy.html", import.meta.
 const TERMS_HTML = readFileSync(new URL("../public/terms.html", import.meta.url), "utf8");
 const MANIFEST = JSON.parse(
   readFileSync(new URL("../public/manifest.webmanifest", import.meta.url), "utf8"),
-) as { name: string; short_name: string };
+) as {
+  name: string;
+  short_name: string;
+  icons: Array<{ src: string; sizes: string; type: string }>;
+};
 const ROBOTS_TXT = readFileSync(new URL("../public/robots.txt", import.meta.url), "utf8");
 
 describe("public brand pages", () => {
@@ -51,6 +55,20 @@ describe("public brand pages", () => {
     });
     expect(MANIFEST.name).toBe("HX-Email");
     expect(MANIFEST.short_name).toBe("HX-Email");
+  });
+
+  it("uses one consistent app icon across favicon, manifest and nav logo", () => {
+    expect(HOME_HTML).toContain('<link rel="icon" type="image/svg+xml" href="/favicon.svg" />');
+    expect(HOME_HTML).toContain('<link rel="apple-touch-icon" href="/icon-192.png" />');
+    expect(HOME_HTML).toContain('src="/favicon.svg"');
+    expect(MANIFEST.icons).toEqual([
+      { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { src: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ]);
+    // Favicon file itself exists next to the brand pages.
+    const FAVICON = readFileSync(new URL("../public/favicon.svg", import.meta.url), "utf8");
+    expect(FAVICON).toContain("<svg");
+    expect(FAVICON).toContain("HX");
   });
 
   it("does not hide the purpose behind animations or scripts", () => {

@@ -20,6 +20,8 @@
       content="HX-Email is a self-hosted email management application: connect and manage multiple mailbox accounts in one place, auto-read verification codes, and automate sending and forwarding."
     />
     <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
@@ -78,11 +80,19 @@
         gap: 16px;
       }
       .logo {
+        display: flex;
+        align-items: center;
+        gap: 8px;
         font-size: 20px;
         font-weight: 700;
         color: #f0f6fc;
         letter-spacing: 0.02em;
         white-space: nowrap;
+      }
+      .logo-mark {
+        width: 28px;
+        height: 28px;
+        border-radius: 7px;
       }
       .logo span {
         color: #3fb950;
@@ -334,7 +344,10 @@
   <body>
     <header>
       <div class="container nav">
-        <a class="logo" href="/home.html">HX<span>-Email</span></a>
+        <a class="logo" href="/home.html">
+          <img class="logo-mark" src="/favicon.svg" alt="" width="28" height="28" />
+          HX<span>-Email</span>
+        </a>
         <nav class="nav-links" aria-label="主导航">
           <a href="/home.html" data-i18n="nav.home">首页</a>
           <a href="/home.html#features" data-i18n="nav.features">功能</a>
