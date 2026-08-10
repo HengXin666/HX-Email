@@ -21,7 +21,7 @@ const ROBOTS_TXT = readFileSync(new URL("../public/robots.txt", import.meta.url)
 describe("public brand pages", () => {
   it("exposes a self-contained homepage for brand verification", () => {
     expect(HOME_HTML).toContain("<title>HX-Email</title>");
-    expect(HOME_HTML).toContain('lang="zh-CN"');
+    expect(HOME_HTML).toContain('<html lang="en">');
     expect(HOME_HTML).toContain('href="/home.html"');
     expect(HOME_HTML).toContain('href="/privacy.html"');
     expect(HOME_HTML).toContain('href="/terms.html"');
@@ -81,8 +81,8 @@ describe("public brand pages", () => {
     expect(HOME_HTML).not.toContain("IntersectionObserver");
     // The first-screen hero text must state what the app does in raw HTML.
     const hero = HOME_HTML.match(/<section class="hero">([\s\S]*?)<\/section>/)?.[1] ?? "";
-    expect(hero).toContain("集中管理");
-    expect(hero).toContain("验证码");
+    expect(hero).toContain("self-hosted email management application");
+    expect(hero).toContain("auto-read verification codes");
   });
 
   it("allows search engines and Google's verifier to crawl the site", () => {
@@ -97,7 +97,7 @@ describe("public brand pages", () => {
     expect(HOME_HTML).toContain("<h1>HX-Email</h1>");
     expect(HOME_HTML).not.toMatch(/<h1[^>]*>[^<]*<span/);
     // Bilingual switcher with zh-CN default and an English option.
-    expect(HOME_HTML).toContain('data-lang="zh-CN"');
+    expect(HOME_HTML).toContain('data-lang="zh"');
     expect(HOME_HTML).toContain('data-lang="en"');
     expect(HOME_HTML).toContain("hx-home-lang");
     expect(HOME_HTML).toContain('"nav.console": "Open Console"');
@@ -112,9 +112,44 @@ describe("public brand pages", () => {
     expect(HOME_HTML).toContain('document.title = "HX-Email";');
   });
 
+  it("defaults to English and follows the browser language", () => {
+    // Static HTML (the no-JS view Google's crawler reads) is English-first.
+    expect(HOME_HTML).toContain('<html lang="en">');
+    expect(HOME_HTML).toContain('class="active" aria-pressed="true">EN');
+    // Browser language detection: zh* -> Chinese, everything else -> English.
+    expect(HOME_HTML).toContain("navigator.language");
+    expect(HOME_HTML).toContain('indexOf("zh") === 0 ? "zh" : "en"');
+    // A saved manual choice still wins over auto-detection.
+    expect(HOME_HTML).toContain('saved === "zh" || saved === "en" ? saved : detectLang()');
+    expect(HOME_HTML).toContain("hx-home-lang");
+    // Static English purpose is present without any JS.
+    expect(HOME_HTML).toContain("HX-Email unifies all your mailbox accounts");
+    // The privacy-policy link survives the language switch (nested element kept).
+    expect(HOME_HTML).toContain('data-i18n="privacy.p">HX-Email is a self-hosted service');
+    expect(HOME_HTML).toContain('data-i18n="privacy.link">Privacy Policy');
+  });
+
   it("covers the privacy-policy sections Google reviewers look for", () => {
-    expect(PRIVACY_HTML).toContain("<title>隐私政策");
+    expect(PRIVACY_HTML).toContain("<title>Privacy Policy");
     expect(PRIVACY_HTML).toContain("生效日期");
+    expect(PRIVACY_HTML).toContain("Effective date");
+    // English sections, read by Google's reviewer without any language/JS assumption.
+    for (const section of [
+      "Information We Collect",
+      "How We Use Information",
+      "Google User Data",
+      "Storage",
+      "Sharing and Disclosure",
+      "Data Security",
+      "Data Retention and Deletion",
+      "Cookies and Tracking",
+      "Your Rights",
+      "Policy Updates",
+      "Contact Us",
+    ]) {
+      expect(PRIVACY_HTML).toContain(section);
+    }
+    // Chinese version stays available for zh users.
     for (const section of [
       "我们收集的信息",
       "数据的存储",
@@ -124,10 +159,34 @@ describe("public brand pages", () => {
       "Cookie",
       "您的权利",
       "联系我们",
+      "Google 用户数据",
     ]) {
       expect(PRIVACY_HTML).toContain(section);
     }
+    // Explicit disclosures Google's privacy-policy review requires.
+    expect(PRIVACY_HTML).toContain("https://mail.google.com/");
+    expect(PRIVACY_HTML).toContain("not</strong> sell");
+    expect(PRIVACY_HTML).toContain("targeted advertising");
+    expect(PRIVACY_HTML).toContain("train AI");
+    expect(PRIVACY_HTML).toContain("encrypted when stored");
+    // Contact email is entity-encoded so Cloudflare edge obfuscation cannot
+    // rewrite it into a "[email protected]" placeholder for the reviewer.
+    expect(PRIVACY_HTML).toContain("loli&#64;woa&#46;qzz&#46;io");
+    expect(PRIVACY_HTML).not.toContain("mailto:loli@woa.qzz.io");
+    expect(PRIVACY_HTML).not.toContain("[email");
     expect(PRIVACY_HTML).toContain('href="/home.html"');
+  });
+
+  it("explains Google-data usage transparently on the homepage", () => {
+    // The homepage must state why the app requests user data (Google OAuth / Gmail).
+    expect(HOME_HTML).toContain('class="google-note"');
+    expect(HOME_HTML).toContain("Google Sign-In");
+    expect(HOME_HTML).toContain("explicit consent");
+    expect(HOME_HTML).toContain("Google 登录连接 Gmail");
+    // No raw email literal that Cloudflare could obfuscate on the brand pages.
+    expect(HOME_HTML).not.toContain("mailto:loli@woa.qzz.io");
+    expect(TERMS_HTML).not.toContain("mailto:loli@woa.qzz.io");
+    expect(TERMS_HTML).toContain("loli&#64;woa&#46;qzz&#46;io");
   });
 
   it("provides a public terms-of-service page linked from the homepage", () => {
