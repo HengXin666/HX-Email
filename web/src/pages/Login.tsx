@@ -82,7 +82,7 @@ export const Login: React.FC = () => {
       className="relative flex min-h-screen flex-col overflow-hidden bg-cover bg-center px-4 pt-10 pb-8"
       style={{ backgroundImage: `url(${slidingBack})` }}
     >
-      <div className="relative flex w-full max-w-[860px] min-h-[600px] flex-1 items-center justify-center">
+      <div className="relative mx-auto flex w-full max-w-[860px] min-h-[600px] flex-1 items-center justify-center">
         <motion.div
           animate={{
             height: mode === "login" ? 560 : 430,
