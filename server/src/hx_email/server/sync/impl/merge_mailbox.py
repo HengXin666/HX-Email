@@ -13,6 +13,7 @@ def merge_temp_mailboxes(
     user_ids: dict[int, int],
     email_ids: dict[int, int],
     rows: list[dict[str, Any]],
+    overwrite: bool = True,
 ) -> None:
     for row in rows:
         user_id: int = strict_remap(user_ids, row["user_id"])
@@ -22,10 +23,11 @@ def merge_temp_mailboxes(
             (user_id, email_id),
         ).fetchone()
         if existing is not None:
-            connection.execute(
-                "UPDATE temp_mailboxes SET provider = ?, provider_mailbox_id = ? WHERE id = ?",
-                (row["provider"], row["provider_mailbox_id"], existing[0]),
-            )
+            if overwrite:
+                connection.execute(
+                    "UPDATE temp_mailboxes SET provider = ?, provider_mailbox_id = ? WHERE id = ?",
+                    (row["provider"], row["provider_mailbox_id"], existing[0]),
+                )
         else:
             connection.execute(
                 "INSERT INTO temp_mailboxes (user_id, usable_email_id, provider,"
@@ -39,6 +41,7 @@ def merge_mail_pool_entries(
     user_ids: dict[int, int],
     email_ids: dict[int, int],
     rows: list[dict[str, Any]],
+    overwrite: bool = True,
 ) -> None:
     for row in rows:
         user_id: int = strict_remap(user_ids, row["user_id"])
@@ -48,17 +51,18 @@ def merge_mail_pool_entries(
             (user_id, email_id),
         ).fetchone()
         if existing is not None:
-            connection.execute(
-                "UPDATE mail_pool_entries SET status = ?, claim_key = ?,"
-                " claimed_project_key = ?, completed_project_key = ? WHERE id = ?",
-                (
-                    row["status"],
-                    row["claim_key"],
-                    row["claimed_project_key"],
-                    row["completed_project_key"],
-                    existing[0],
-                ),
-            )
+            if overwrite:
+                connection.execute(
+                    "UPDATE mail_pool_entries SET status = ?, claim_key = ?,"
+                    " claimed_project_key = ?, completed_project_key = ? WHERE id = ?",
+                    (
+                        row["status"],
+                        row["claim_key"],
+                        row["claimed_project_key"],
+                        row["completed_project_key"],
+                        existing[0],
+                    ),
+                )
         else:
             connection.execute(
                 "INSERT INTO mail_pool_entries (user_id, usable_email_id, status, claim_key,"

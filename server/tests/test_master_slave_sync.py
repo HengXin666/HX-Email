@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import json
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import ClassVar
 
 from fastapi.testclient import TestClient
 from hx_email.app import create_app
@@ -9,7 +13,7 @@ from hx_email.config import Settings
 from hx_email.database import connect, migrate
 from hx_email.security import decrypt_secret, load_secret_key
 from hx_email.server.instance_backup import create_instance_backup
-from hx_email.server.sync import apply_snapshot, run_sync
+from hx_email.server.sync import SyncReport, apply_snapshot, push_snapshot, run_sync
 from hx_email.server.sync.impl.merge import load_rows
 
 
@@ -271,6 +275,12 @@ def test_sync_status_redacts_master_url(tmp_path: Path) -> None:
         "error": sync_error,
         "tables": {},
         "files": {},
+        "push": {
+            "error": (
+                "Could not reach master at https://internal-master.example.internal:18090:"
+                " timed out"
+            ),
+        },
     }
     register_sync_scheduler(settings, scheduler)
     try:
@@ -283,3 +293,261 @@ def test_sync_status_redacts_master_url(tmp_path: Path) -> None:
     summary: dict[str, object] = dict(status["last_summary"])
     assert "internal-master.example.internal" not in str(summary.get("error", ""))
     assert "<master-url>" in str(summary.get("error", ""))
+    push_summary: dict[str, object] = dict(summary["push"])
+    assert "internal-master.example.internal" not in str(push_summary.get("error", ""))
+    assert "<master-url>" in str(push_summary.get("error", ""))
+
+
+def test_apply_snapshot_insert_only_preserves_local_rows(tmp_path: Path) -> None:
+    master_settings: Settings = Settings(
+        data_dir=tmp_path / "master",
+        admin_username="admin",
+        admin_password="admin-password",
+    )
+    build_master(master_settings, "one")
+    with connect(master_settings) as connection:
+        connection.execute(
+            "INSERT INTO email_accounts (user_id, provider, primary_address, refresh_token)"
+            " VALUES (1, 'gmail', 'master-extra@example.com', 'refresh-extra')"
+        )
+
+    slave_settings: Settings = Settings(
+        data_dir=tmp_path / "slave",
+        admin_username="admin",
+        admin_password="admin-password",
+    )
+    build_master(slave_settings, "one")
+    with connect(slave_settings) as connection:
+        connection.execute("UPDATE groups SET color = '#222222' WHERE name = 'work'")
+        connection.execute(
+            "UPDATE email_accounts SET remark = 'slave-note'"
+            " WHERE primary_address = 'account-one@example.com'"
+        )
+
+    report = apply_snapshot(
+        slave_settings, create_instance_backup(master_settings), overwrite=False
+    )
+
+    assert report.error == ""
+    with connect(slave_settings) as connection:
+        color: str = str(
+            connection.execute("SELECT color FROM groups WHERE name = 'work'").fetchone()[0]
+        )
+        remark: str = str(
+            connection.execute(
+                "SELECT remark FROM email_accounts"
+                " WHERE primary_address = 'account-one@example.com'"
+            ).fetchone()[0]
+        )
+        addresses: list[str] = [
+            str(row[0])
+            for row in connection.execute(
+                "SELECT primary_address FROM email_accounts ORDER BY primary_address"
+            )
+        ]
+    assert color == "#222222"
+    assert remark == "slave-note"
+    assert addresses == ["account-one@example.com", "master-extra@example.com"]
+
+
+def test_push_endpoint_requires_admin(tmp_path: Path) -> None:
+    settings: Settings = Settings(
+        data_dir=tmp_path,
+        admin_username="admin",
+        admin_password="admin-password",
+    )
+    migrate(settings)
+    client: TestClient = TestClient(create_app(settings))
+    response = client.post(
+        "/api/v1/admin/sync/push",
+        content=b"not-a-zip",
+        headers={"Content-Type": "application/zip"},
+    )
+    assert response.status_code == 401
+
+
+def test_push_endpoint_merges_slave_accounts_into_master(tmp_path: Path) -> None:
+    master_settings: Settings = Settings(
+        data_dir=tmp_path / "master",
+        admin_username="admin",
+        admin_password="admin-password",
+    )
+    build_master(master_settings, "one")
+    client: TestClient = TestClient(create_app(master_settings))
+    login_response = client.post(
+        "/api/v1/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    admin_headers: dict[str, str] = {
+        "Authorization": f"Bearer {login_response.json()['access_token']}"
+    }
+
+    slave_settings: Settings = Settings(
+        data_dir=tmp_path / "slave",
+        admin_username="admin",
+        admin_password="admin-password",
+    )
+    build_master(slave_settings, "slave")
+    with connect(slave_settings) as connection:
+        connection.execute(
+            "INSERT INTO email_accounts (user_id, provider, primary_address, refresh_token)"
+            " VALUES (1, 'gmail', 'slave-only@example.com', 'refresh-slave')"
+        )
+        connection.execute(
+            "INSERT INTO usable_emails (user_id, email_account_id, address)"
+            " VALUES (1, 2, 'slave-only-mail@example.com')"
+        )
+
+    response = client.post(
+        "/api/v1/admin/sync/push",
+        content=create_instance_backup(slave_settings),
+        headers={**admin_headers, "Content-Type": "application/zip"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["error"] == ""
+    with connect(master_settings) as connection:
+        addresses: list[str] = [
+            str(row[0])
+            for row in connection.execute(
+                "SELECT primary_address FROM email_accounts ORDER BY primary_address"
+            )
+        ]
+        usable_addresses: list[str] = [
+            str(row[0])
+            for row in connection.execute("SELECT address FROM usable_emails ORDER BY address")
+        ]
+    assert addresses == [
+        "account-one@example.com",
+        "account-slave@example.com",
+        "slave-only@example.com",
+    ]
+    assert usable_addresses == [
+        "mail-one@example.com",
+        "mail-slave@example.com",
+        "slave-only-mail@example.com",
+    ]
+
+
+def test_push_endpoint_does_not_overwrite_existing_master_rows(tmp_path: Path) -> None:
+    master_settings: Settings = Settings(
+        data_dir=tmp_path / "master",
+        admin_username="admin",
+        admin_password="admin-password",
+    )
+    build_master(master_settings, "one")
+    client: TestClient = TestClient(create_app(master_settings))
+    login_response = client.post(
+        "/api/v1/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    admin_headers: dict[str, str] = {
+        "Authorization": f"Bearer {login_response.json()['access_token']}"
+    }
+
+    slave_settings: Settings = Settings(
+        data_dir=tmp_path / "slave",
+        admin_username="admin",
+        admin_password="admin-password",
+    )
+    build_master(slave_settings, "one")
+    with connect(slave_settings) as connection:
+        connection.execute(
+            "UPDATE email_accounts SET remark = 'slave-remark'"
+            " WHERE primary_address = 'account-one@example.com'"
+        )
+
+    response = client.post(
+        "/api/v1/admin/sync/push",
+        content=create_instance_backup(slave_settings),
+        headers={**admin_headers, "Content-Type": "application/zip"},
+    )
+
+    assert response.status_code == 200
+    with connect(master_settings) as connection:
+        remark: str = str(
+            connection.execute(
+                "SELECT remark FROM email_accounts"
+                " WHERE primary_address = 'account-one@example.com'"
+            ).fetchone()[0]
+        )
+    assert remark == ""
+
+
+class _SyncPushCaptureHandler(BaseHTTPRequestHandler):
+    captured: ClassVar[dict[str, object]] = {}
+
+    def do_POST(self) -> None:
+        length: int = int(self.headers.get("Content-Length", "0"))
+        body: bytes = self.rfile.read(length)
+        type(self).captured = {
+            "path": self.path,
+            "authorization": self.headers.get("Authorization", ""),
+            "content_type": self.headers.get("Content-Type", ""),
+            "body": body,
+        }
+        payload: bytes = json.dumps(
+            {"error": "", "tables": {"users": 1, "email_accounts": 1}}
+        ).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def log_message(self, format: str, *args: object) -> None:
+        return
+
+
+def test_push_snapshot_posts_local_archive_to_master(tmp_path: Path) -> None:
+    _SyncPushCaptureHandler.captured = {}
+    server: ThreadingHTTPServer = ThreadingHTTPServer(("127.0.0.1", 0), _SyncPushCaptureHandler)
+    thread: threading.Thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        settings: Settings = Settings(
+            data_dir=tmp_path / "slave",
+            admin_username="admin",
+            admin_password="admin-password",
+            sync_url=f"http://127.0.0.1:{server.server_port}",
+            sync_token="secret-token",
+        )
+        report = push_snapshot(settings)
+
+        assert report.error == ""
+        assert report.tables == {"users": 1, "email_accounts": 1}
+        captured: dict[str, object] = _SyncPushCaptureHandler.captured
+        assert captured["path"] == "/api/v1/admin/sync/push"
+        assert captured["authorization"] == "Bearer secret-token"
+        assert captured["content_type"] == "application/zip"
+        assert captured["body"]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_run_sync_pulls_then_pushes_and_reports_push_error(monkeypatch, tmp_path: Path) -> None:
+    settings: Settings = Settings(data_dir=tmp_path / "node")
+
+    def fake_pull(settings_arg: Settings) -> SyncReport:
+        return SyncReport(started_at="s", finished_at="f", tables={"users": 1})
+
+    def fake_push(settings_arg: Settings) -> SyncReport:
+        return SyncReport(started_at="s", finished_at="f2", error="push-boom")
+
+    monkeypatch.setattr("hx_email.server.sync.service.pull_snapshot", fake_pull)
+    monkeypatch.setattr("hx_email.server.sync.service.push_snapshot", fake_push)
+
+    report = run_sync(settings)
+
+    assert report.tables == {"users": 1}
+    assert report.error == "push-boom"
+    assert report.push["error"] == "push-boom"
+    assert report.finished_at == "f2"
+
+
+def test_cli_sync_push_only_without_config_exits_nonzero(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("HX_EMAIL_DATA_DIR", str(tmp_path / "runtime"))
+    monkeypatch.delenv("HX_EMAIL_SYNC_URL", raising=False)
+    monkeypatch.delenv("HX_EMAIL_SYNC_TOKEN", raising=False)
+
+    assert main(["sync", "--push-only"]) == 1

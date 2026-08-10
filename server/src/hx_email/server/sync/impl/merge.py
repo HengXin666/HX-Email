@@ -39,17 +39,22 @@ def optional_remap(mapping: dict[int, int], value: object) -> int | None:
     return strict_remap(mapping, value)
 
 
-def merge_users(connection: sqlite3.Connection, rows: list[dict[str, Any]]) -> dict[int, int]:
+def merge_users(
+    connection: sqlite3.Connection,
+    rows: list[dict[str, Any]],
+    overwrite: bool = True,
+) -> dict[int, int]:
     ids: dict[int, int] = {}
     for row in rows:
         existing = connection.execute(
             "SELECT id FROM users WHERE username = ?", (row["username"],)
         ).fetchone()
         if existing is not None:
-            connection.execute(
-                "UPDATE users SET password_hash = ?, is_admin = ? WHERE id = ?",
-                (row["password_hash"], int(bool(row["is_admin"])), existing[0]),
-            )
+            if overwrite:
+                connection.execute(
+                    "UPDATE users SET password_hash = ?, is_admin = ? WHERE id = ?",
+                    (row["password_hash"], int(bool(row["is_admin"])), existing[0]),
+                )
             ids[int(row["id"])] = int(existing[0])
         else:
             cursor = connection.execute(
@@ -60,19 +65,30 @@ def merge_users(connection: sqlite3.Connection, rows: list[dict[str, Any]]) -> d
     return ids
 
 
-def merge_system_settings(connection: sqlite3.Connection, rows: list[dict[str, Any]]) -> None:
+def merge_system_settings(
+    connection: sqlite3.Connection,
+    rows: list[dict[str, Any]],
+    overwrite: bool = True,
+) -> None:
     for row in rows:
-        connection.execute(
-            "INSERT INTO system_settings (key, value) VALUES (?, ?)"
-            " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            (row["key"], row["value"]),
-        )
+        if overwrite:
+            connection.execute(
+                "INSERT INTO system_settings (key, value) VALUES (?, ?)"
+                " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (row["key"], row["value"]),
+            )
+        else:
+            connection.execute(
+                "INSERT OR IGNORE INTO system_settings (key, value) VALUES (?, ?)",
+                (row["key"], row["value"]),
+            )
 
 
 def merge_snapshot(
     connection: sqlite3.Connection,
     settings: Settings,
     snapshot_path: Path,
+    overwrite: bool = True,
 ) -> dict[str, int]:
     from hx_email.server.sync.impl.merge_entities import (
         merge_email_accounts,
@@ -92,12 +108,23 @@ def merge_snapshot(
 
     with sqlite3.connect(snapshot_path) as source:
         source.row_factory = sqlite3.Row
-        user_ids: dict[int, int] = merge_users(connection, load_rows(source, "users"))
-        merge_system_settings(connection, load_rows(source, "system_settings"))
-        group_ids: dict[int, int] = merge_groups(connection, user_ids, load_rows(source, "groups"))
-        tag_ids: dict[int, int] = merge_tags(connection, user_ids, load_rows(source, "tags"))
+        user_ids: dict[int, int] = merge_users(
+            connection, load_rows(source, "users"), overwrite=overwrite
+        )
+        merge_system_settings(connection, load_rows(source, "system_settings"), overwrite=overwrite)
+        group_ids: dict[int, int] = merge_groups(
+            connection, user_ids, load_rows(source, "groups"), overwrite=overwrite
+        )
+        tag_ids: dict[int, int] = merge_tags(
+            connection, user_ids, load_rows(source, "tags"), overwrite=overwrite
+        )
         account_ids: dict[int, int] = merge_email_accounts(
-            settings, connection, user_ids, group_ids, load_rows(source, "email_accounts")
+            settings,
+            connection,
+            user_ids,
+            group_ids,
+            load_rows(source, "email_accounts"),
+            overwrite=overwrite,
         )
         email_ids: dict[int, int] = merge_usable_emails(
             connection,
@@ -105,6 +132,7 @@ def merge_snapshot(
             account_ids,
             group_ids,
             load_rows(source, "usable_emails"),
+            overwrite=overwrite,
         )
         merge_usable_email_tags(
             connection, email_ids, tag_ids, load_rows(source, "usable_email_tags")
@@ -118,10 +146,21 @@ def merge_snapshot(
             email_ids,
             platform_ids,
             load_rows(source, "platform_bindings"),
+            overwrite=overwrite,
         )
-        merge_temp_mailboxes(connection, user_ids, email_ids, load_rows(source, "temp_mailboxes"))
+        merge_temp_mailboxes(
+            connection,
+            user_ids,
+            email_ids,
+            load_rows(source, "temp_mailboxes"),
+            overwrite=overwrite,
+        )
         merge_mail_pool_entries(
-            connection, user_ids, email_ids, load_rows(source, "mail_pool_entries")
+            connection,
+            user_ids,
+            email_ids,
+            load_rows(source, "mail_pool_entries"),
+            overwrite=overwrite,
         )
         merge_verification_readings(
             connection, user_ids, email_ids, load_rows(source, "verification_readings")

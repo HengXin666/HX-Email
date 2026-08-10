@@ -47,10 +47,12 @@ from hx_email.server.instance_backup import (
     create_instance_backup,
     restore_instance_backup,
 )
+from hx_email.server.instance_backup.archive import MAX_ARCHIVE_BYTES
 from hx_email.server.mail.impl.fetch.scheduler import get_polling_status
 from hx_email.server.mail.temp_mail import TempMailProvider
 from hx_email.server.mail.verification import MailboxProvider
 from hx_email.server.sync.scheduler import get_sync_status
+from hx_email.server.sync.service import SyncReport, apply_snapshot
 
 
 def register_routes(
@@ -250,6 +252,24 @@ def register_data_transfer_routes(
             "Content-Disposition": 'attachment; filename="hx-email-sync-snapshot.zip"',
         }
         return Response(content=archive, media_type="application/zip", headers=headers)
+
+    @router.post("/admin/sync/push")
+    def sync_push_data(
+        archive: Annotated[bytes, Body(media_type="application/zip")],
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        require_admin(settings, authorization)
+        if not archive or len(archive) > MAX_ARCHIVE_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Push archive is empty or too large",
+            )
+        report: SyncReport = apply_snapshot(settings, archive, overwrite=False)
+        if report.error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=report.error
+            )
+        return report.to_dict()
 
     @router.post("/admin/backup/import")
     def import_instance_backup_data(
