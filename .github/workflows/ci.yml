@@ -1,5 +1,16 @@
 name: ci
-on: [push, pull_request]
+
+# 验证流水线: main 分支与 v* 标签推送、以及所有 PR 都会跑完整验证 + Docker 冒烟测试。
+# 只监听 main (不监听普通分支推送), 避免分支 + PR 双跑重复扣 Actions 分钟。
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+
 jobs:
   verify:
     runs-on: ubuntu-latest

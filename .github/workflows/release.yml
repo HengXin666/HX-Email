@@ -5,6 +5,9 @@ name: release
 #   1. 推送 v* 标签 (如 v0.3.0) -> 构建并发布该版本
 #   2. 手动 workflow_dispatch 填版本号 -> 打 v<version> 标签并发布
 # 镜像推送到 ghcr.io/<owner>/hx-email-server 与 hx-email-web, 打 v<version> 与 latest 两个标签。
+#
+# 说明: ci.yml 已覆盖 main 分支与 v* 标签推送的完整验证, 因此这里不再重复跑
+# 30 分钟级 verify 任务 (避免重复扣 Actions 分钟); 手动触发发布前请确保 main 已验证通过。
 
 on:
   push:
@@ -13,35 +16,14 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "发布版本号 (如 1.2.3, 会打 v1.2.3 标签)"
+        description: "发布版本号 (如 1.2.3, 会打 v1.2.3 标签; 留空则取 settings_service.py 中的版本)"
         required: false
         default: ""
 
 env:
   REGISTRY: ghcr.io
-  IMAGES: hx-email-server hx-email-web
 
 jobs:
-  verify:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      - uses: astral-sh/setup-uv@v5
-        with:
-          python-version: "3.12"
-      - run: uv sync
-      - run: npm ci --prefix web
-      - name: Install Playwright Chromium
-        working-directory: web
-        run: npx playwright install --with-deps chromium
-      - run: bash scripts/verify.sh
-
   build-push:
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -62,7 +44,7 @@ jobs:
             VERSION="${{ github.event.inputs.version }}"
           fi
           if [ -z "$VERSION" ]; then
-            VERSION="$(sed -n 's/.*VERSION: str = "\([0-9][0-9.]*\)".*/\1/p' server/src/hx_email/server/settings_service.py | head -1)"
+            VERSION="$(sed -n 's/.*HX_EMAIL_APP_VERSION[^0-9]*\([0-9][0-9.]*\)".*/\1/p' server/src/hx_email/server/settings_service.py | head -1)"
           fi
           if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "Invalid version: $VERSION" >&2
@@ -108,7 +90,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=hx-email-web
 
   release:
-    needs: [verify, build-push]
+    needs: build-push
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
