@@ -2,7 +2,9 @@
 
 Validates that proxy hosts are not private, link-local, reserved, or
 metadata addresses (RFC1918 / 169.254.0.0/16 / 127.0.0.0/8 / 0.0.0.0/8 etc.).
-Hostnames are resolved and every resolved address must be public.
+Hostnames are resolved and every resolved address must be public. IPv6 is
+allowlisted to global unicast (2000::/3) with the IPv4-embedding tunnel
+ranges (6to4 / Teredo) and translation prefixes explicitly rejected.
 """
 
 from __future__ import annotations
@@ -33,11 +35,15 @@ BLOCKED_IPV6_NETWORKS: tuple[ipaddress.IPv6Network, ...] = (
     ipaddress.IPv6Network("::1/128"),
     ipaddress.IPv6Network("::ffff:0:0/96"),
     ipaddress.IPv6Network("64:ff9b::/96"),
+    ipaddress.IPv6Network("2001::/32"),
+    ipaddress.IPv6Network("2002::/16"),
     ipaddress.IPv6Network("2001:db8::/32"),
     ipaddress.IPv6Network("fc00::/7"),
     ipaddress.IPv6Network("fe80::/10"),
     ipaddress.IPv6Network("ff00::/8"),
 )
+
+GLOBAL_UNICAST_IPV6: ipaddress.IPv6Network = ipaddress.IPv6Network("2000::/3")
 
 
 def _is_blocked(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
@@ -46,6 +52,8 @@ def _is_blocked(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     if ip.ipv4_mapped is not None and any(
         ip.ipv4_mapped in network for network in BLOCKED_IPV4_NETWORKS
     ):
+        return True
+    if ip not in GLOBAL_UNICAST_IPV6:
         return True
     return any(ip in network for network in BLOCKED_IPV6_NETWORKS)
 

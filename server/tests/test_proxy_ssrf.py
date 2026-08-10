@@ -61,6 +61,30 @@ def test_proxy_validation_rejects_ipv4_mapped_ipv6() -> None:
             validate_proxy_endpoint(proxy_url)
 
 
+def test_proxy_validation_rejects_tunnel_and_nat64_ipv6() -> None:
+    for proxy_url in [
+        "http://[64:ff9b:1::7f00:1]:8080",
+        "http://[64:ff9b:1::a00:1]:3128",
+        "http://[2002:7f00:1::1]:8080",
+        "http://[2002:a00:1::1]:3128",
+        "http://[2001::1]:8080",
+        "http://[100::1]:8080",
+    ]:
+        with pytest.raises(ValueError):
+            validate_proxy_endpoint(proxy_url)
+
+
+def test_proxy_validation_allows_public_ipv6() -> None:
+    assert validate_proxy_endpoint("http://[2606:4700::1111]:8080") == (
+        "2606:4700::1111",
+        8080,
+    )
+    assert validate_proxy_endpoint("http://[2001:4860:4860::8888]:8080") == (
+        "2001:4860:4860::8888",
+        8080,
+    )
+
+
 def test_proxy_validation_rejects_hostname_resolving_to_private(monkeypatch) -> None:
     monkeypatch.setattr(
         "hx_email.server.mail.imap.impl.address_guard.socket.getaddrinfo",
