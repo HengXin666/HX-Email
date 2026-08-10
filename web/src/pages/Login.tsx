@@ -82,17 +82,15 @@ export const Login: React.FC = () => {
       className="relative flex min-h-screen flex-col overflow-hidden bg-cover bg-center px-4 pt-10 pb-8"
       style={{ backgroundImage: `url(${slidingBack})` }}
     >
-      <div className="relative w-full max-w-[860px] min-h-[600px] flex-1">
+      <div className="relative flex w-full max-w-[860px] min-h-[600px] flex-1 items-center justify-center">
         <motion.div
           animate={{
-            x: "-50%",
-            y: "-50%",
             height: mode === "login" ? 560 : 430,
             opacity: mode === "login" ? 1 : 0.58,
             scale: mode === "login" ? 1 : 0.96,
           }}
           transition={{ duration: 0.45, ease: "easeInOut" }}
-          className={`${mode === "login" ? "z-30" : "z-10"} absolute left-1/2 top-1/2 flex h-[560px] w-full max-w-[400px] flex-col items-start justify-center rounded-[10px] border border-white/15 bg-[#111928]/80 px-10 py-10 shadow-[50px_50px_100px_-20px_rgba(50,50,93,0.25),30px_30px_60px_-30px_rgba(0,0,0,0.5),2px_-2px_6px_0_rgba(212,217,222,0.35)_inset] backdrop-blur-xl transition-[z-index] ${mode !== "login" ? "pointer-events-none" : ""}`}
+          className={`${mode === "login" ? "z-30" : "z-10"} mx-2 flex h-[560px] w-full max-w-[400px] flex-col items-start justify-center rounded-[10px] border border-white/15 bg-[#111928]/80 px-10 py-10 shadow-[50px_50px_100px_-20px_rgba(50,50,93,0.25),30px_30px_60px_-30px_rgba(0,0,0,0.5),2px_-2px_6px_0_rgba(212,217,222,0.35)_inset] backdrop-blur-xl transition-[z-index] ${mode !== "login" ? "pointer-events-none" : ""}`}
           aria-hidden={mode !== "login"}
         >
           <form onSubmit={handleLogin} className="flex w-full flex-col items-start">
@@ -165,14 +163,12 @@ export const Login: React.FC = () => {
 
         <motion.div
           animate={{
-            x: "-50%",
-            y: "-50%",
             height: mode === "register" ? 560 : 430,
             opacity: mode === "register" ? 1 : 0.58,
             scale: mode === "register" ? 1 : 0.96,
           }}
           transition={{ duration: 0.45, ease: "easeInOut" }}
-          className={`${mode === "register" ? "z-30" : "z-10"} absolute left-1/2 top-1/2 flex h-[430px] w-full max-w-[400px] flex-col items-start justify-center rounded-[10px] border border-white/15 bg-[#111928]/80 px-10 py-10 shadow-none backdrop-blur-xl transition-[z-index] ${mode !== "register" ? "pointer-events-none" : ""}`}
+          className={`${mode === "register" ? "z-30" : "z-10"} mx-2 flex h-[430px] w-full max-w-[400px] flex-col items-start justify-center rounded-[10px] border border-white/15 bg-[#111928]/80 px-10 py-10 shadow-none backdrop-blur-xl transition-[z-index] ${mode !== "register" ? "pointer-events-none" : ""}`}
           aria-hidden={mode !== "register"}
         >
           <form onSubmit={handleRegister} className="flex w-full flex-col items-start">
@@ -230,7 +226,7 @@ export const Login: React.FC = () => {
             borderRadius: mode === "login" ? "0 10px 10px 0" : "10px 0 0 10px",
           }}
           transition={{ duration: 0.45, ease: "easeInOut" }}
-          className="absolute top-1/2 z-10 hidden h-[430px] w-[430px] -translate-y-1/2 flex-col bg-white bg-cover p-9 text-[#1f2937] shadow-2xl md:flex"
+          className="absolute top-1/2 z-20 hidden h-[430px] w-[430px] -translate-y-1/2 flex-col bg-white bg-cover p-9 text-[#1f2937] shadow-2xl md:flex"
           style={{ backgroundImage: `url(${slidingForm})` }}
         >
           <h1 aria-label="HX-Email" className="mb-9 text-[34px] font-light">
