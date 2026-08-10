@@ -1,11 +1,11 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="HX-Email 多邮箱统一管理平台：集中管理邮箱账号、临时邮箱与平台绑定，自动读取验证码、按规则收发邮件。自托管部署，数据由您完全掌控。"
+      content="HX-Email unified multi-mailbox management platform: centrally manage mailbox accounts, temp mailboxes and platform bindings, auto-read verification codes and send or forward mail on schedule. Self-hosted, your data stays yours."
     />
     <title>HX-Email</title>
     <meta name="application-name" content="HX-Email" />
@@ -365,14 +365,14 @@
           HX<span>-Email</span>
         </a>
         <nav class="nav-links" aria-label="主导航">
-          <a href="/home.html" data-i18n="nav.home">首页</a>
-          <a href="/home.html#features" data-i18n="nav.features">功能</a>
-          <a href="/privacy.html" data-i18n="nav.privacy">隐私政策</a>
-          <a href="/terms.html" data-i18n="nav.terms">服务条款</a>
-          <a class="hide-sm" href="/login" data-i18n="nav.console">进入控制台</a>
+          <a href="/home.html" data-i18n="nav.home">Home</a>
+          <a href="/home.html#features" data-i18n="nav.features">Features</a>
+          <a href="/privacy.html" data-i18n="nav.privacy">Privacy Policy</a>
+          <a href="/terms.html" data-i18n="nav.terms">Terms of Service</a>
+          <a class="hide-sm" href="/login" data-i18n="nav.console">Open Console</a>
           <span class="lang-switch" role="group" aria-label="Language">
-            <button type="button" data-lang="zh-CN" class="active" aria-pressed="true">中文</button>
-            <button type="button" data-lang="en" aria-pressed="false">EN</button>
+            <button type="button" data-lang="zh" aria-pressed="false">中文</button>
+            <button type="button" data-lang="en" class="active" aria-pressed="true">EN</button>
           </span>
         </nav>
       </div>
@@ -381,68 +381,61 @@
     <main>
       <section class="hero">
         <div class="container">
-          <span class="eyebrow" data-i18n="hero.eyebrow">Self-hosted · 自托管多邮箱管理平台</span>
+          <span class="eyebrow" data-i18n="hero.eyebrow">Self-hosted · Unified multi-mailbox management</span>
           <h1>HX-Email</h1>
-          <p class="subtitle" data-i18n="hero.subtitle">
-            HX-Email 集中管理您所有的邮箱账号、临时邮箱与平台绑定，自动读取验证码、按规则收发邮件，让多个账号的管理变得简单而高效。
-          </p>
-          <p class="subtitle subtitle-en">
+          <p class="subtitle" data-i18n="hero.subtitle">HX-Email unifies all your mailbox accounts, temp mailboxes and platform bindings in one workspace: auto-read verification codes and send or forward mail on schedule — simple and efficient management of many accounts.</p>
+          <p class="subtitle subtitle-en" style="display:none">
             HX-Email is a self-hosted email management application: manage all your mailbox
             accounts in one place, auto-read verification codes, and send or forward mail on
             schedule.
           </p>
-          <p class="google-note" data-i18n="hero.google">
-            通过 Google 登录连接 Gmail 账号时，HX-Email 仅在您明确授权后访问邮件数据，
-            用于收取、展示、自动读取验证码以及按您的规则发送/转发邮件。数据只存储于您自托管的服务器。
-          </p>
-          <p class="google-note google-note-en">
+          <p class="google-note" data-i18n="hero.google">When you connect a Gmail account with Google Sign-In, HX-Email accesses your mail data only after your explicit consent, to fetch and display mail, auto-read verification codes, and send or forward mail per your rules. Data stays on your self-hosted server.</p>
+          <p class="google-note google-note-en" style="display:none">
             When you connect a Gmail account with Google Sign-In, HX-Email accesses your mail data only
             after your explicit consent, to fetch and display mail, auto-read verification codes, and send or
             forward mail per your rules. Data stays on your self-hosted server.
           </p>
           <div class="cta-row">
-            <a class="btn btn-primary" href="/login" data-i18n="hero.cta">进入控制台</a>
-            <a class="btn btn-secondary" href="/privacy.html" data-i18n="hero.privacy">查看隐私政策</a>
+            <a class="btn btn-primary" href="/login" data-i18n="hero.cta">Open Console</a>
+            <a class="btn btn-secondary" href="/privacy.html" data-i18n="hero.privacy">View Privacy Policy</a>
           </div>
         </div>
       </section>
 
       <section id="features">
         <div class="container">
-          <h2 data-i18n="features.title">核心功能</h2>
-          <p class="section-desc" data-i18n="features.desc">
-            面向个人与小型团队的多邮箱管理工作台，覆盖从账号管理到邮件自动化的完整流程。
-          </p>
+          <h2 data-i18n="features.title">Core Features</h2>
+          <p class="section-desc" data-i18n="features.desc">A multi-mailbox workbench for individuals and small teams, covering the full flow from account management to mail automation.</p>
           <div class="grid">
             <div class="card">
               <span class="icon">📬</span>
-              <h3 data-i18n="features.f1.title">多账号统一管理</h3>
-              <p data-i18n="features.f1.desc">在一个界面集中管理多个邮箱账号，统一查看状态、刷新登录态与维护凭据。</p>
+              <h3 data-i18n="features.f1.title">Unified Account Management</h3>
+              <p data-i18n="features.f1.desc">Manage multiple mailbox accounts in one interface: check status, refresh sessions and maintain credentials.</p>
             </div>
             <div class="card">
               <span class="icon">🔑</span>
-              <h3 data-i18n="features.f2.title">验证码自动读取</h3>
-              <p data-i18n="features.f2.desc">自动识别邮件中的验证码并高亮展示，配合浏览器脚本实现一键回填。</p>
+              <h3 data-i18n="features.f2.title">Auto Verification Codes</h3>
+              <p data-i18n="features.f2.desc">Automatically detect verification codes in mail and highlight them, with browser scripts for one-click fill-in.</p>
             </div>
             <div class="card">
               <span class="icon">⚙️</span>
-              <h3 data-i18n="features.f3.title">邮件自动化</h3>
-              <p data-i18n="features.f3.desc">定时轮询收件、SMTP 发送、邮件转发，以及 Telegram、Webhook 与自定义脚本流水线通知。</p>
+              <h3 data-i18n="features.f3.title">Mail Automation</h3>
+              <p data-i18n="features.f3.desc">Scheduled fetching, SMTP sending, forwarding, plus Telegram, Webhook and custom script pipeline notifications.</p>
             </div>
             <div class="card">
               <span class="icon">🔗</span>
-              <h3 data-i18n="features.f4.title">平台账号绑定</h3>
-              <p data-i18n="features.f4.desc">管理您在各大平台的账号绑定关系与分组归属，随时检索与维护。</p>
+              <h3 data-i18n="features.f4.title">Platform Account Binding</h3>
+              <p data-i18n="features.f4.desc">Track bindings and group membership across platforms, searchable and maintainable at any time.</p>
             </div>
             <div class="card">
               <span class="icon">🕳️</span>
-              <h3 data-i18n="features.f5.title">临时邮箱</h3>
-              <p data-i18n="features.f5.desc">内置临时邮箱地址池，按需创建、按策略回收，保护主邮箱隐私。</p>
+              <h3 data-i18n="features.f5.title">Temp Mailboxes</h3>
+              <p data-i18n="features.f5.desc">Built-in temp mailbox pool, created on demand and recycled by policy to protect your primary inbox.</p>
             </div>
             <div class="card">
               <span class="icon">🛡️</span>
-              <h3 data-i18n="features.f6.title">数据自主可控</h3>
-              <p data-i18n="features.f6.desc">自托管部署，数据只存储在自己服务器的本地数据库中，不依赖第三方云服务。</p>
+              <h3 data-i18n="features.f6.title">Data Under Your Control</h3>
+              <p data-i18n="features.f6.desc">Self-hosted deployment; data is stored only in your own server's local database, with no third-party cloud dependency.</p>
             </div>
           </div>
         </div>
@@ -450,20 +443,16 @@
 
       <section id="data">
         <div class="container">
-          <h2 data-i18n="data.title">为什么 HX-Email 需要您的数据</h2>
-          <p class="section-desc" data-i18n="data.desc">
-            透明说明：HX-Email 仅在您主动绑定邮箱（如 Gmail / Google 账号）时，通过 Google 官方 OAuth 流程请求访问您的邮箱数据。
-          </p>
+          <h2 data-i18n="data.title">Why HX-Email Needs Your Data</h2>
+          <p class="section-desc" data-i18n="data.desc">Transparent disclosure: HX-Email only requests access to your mailbox (e.g. Gmail / Google account) through Google's official OAuth flow when you actively connect it.</p>
           <div class="data-note">
-            <span class="badge" data-i18n="data.badge">透明 · 最小化</span>
+            <span class="badge" data-i18n="data.badge">Transparent · Minimal</span>
             <div>
-              <p data-i18n="data.p1">
-                HX-Email 请求的邮箱数据仅用于以下目的，不会用于其他用途，也不会共享给任何第三方：
-              </p>
+              <p data-i18n="data.p1">Mailbox data requested by HX-Email is used only for the following purposes — never for anything else, and never shared with third parties:</p>
               <ul>
-                <li data-i18n="data.l1">统一收取与展示您的邮件，自动识别并高亮验证码；</li>
-                <li data-i18n="data.l2">按您的配置发送、转发邮件并执行自动化任务；</li>
-                <li data-i18n="data.l3">所有数据存储在您自己的服务器上，可随时解绑或删除。</li>
+                <li data-i18n="data.l1">Fetch and display your mail in one place, automatically detecting and highlighting verification codes;</li>
+                <li data-i18n="data.l2">Send, forward and automate mail according to your configuration;</li>
+                <li data-i18n="data.l3">All data stays on your own server and can be disconnected or deleted at any time.</li>
               </ul>
             </div>
           </div>
@@ -472,23 +461,23 @@
 
       <section id="how">
         <div class="container">
-          <h2 data-i18n="how.title">三步开始</h2>
-          <p class="section-desc" data-i18n="how.desc">从部署到自动读取验证码，几分钟即可完成。</p>
+          <h2 data-i18n="how.title">Get Started in 3 Steps</h2>
+          <p class="section-desc" data-i18n="how.desc">From deployment to auto-read verification codes in minutes.</p>
           <div class="steps">
             <div class="step">
               <div class="num">1</div>
-              <h3 data-i18n="how.s1.title">部署或登录</h3>
-              <p data-i18n="how.s1.desc">自托管部署或直接登录控制台，管理员可管理实例设置。</p>
+              <h3 data-i18n="how.s1.title">Deploy or Sign In</h3>
+              <p data-i18n="how.s1.desc">Self-host a deployment or sign in to the console; admins manage instance settings.</p>
             </div>
             <div class="step">
               <div class="num">2</div>
-              <h3 data-i18n="how.s2.title">绑定邮箱账号</h3>
-              <p data-i18n="how.s2.desc">通过 OAuth 或 IMAP/SMTP 凭据绑定 Outlook、Gmail 等邮箱。</p>
+              <h3 data-i18n="how.s2.title">Connect Mailboxes</h3>
+              <p data-i18n="how.s2.desc">Bind Outlook, Gmail and other mailboxes via OAuth or IMAP/SMTP credentials.</p>
             </div>
             <div class="step">
               <div class="num">3</div>
-              <h3 data-i18n="how.s3.title">自动收件与验证码</h3>
-              <p data-i18n="how.s3.desc">系统定时收取邮件并提取验证码，支持通知与自动化流水线。</p>
+              <h3 data-i18n="how.s3.title">Auto-fetch &amp; Codes</h3>
+              <p data-i18n="how.s3.desc">The system polls for new mail and extracts verification codes, with notifications and automation pipelines.</p>
             </div>
           </div>
         </div>
@@ -496,14 +485,11 @@
 
       <section id="privacy">
         <div class="container">
-          <h2 data-i18n="privacy.title">关于数据与隐私</h2>
-          <p class="section-desc" data-i18n="privacy.desc">我们坚持最小化收集、透明处理与自主可控的原则。</p>
+          <h2 data-i18n="privacy.title">Data &amp; Privacy</h2>
+          <p class="section-desc" data-i18n="privacy.desc">We follow the principles of minimal collection, transparent processing and self-control.</p>
           <div class="data-note">
-            <span class="badge" data-i18n="privacy.badge">隐私友好</span>
-            <p data-i18n="privacy.p">
-              HX-Email 是一款自托管服务：所有数据（账号凭据、邮件内容、设置与日志）均保存在您自己的服务器上，由您完全掌控。本服务不投放广告、不嵌入第三方跟踪脚本。具体处理方式请阅读
-              <a href="/privacy.html" data-i18n="privacy.link">隐私政策</a>。
-            </p>
+            <span class="badge" data-i18n="privacy.badge">Privacy-friendly</span>
+            <p data-i18n="privacy.p">HX-Email is a self-hosted service: all data (credentials, mail content, settings and logs) is stored on your own server and fully under your control. No ads, no third-party tracking scripts. See the <a href="/privacy.html" data-i18n="privacy.link">Privacy Policy</a></p>
           </div>
         </div>
       </section>
@@ -513,151 +499,62 @@
       <div class="container footer-inner">
         <span>© 2026 HX-Email. All rights reserved.</span>
         <span class="footer-links">
-          <a href="/home.html" data-i18n="footer.home">首页</a>
-          <a href="/privacy.html" data-i18n="footer.privacy">隐私政策</a>
-          <a href="/terms.html" data-i18n="footer.terms">服务条款</a>
+          <a href="/home.html" data-i18n="footer.home">Home</a>
+          <a href="/privacy.html" data-i18n="footer.privacy">Privacy Policy</a>
+          <a href="/terms.html" data-i18n="footer.terms">Terms of Service</a>
           <a href="mailto:loli&#64;woa&#46;qzz&#46;io">loli&#64;woa&#46;qzz&#46;io</a>
         </span>
       </div>
     </footer>
 
-    <script>
+        <script>
       (function () {
-        var I18N = {
-          zh: {
-            "nav.home": "首页",
-            "nav.features": "功能",
-            "nav.privacy": "隐私政策",
-            "nav.terms": "服务条款",
-            "nav.console": "进入控制台",
-            "hero.eyebrow": "Self-hosted · 自托管多邮箱管理平台",
-            "hero.subtitle":
-              "HX-Email 集中管理您所有的邮箱账号、临时邮箱与平台绑定，自动读取验证码、按规则收发邮件，让多个账号的管理变得简单而高效。",
-            "hero.cta": "进入控制台",
-            "hero.google": "通过 Google 登录连接 Gmail 账号时，HX-Email 仅在您明确授权后访问邮件数据，用于收取、展示、自动读取验证码以及按您的规则发送/转发邮件。数据只存储于您自托管的服务器。",
-            "hero.privacy": "查看隐私政策",
-            "features.title": "核心功能",
-            "features.desc": "面向个人与小型团队的多邮箱管理工作台，覆盖从账号管理到邮件自动化的完整流程。",
-            "features.f1.title": "多账号统一管理",
-            "features.f1.desc": "在一个界面集中管理多个邮箱账号，统一查看状态、刷新登录态与维护凭据。",
-            "features.f2.title": "验证码自动读取",
-            "features.f2.desc": "自动识别邮件中的验证码并高亮展示，配合浏览器脚本实现一键回填。",
-            "features.f3.title": "邮件自动化",
-            "features.f3.desc": "定时轮询收件、SMTP 发送、邮件转发，以及 Telegram、Webhook 与自定义脚本流水线通知。",
-            "features.f4.title": "平台账号绑定",
-            "features.f4.desc": "管理您在各大平台的账号绑定关系与分组归属，随时检索与维护。",
-            "features.f5.title": "临时邮箱",
-            "features.f5.desc": "内置临时邮箱地址池，按需创建、按策略回收，保护主邮箱隐私。",
-            "features.f6.title": "数据自主可控",
-            "features.f6.desc": "自托管部署，数据只存储在自己服务器的本地数据库中，不依赖第三方云服务。",
-            "data.title": "为什么 HX-Email 需要您的数据",
-            "data.desc": "透明说明：HX-Email 仅在您主动绑定邮箱（如 Gmail / Google 账号）时，通过 Google 官方 OAuth 流程请求访问您的邮箱数据。",
-            "data.badge": "透明 · 最小化",
-            "data.p1": "HX-Email 请求的邮箱数据仅用于以下目的，不会用于其他用途，也不会共享给任何第三方：",
-            "data.l1": "统一收取与展示您的邮件，自动识别并高亮验证码；",
-            "data.l2": "按您的配置发送、转发邮件并执行自动化任务；",
-            "data.l3": "所有数据存储在您自己的服务器上，可随时解绑或删除。",
-            "how.title": "三步开始",
-            "how.desc": "从部署到自动读取验证码，几分钟即可完成。",
-            "how.s1.title": "部署或登录",
-            "how.s1.desc": "自托管部署或直接登录控制台，管理员可管理实例设置。",
-            "how.s2.title": "绑定邮箱账号",
-            "how.s2.desc": "通过 OAuth 或 IMAP/SMTP 凭据绑定 Outlook、Gmail 等邮箱。",
-            "how.s3.title": "自动收件与验证码",
-            "how.s3.desc": "系统定时收取邮件并提取验证码，支持通知与自动化流水线。",
-            "privacy.title": "关于数据与隐私",
-            "privacy.desc": "我们坚持最小化收集、透明处理与自主可控的原则。",
-            "privacy.badge": "隐私友好",
-            "privacy.p":
-              "HX-Email 是一款自托管服务：所有数据（账号凭据、邮件内容、设置与日志）均保存在您自己的服务器上，由您完全掌控。本服务不投放广告、不嵌入第三方跟踪脚本。具体处理方式请阅读",
-            "privacy.link": "隐私政策",
-            "footer.home": "首页",
-            "footer.privacy": "隐私政策",
-            "footer.terms": "服务条款",
-            "meta.description":
-              "HX-Email 多邮箱统一管理平台：集中管理邮箱账号、临时邮箱与平台绑定，自动读取验证码、按规则收发邮件。自托管部署，数据由您完全掌控。",
-          },
-          en: {
-            "nav.home": "Home",
-            "nav.features": "Features",
-            "nav.privacy": "Privacy Policy",
-            "nav.terms": "Terms of Service",
-            "nav.console": "Open Console",
-            "hero.eyebrow": "Self-hosted · Unified multi-mailbox management",
-            "hero.subtitle":
-              "HX-Email unifies all your mailbox accounts, temp mailboxes and platform bindings in one workspace: auto-read verification codes and send or forward mail on schedule — simple and efficient management of many accounts.",
-            "hero.cta": "Open Console",
-            "hero.google": "When you connect a Gmail account with Google Sign-In, HX-Email accesses your mail data only after your explicit consent, to fetch and display mail, auto-read verification codes, and send or forward mail per your rules. Data stays on your self-hosted server.",
-            "hero.privacy": "View Privacy Policy",
-            "features.title": "Core Features",
-            "features.desc": "A multi-mailbox workbench for individuals and small teams, covering the full flow from account management to mail automation.",
-            "features.f1.title": "Unified Account Management",
-            "features.f1.desc": "Manage multiple mailbox accounts in one interface: check status, refresh sessions and maintain credentials.",
-            "features.f2.title": "Auto Verification Codes",
-            "features.f2.desc": "Automatically detect verification codes in mail and highlight them, with browser scripts for one-click fill-in.",
-            "features.f3.title": "Mail Automation",
-            "features.f3.desc": "Scheduled fetching, SMTP sending, forwarding, plus Telegram, Webhook and custom script pipeline notifications.",
-            "features.f4.title": "Platform Account Binding",
-            "features.f4.desc": "Track bindings and group membership across platforms, searchable and maintainable at any time.",
-            "features.f5.title": "Temp Mailboxes",
-            "features.f5.desc": "Built-in temp mailbox pool, created on demand and recycled by policy to protect your primary inbox.",
-            "features.f6.title": "Data Under Your Control",
-            "features.f6.desc": "Self-hosted deployment; data is stored only in your own server's local database, with no third-party cloud dependency.",
-            "data.title": "Why HX-Email Needs Your Data",
-            "data.desc": "Transparent disclosure: HX-Email only requests access to your mailbox (e.g. Gmail / Google account) through Google's official OAuth flow when you actively connect it.",
-            "data.badge": "Transparent · Minimal",
-            "data.p1": "Mailbox data requested by HX-Email is used only for the following purposes — never for anything else, and never shared with third parties:",
-            "data.l1": "Fetch and display your mail in one place, automatically detecting and highlighting verification codes;",
-            "data.l2": "Send, forward and automate mail according to your configuration;",
-            "data.l3": "All data stays on your own server and can be disconnected or deleted at any time.",
-            "how.title": "Get Started in 3 Steps",
-            "how.desc": "From deployment to auto-read verification codes in minutes.",
-            "how.s1.title": "Deploy or Sign In",
-            "how.s1.desc": "Self-host a deployment or sign in to the console; admins manage instance settings.",
-            "how.s2.title": "Connect Mailboxes",
-            "how.s2.desc": "Bind Outlook, Gmail and other mailboxes via OAuth or IMAP/SMTP credentials.",
-            "how.s3.title": "Auto-fetch & Codes",
-            "how.s3.desc": "The system polls for new mail and extracts verification codes, with notifications and automation pipelines.",
-            "privacy.title": "Data & Privacy",
-            "privacy.desc": "We follow the principles of minimal collection, transparent processing and self-control.",
-            "privacy.badge": "Privacy-friendly",
-            "privacy.p":
-              "HX-Email is a self-hosted service: all data (credentials, mail content, settings and logs) is stored on your own server and fully under your control. No ads, no third-party tracking scripts. See the",
-            "privacy.link": "Privacy Policy",
-            "footer.home": "Home",
-            "footer.privacy": "Privacy Policy",
-            "footer.terms": "Terms of Service",
-            "meta.description":
-              "HX-Email unified multi-mailbox management platform: centrally manage mailbox accounts, temp mailboxes and platform bindings, auto-read verification codes and send or forward mail on schedule. Self-hosted, your data stays yours.",
-          },
-        };
+        var I18N = {"zh": {"nav.home": "首页", "nav.features": "功能", "nav.privacy": "隐私政策", "nav.terms": "服务条款", "nav.console": "进入控制台", "hero.eyebrow": "Self-hosted · 自托管多邮箱管理平台", "hero.subtitle": "HX-Email 集中管理您所有的邮箱账号、临时邮箱与平台绑定，自动读取验证码、按规则收发邮件，让多个账号的管理变得简单而高效。", "hero.cta": "进入控制台", "hero.google": "通过 Google 登录连接 Gmail 账号时，HX-Email 仅在您明确授权后访问邮件数据，用于收取、展示、自动读取验证码以及按您的规则发送/转发邮件。数据只存储于您自托管的服务器。", "hero.privacy": "查看隐私政策", "features.title": "核心功能", "features.desc": "面向个人与小型团队的多邮箱管理工作台，覆盖从账号管理到邮件自动化的完整流程。", "features.f1.title": "多账号统一管理", "features.f1.desc": "在一个界面集中管理多个邮箱账号，统一查看状态、刷新登录态与维护凭据。", "features.f2.title": "验证码自动读取", "features.f2.desc": "自动识别邮件中的验证码并高亮展示，配合浏览器脚本实现一键回填。", "features.f3.title": "邮件自动化", "features.f3.desc": "定时轮询收件、SMTP 发送、邮件转发，以及 Telegram、Webhook 与自定义脚本流水线通知。", "features.f4.title": "平台账号绑定", "features.f4.desc": "管理您在各大平台的账号绑定关系与分组归属，随时检索与维护。", "features.f5.title": "临时邮箱", "features.f5.desc": "内置临时邮箱地址池，按需创建、按策略回收，保护主邮箱隐私。", "features.f6.title": "数据自主可控", "features.f6.desc": "自托管部署，数据只存储在自己服务器的本地数据库中，不依赖第三方云服务。", "data.title": "为什么 HX-Email 需要您的数据", "data.desc": "透明说明：HX-Email 仅在您主动绑定邮箱（如 Gmail / Google 账号）时，通过 Google 官方 OAuth 流程请求访问您的邮箱数据。", "data.badge": "透明 · 最小化", "data.p1": "HX-Email 请求的邮箱数据仅用于以下目的，不会用于其他用途，也不会共享给任何第三方：", "data.l1": "统一收取与展示您的邮件，自动识别并高亮验证码；", "data.l2": "按您的配置发送、转发邮件并执行自动化任务；", "data.l3": "所有数据存储在您自己的服务器上，可随时解绑或删除。", "how.title": "三步开始", "how.desc": "从部署到自动读取验证码，几分钟即可完成。", "how.s1.title": "部署或登录", "how.s1.desc": "自托管部署或直接登录控制台，管理员可管理实例设置。", "how.s2.title": "绑定邮箱账号", "how.s2.desc": "通过 OAuth 或 IMAP/SMTP 凭据绑定 Outlook、Gmail 等邮箱。", "how.s3.title": "自动收件与验证码", "how.s3.desc": "系统定时收取邮件并提取验证码，支持通知与自动化流水线。", "privacy.title": "关于数据与隐私", "privacy.desc": "我们坚持最小化收集、透明处理与自主可控的原则。", "privacy.badge": "隐私友好", "privacy.p": "HX-Email 是一款自托管服务：所有数据（账号凭据、邮件内容、设置与日志）均保存在您自己的服务器上，由您完全掌控。本服务不投放广告、不嵌入第三方跟踪脚本。具体处理方式请阅读", "privacy.link": "隐私政策。", "footer.home": "首页", "footer.privacy": "隐私政策", "footer.terms": "服务条款", "meta.description": "HX-Email 多邮箱统一管理平台：集中管理邮箱账号、临时邮箱与平台绑定，自动读取验证码、按规则收发邮件。自托管部署，数据由您完全掌控。"}, "en": {"nav.home": "Home", "nav.features": "Features", "nav.privacy": "Privacy Policy", "nav.terms": "Terms of Service", "nav.console": "Open Console", "hero.eyebrow": "Self-hosted · Unified multi-mailbox management", "hero.subtitle": "HX-Email unifies all your mailbox accounts, temp mailboxes and platform bindings in one workspace: auto-read verification codes and send or forward mail on schedule — simple and efficient management of many accounts.", "hero.cta": "Open Console", "hero.google": "When you connect a Gmail account with Google Sign-In, HX-Email accesses your mail data only after your explicit consent, to fetch and display mail, auto-read verification codes, and send or forward mail per your rules. Data stays on your self-hosted server.", "hero.privacy": "View Privacy Policy", "features.title": "Core Features", "features.desc": "A multi-mailbox workbench for individuals and small teams, covering the full flow from account management to mail automation.", "features.f1.title": "Unified Account Management", "features.f1.desc": "Manage multiple mailbox accounts in one interface: check status, refresh sessions and maintain credentials.", "features.f2.title": "Auto Verification Codes", "features.f2.desc": "Automatically detect verification codes in mail and highlight them, with browser scripts for one-click fill-in.", "features.f3.title": "Mail Automation", "features.f3.desc": "Scheduled fetching, SMTP sending, forwarding, plus Telegram, Webhook and custom script pipeline notifications.", "features.f4.title": "Platform Account Binding", "features.f4.desc": "Track bindings and group membership across platforms, searchable and maintainable at any time.", "features.f5.title": "Temp Mailboxes", "features.f5.desc": "Built-in temp mailbox pool, created on demand and recycled by policy to protect your primary inbox.", "features.f6.title": "Data Under Your Control", "features.f6.desc": "Self-hosted deployment; data is stored only in your own server's local database, with no third-party cloud dependency.", "data.title": "Why HX-Email Needs Your Data", "data.desc": "Transparent disclosure: HX-Email only requests access to your mailbox (e.g. Gmail / Google account) through Google's official OAuth flow when you actively connect it.", "data.badge": "Transparent · Minimal", "data.p1": "Mailbox data requested by HX-Email is used only for the following purposes — never for anything else, and never shared with third parties:", "data.l1": "Fetch and display your mail in one place, automatically detecting and highlighting verification codes;", "data.l2": "Send, forward and automate mail according to your configuration;", "data.l3": "All data stays on your own server and can be disconnected or deleted at any time.", "how.title": "Get Started in 3 Steps", "how.desc": "From deployment to auto-read verification codes in minutes.", "how.s1.title": "Deploy or Sign In", "how.s1.desc": "Self-host a deployment or sign in to the console; admins manage instance settings.", "how.s2.title": "Connect Mailboxes", "how.s2.desc": "Bind Outlook, Gmail and other mailboxes via OAuth or IMAP/SMTP credentials.", "how.s3.title": "Auto-fetch & Codes", "how.s3.desc": "The system polls for new mail and extracts verification codes, with notifications and automation pipelines.", "privacy.title": "Data & Privacy", "privacy.desc": "We follow the principles of minimal collection, transparent processing and self-control.", "privacy.badge": "Privacy-friendly", "privacy.p": "HX-Email is a self-hosted service: all data (credentials, mail content, settings and logs) is stored on your own server and fully under your control. No ads, no third-party tracking scripts. See the ", "privacy.link": "Privacy Policy.", "footer.home": "Home", "footer.privacy": "Privacy Policy", "footer.terms": "Terms of Service", "meta.description": "HX-Email unified multi-mailbox management platform: centrally manage mailbox accounts, temp mailboxes and platform bindings, auto-read verification codes and send or forward mail on schedule. Self-hosted, your data stays yours."}};
+
+        function applyText(el, text) {
+          var nested = [];
+          for (var i = 0; i < el.childNodes.length; i++) {
+            if (el.childNodes[i].nodeType === 1) nested.push(el.childNodes[i]);
+          }
+          while (el.firstChild) el.removeChild(el.firstChild);
+          el.appendChild(document.createTextNode(text));
+          nested.forEach(function (n) {
+            el.appendChild(n);
+          });
+        }
 
         function applyLang(lang) {
-          var dict = I18N[lang] || I18N.zh;
-          document.documentElement.lang = lang;
+          var dict = I18N[lang] || I18N.en;
+          document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
           document.querySelectorAll("[data-i18n]").forEach(function (el) {
             var key = el.getAttribute("data-i18n");
-            if (dict[key]) el.textContent = dict[key];
+            if (dict[key]) applyText(el, dict[key]);
           });
           var meta = document.querySelector('meta[name="description"]');
           if (meta && dict["meta.description"]) meta.setAttribute("content", dict["meta.description"]);
           document.title = "HX-Email";
-          document.querySelectorAll(".subtitle-en").forEach(function (el) {
-            el.style.display = lang === "en" ? "none" : "";
+          document.querySelectorAll(".subtitle-en, .google-note-en").forEach(function (el) {
+            el.style.display = lang === "zh" ? "" : "none";
           });
           document.querySelectorAll(".lang-switch button").forEach(function (btn) {
             var active = btn.getAttribute("data-lang") === lang;
             btn.classList.toggle("active", active);
             btn.setAttribute("aria-pressed", String(active));
           });
-          try {
-            localStorage.setItem("hx-home-lang", lang);
-          } catch (e) {}
+        }
+
+        function detectLang() {
+          var nav = navigator.language || (navigator.languages && navigator.languages[0]) || "en";
+          return nav.toLowerCase().indexOf("zh") === 0 ? "zh" : "en";
         }
 
         document.querySelectorAll(".lang-switch button").forEach(function (btn) {
           btn.addEventListener("click", function () {
-            applyLang(btn.getAttribute("data-lang"));
+            var lang = btn.getAttribute("data-lang");
+            applyLang(lang);
+            try {
+              localStorage.setItem("hx-home-lang", lang);
+            } catch (e) {}
           });
         });
 
@@ -665,7 +562,7 @@
         try {
           saved = localStorage.getItem("hx-home-lang");
         } catch (e) {}
-        if (saved === "en" || saved === "zh") applyLang(saved);
+        applyLang(saved === "zh" || saved === "en" ? saved : detectLang());
       })();
     </script>
   </body>
