@@ -139,7 +139,7 @@ const App: React.FC = () => {
           </RequireAuth>
         }
       />
-      <Route path="*" element={<Navigate to={token ? "/overview" : "/login"} replace />} />
+      <Route path="*" element={<Navigate to={token ? "/overview" : "/home.html"} replace />} />
     </Routes>
   );
 };
