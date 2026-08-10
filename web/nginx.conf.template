@@ -51,17 +51,18 @@ server {
     }
 
     # Static brand pages (Google OAuth brand verification).
-    # Google requires a publicly reachable homepage + privacy policy URL;
-    # clean paths redirect to the static files Vite copies from public/.
-    location = /home { return 301 /home.html; }
-    location = /home/ { return 301 /home.html; }
-    location = /privacy { return 301 /privacy.html; }
-    location = /privacy/ { return 301 /privacy.html; }
-    location = /privacy-policy { return 301 /privacy.html; }
+    # Google requires a publicly reachable homepage + privacy policy URL.
+    # Pages are served directly (no redirect) so proxies that rewrite Location
+    # headers can never break the public URLs Google reviewers fetch.
+    location = /home { try_files /home.html =404; }
+    location = /home/ { try_files /home.html =404; }
+    location = /privacy { try_files /privacy.html =404; }
+    location = /privacy/ { try_files /privacy.html =404; }
+    location = /privacy-policy { try_files /privacy.html =404; }
 
     # Site root serves the public brand homepage, so visitors (and Google
     # reviewers) can learn about the app without logging in first.
-    location = / { return 301 /home.html; }
+    location = / { try_files /home.html =404; }
 
     # Google site-verification files uploaded through the admin UI are stored
     # on the backend; proxy the exact /google<hash>.html paths so Google can
