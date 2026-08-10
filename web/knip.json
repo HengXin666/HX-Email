@@ -15,7 +15,6 @@
     "@biomejs/biome",
     "class-variance-authority",
     "clsx",
-    "lucide-react",
     "prettier",
     "tailwind-merge"
   ],

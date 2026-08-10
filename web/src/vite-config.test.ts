@@ -4,7 +4,6 @@ import type { AddressInfo } from "node:net";
 import type { ViteDevServer } from "vite";
 import { createServer } from "vite";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import { brandRedirectPlugin } from "../brand_redirect_plugin";
 import config from "../vite.config";
 
 describe("vite API proxy", () => {
@@ -17,18 +16,17 @@ describe("vite API proxy", () => {
   });
 });
 
-describe("brand pages redirects (dev server)", () => {
+describe("brand pages served by the SPA (dev server)", () => {
   let server: ViteDevServer;
   let baseUrl: string;
 
   beforeAll(async () => {
-    // Boot a real dev server with only the brand plugin: reusing the full
-    // exported config under vitest strips the plugin entries, so pass the
-    // plugin explicitly instead (configFile: false keeps the loader out).
+    // Boot a real dev server so react-router brand routes fall back to the
+    // SPA shell exactly like production nginx does.
     server = await createServer({
       configFile: false,
       logLevel: "silent",
-      plugins: [brandRedirectPlugin()],
+      root: ".",
       server: { port: 0, host: "127.0.0.1" },
     });
     await server.listen();
@@ -40,36 +38,23 @@ describe("brand pages redirects (dev server)", () => {
     await server.close();
   });
 
-  test("redirects clean brand paths to the static pages", async () => {
-    const expected: Array<[string, string]> = [
-      ["/", "/home.html"],
-      ["/home", "/home.html"],
-      ["/home/", "/home.html"],
-      ["/privacy", "/privacy.html"],
-      ["/privacy/", "/privacy.html"],
-      ["/privacy-policy", "/privacy.html"],
-      ["/terms", "/terms.html"],
-      ["/terms/", "/terms.html"],
-      ["/terms-of-service", "/terms.html"],
+  test("serves the SPA shell (no redirect) at every brand URL", async () => {
+    const brandPaths = [
+      "/",
+      "/home",
+      "/home/",
+      "/home.html",
+      "/privacy",
+      "/privacy-policy",
+      "/privacy.html",
+      "/terms",
+      "/terms-of-service",
+      "/terms.html",
     ];
-    for (const [from, to] of expected) {
-      const response = await fetch(`${baseUrl}${from}`, { redirect: "manual" });
-      expect(response.status, from).toBe(302);
-      expect(response.headers.get("location"), from).toBe(to);
+    for (const path of brandPaths) {
+      const response = await fetch(`${baseUrl}${path}`);
+      expect(response.status, path).toBe(200);
+      expect(await response.text(), path).toContain('<div id="root"></div>');
     }
-  });
-
-  test("serves the static brand pages used by Google verification", async () => {
-    const home = await fetch(`${baseUrl}/home.html`);
-    expect(home.status).toBe(200);
-    expect(await home.text()).toContain("多邮箱统一管理平台");
-
-    const privacy = await fetch(`${baseUrl}/privacy.html`);
-    expect(privacy.status).toBe(200);
-    expect(await privacy.text()).toContain("隐私政策");
-
-    const terms = await fetch(`${baseUrl}/terms.html`);
-    expect(terms.status).toBe(200);
-    expect(await terms.text()).toContain("服务条款");
   });
 });

@@ -50,26 +50,22 @@ server {
         proxy_pass ${API_TARGET};
     }
 
-    # Static brand pages (Google OAuth brand verification).
-    # Google requires a publicly reachable homepage + privacy policy URL.
-    # Pages are served directly (no redirect) so proxies that rewrite Location
+    # Brand pages (home / privacy / terms) are React SPA routes now. Google
+    # OAuth brand verification requires publicly reachable homepage + privacy
+    # policy URLs; serve the SPA shell directly (no redirect) at those clean
+    # URLs and their legacy .html aliases, so proxies that rewrite Location
     # headers can never break the public URLs Google reviewers fetch.
-    location = /home { try_files /home.html =404; }
-    location = /home/ { try_files /home.html =404; }
-    location = /privacy { try_files /privacy.html =404; }
-    location = /privacy/ { try_files /privacy.html =404; }
-    location = /privacy-policy { try_files /privacy.html =404; }
-    location = /terms { try_files /terms.html =404; }
-    location = /terms/ { try_files /terms.html =404; }
-    location = /terms-of-service { try_files /terms.html =404; }
+    location ~ ^/(home\.html|home/?$|privacy\.html|privacy/?$|privacy-policy/?$|terms\.html|terms/?$|terms-of-service/?$) {
+        try_files /index.html =404;
+        add_header Cache-Control "no-store, max-age=0" always;
+    }
 
-    # Site root serves the public brand homepage, so visitors (and Google
-    # reviewers) can learn about the app without logging in first.
-    location = / { try_files /home.html =404; }
+    # Site root serves the SPA; visitors without a session land on /home.
+    location = / { try_files /index.html =404; }
 
-    # Brand pages must never be cached by the CDN/proxies so Google reviewers
-    # always fetch the latest content (no stale snapshots).
-    location ~ ^/(home\.html|privacy\.html|terms\.html|index\.html|manifest\.webmanifest|robots\.txt|favicon\.svg|icon-[0-9]+\.png)$ {
+    # Static assets must never be cached by the CDN/proxies so Google
+    # reviewers always fetch the latest content (no stale snapshots).
+    location ~ ^/(index\.html|manifest\.webmanifest|robots\.txt|favicon\.svg|icon-[0-9]+\.png)$ {
         try_files $uri =404;
         add_header Cache-Control "no-store, max-age=0" always;
     }

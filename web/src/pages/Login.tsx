@@ -79,18 +79,20 @@ export const Login: React.FC = () => {
 
   return (
     <div
-      className="relative min-h-screen flex items-center justify-center overflow-hidden bg-cover bg-center px-4 py-10"
+      className="relative flex min-h-screen flex-col overflow-hidden bg-cover bg-center px-4 pt-10 pb-8"
       style={{ backgroundImage: `url(${slidingBack})` }}
     >
-      <div className="relative flex items-center justify-center w-full max-w-[860px] min-h-[600px]">
+      <div className="relative w-full max-w-[860px] min-h-[600px] flex-1">
         <motion.div
           animate={{
+            x: "-50%",
+            y: "-50%",
             height: mode === "login" ? 560 : 430,
             opacity: mode === "login" ? 1 : 0.58,
             scale: mode === "login" ? 1 : 0.96,
           }}
           transition={{ duration: 0.45, ease: "easeInOut" }}
-          className={`${mode === "login" ? "z-30" : "z-10"} mx-2 flex h-[560px] w-full max-w-[400px] flex-col items-start justify-center rounded-[10px] border border-white/15 bg-[#111928]/75 px-10 py-10 shadow-[50px_50px_100px_-20px_rgba(50,50,93,0.25),30px_30px_60px_-30px_rgba(0,0,0,0.5),2px_-2px_6px_0_rgba(212,217,222,0.35)_inset] backdrop-blur-xl transition-[z-index] ${mode !== "login" ? "pointer-events-none" : ""}`}
+          className={`${mode === "login" ? "z-30" : "z-10"} absolute left-1/2 top-1/2 flex h-[560px] w-full max-w-[400px] flex-col items-start justify-center rounded-[10px] border border-white/15 bg-[#111928]/80 px-10 py-10 shadow-[50px_50px_100px_-20px_rgba(50,50,93,0.25),30px_30px_60px_-30px_rgba(0,0,0,0.5),2px_-2px_6px_0_rgba(212,217,222,0.35)_inset] backdrop-blur-xl transition-[z-index] ${mode !== "login" ? "pointer-events-none" : ""}`}
           aria-hidden={mode !== "login"}
         >
           <form onSubmit={handleLogin} className="flex w-full flex-col items-start">
@@ -148,17 +150,29 @@ export const Login: React.FC = () => {
             <AuthButton disabled={!canLogin || mode !== "login"} loading={loading}>
               登录
             </AuthButton>
+            <div className="mt-5 w-full text-center text-sm text-[#f6f9ff]/80">
+              没有账号？{" "}
+              <button
+                type="button"
+                onClick={() => setMode("register")}
+                className="cursor-pointer text-[#24d97f] underline-offset-2 transition hover:underline"
+              >
+                去注册
+              </button>
+            </div>
           </form>
         </motion.div>
 
         <motion.div
           animate={{
+            x: "-50%",
+            y: "-50%",
             height: mode === "register" ? 560 : 430,
             opacity: mode === "register" ? 1 : 0.58,
             scale: mode === "register" ? 1 : 0.96,
           }}
           transition={{ duration: 0.45, ease: "easeInOut" }}
-          className={`${mode === "register" ? "z-30" : "z-10"} mx-2 flex h-[430px] w-full max-w-[400px] flex-col items-start justify-center rounded-[10px] border border-white/15 bg-[#111928]/75 px-10 py-10 shadow-none backdrop-blur-xl transition-[z-index] ${mode !== "register" ? "pointer-events-none" : ""}`}
+          className={`${mode === "register" ? "z-30" : "z-10"} absolute left-1/2 top-1/2 flex h-[430px] w-full max-w-[400px] flex-col items-start justify-center rounded-[10px] border border-white/15 bg-[#111928]/80 px-10 py-10 shadow-none backdrop-blur-xl transition-[z-index] ${mode !== "register" ? "pointer-events-none" : ""}`}
           aria-hidden={mode !== "register"}
         >
           <form onSubmit={handleRegister} className="flex w-full flex-col items-start">
@@ -197,6 +211,16 @@ export const Login: React.FC = () => {
             <AuthButton disabled={!canRegister || mode !== "register"} loading={loading}>
               注册
             </AuthButton>
+            <div className="mt-5 w-full text-center text-sm text-[#f6f9ff]/80">
+              已有账号？{" "}
+              <button
+                type="button"
+                onClick={() => setMode("login")}
+                className="cursor-pointer text-[#24d97f] underline-offset-2 transition hover:underline"
+              >
+                去登录
+              </button>
+            </div>
           </form>
         </motion.div>
 
@@ -206,7 +230,7 @@ export const Login: React.FC = () => {
             borderRadius: mode === "login" ? "0 10px 10px 0" : "10px 0 0 10px",
           }}
           transition={{ duration: 0.45, ease: "easeInOut" }}
-          className="absolute top-1/2 z-20 hidden h-[430px] w-[430px] -translate-y-1/2 flex-col bg-white bg-cover p-9 text-[#1f2937] shadow-2xl md:flex"
+          className="absolute top-1/2 z-10 hidden h-[430px] w-[430px] -translate-y-1/2 flex-col bg-white bg-cover p-9 text-[#1f2937] shadow-2xl md:flex"
           style={{ backgroundImage: `url(${slidingForm})` }}
         >
           <h1 aria-label="HX-Email" className="mb-9 text-[34px] font-light">
@@ -215,40 +239,30 @@ export const Login: React.FC = () => {
           <div className="mb-9 text-justify text-base leading-7 text-[#1f2937]">
             多邮箱统一管理平台，集中管理账号、临时邮箱、平台绑定与验证码读取流程。
           </div>
-          <div className="mt-auto text-base text-[#5777c6]">
-            {mode === "login" ? "新用户?" : "已拥有账号"}
-            <button
-              type="button"
-              onClick={() => setMode(mode === "login" ? "register" : "login")}
-              className="ml-3 rounded-md border-0 bg-[#24d97f] px-4 py-1.5 text-sm text-[#102016] outline-none transition hover:brightness-110"
-            >
-              {mode === "login" ? "去注册" : "去登录"}
-            </button>
-          </div>
         </motion.div>
-
-        <button
-          type="button"
-          onClick={() => setMode(mode === "login" ? "register" : "login")}
-          className="absolute bottom-0 z-40 rounded-md border border-white/20 bg-black/35 px-4 py-2 text-sm text-white backdrop-blur md:hidden"
-        >
-          {mode === "login" ? "新用户? 去注册" : "已拥有账号，去登录"}
-        </button>
-
-        <footer className="absolute inset-x-0 bottom-4 z-30 flex items-center justify-center gap-4 text-xs text-white/60">
-          <a href="/home.html" className="transition hover:text-white">
-            产品首页
-          </a>
-          <span aria-hidden="true">·</span>
-          <a href="/privacy.html" className="transition hover:text-white">
-            隐私政策
-          </a>
-          <span aria-hidden="true">·</span>
-          <a href="/terms.html" className="transition hover:text-white">
-            服务条款
-          </a>
-        </footer>
       </div>
+
+      <button
+        type="button"
+        onClick={() => setMode(mode === "login" ? "register" : "login")}
+        className="mx-auto mt-6 rounded-md border border-white/20 bg-black/35 px-4 py-2 text-sm text-white backdrop-blur md:hidden"
+      >
+        {mode === "login" ? "新用户? 去注册" : "已拥有账号，去登录"}
+      </button>
+
+      <footer className="mt-4 flex items-center justify-center gap-4 text-xs text-white/60">
+        <a href="/home" className="transition hover:text-white">
+          产品首页
+        </a>
+        <span aria-hidden="true">·</span>
+        <a href="/privacy" className="transition hover:text-white">
+          隐私政策
+        </a>
+        <span aria-hidden="true">·</span>
+        <a href="/terms" className="transition hover:text-white">
+          服务条款
+        </a>
+      </footer>
     </div>
   );
 };
