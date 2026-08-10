@@ -20,6 +20,8 @@
       content="HX-Email is a self-hosted email management application: connect and manage multiple mailbox accounts in one place, auto-read verification codes, and automate sending and forwarding."
     />
     <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
@@ -78,11 +80,19 @@
         gap: 16px;
       }
       .logo {
+        display: flex;
+        align-items: center;
+        gap: 8px;
         font-size: 20px;
         font-weight: 700;
         color: #f0f6fc;
         letter-spacing: 0.02em;
         white-space: nowrap;
+      }
+      .logo-mark {
+        width: 28px;
+        height: 28px;
+        border-radius: 7px;
       }
       .logo span {
         color: #3fb950;
@@ -157,6 +167,11 @@
         margin: 0 auto 36px;
         color: #8b949e;
         font-size: 18px;
+      }
+      .hero .subtitle-en {
+        margin-top: -18px;
+        font-size: 15px;
+        color: #6e7681;
       }
       .cta-row {
         display: flex;
@@ -334,7 +349,10 @@
   <body>
     <header>
       <div class="container nav">
-        <a class="logo" href="/home.html">HX<span>-Email</span></a>
+        <a class="logo" href="/home.html">
+          <img class="logo-mark" src="/icon-192.png" alt="" width="28" height="28" />
+          HX<span>-Email</span>
+        </a>
         <nav class="nav-links" aria-label="主导航">
           <a href="/home.html" data-i18n="nav.home">首页</a>
           <a href="/home.html#features" data-i18n="nav.features">功能</a>
@@ -353,9 +371,14 @@
       <section class="hero">
         <div class="container">
           <span class="eyebrow" data-i18n="hero.eyebrow">Self-hosted · 自托管多邮箱管理平台</span>
-          <h1>HX<span class="dot">-</span>Email</h1>
+          <h1>HX-Email</h1>
           <p class="subtitle" data-i18n="hero.subtitle">
             HX-Email 集中管理您所有的邮箱账号、临时邮箱与平台绑定，自动读取验证码、按规则收发邮件，让多个账号的管理变得简单而高效。
+          </p>
+          <p class="subtitle subtitle-en">
+            HX-Email is a self-hosted email management application: manage all your mailbox
+            accounts in one place, auto-read verification codes, and send or forward mail on
+            schedule.
           </p>
           <div class="cta-row">
             <a class="btn btn-primary" href="/login" data-i18n="hero.cta">进入控制台</a>
@@ -596,10 +619,10 @@
           });
           var meta = document.querySelector('meta[name="description"]');
           if (meta && dict["meta.description"]) meta.setAttribute("content", dict["meta.description"]);
-          document.title =
-            lang === "en"
-              ? "HX-Email · Unified Multi-Mailbox Management Platform"
-              : "HX-Email · 多邮箱统一管理平台";
+          document.title = "HX-Email";
+          document.querySelectorAll(".subtitle-en").forEach(function (el) {
+            el.style.display = lang === "en" ? "none" : "";
+          });
           document.querySelectorAll(".lang-switch button").forEach(function (btn) {
             var active = btn.getAttribute("data-lang") === lang;
             btn.classList.toggle("active", active);

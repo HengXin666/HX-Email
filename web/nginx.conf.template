@@ -67,6 +67,13 @@ server {
     # reviewers) can learn about the app without logging in first.
     location = / { try_files /home.html =404; }
 
+    # Brand pages must never be cached by the CDN/proxies so Google reviewers
+    # always fetch the latest content (no stale snapshots).
+    location ~ ^/(home\.html|privacy\.html|terms\.html|index\.html|manifest\.webmanifest|robots\.txt|favicon\.svg|icon-[0-9]+\.png)$ {
+        try_files $uri =404;
+        add_header Cache-Control "no-store, max-age=0" always;
+    }
+
     # Google site-verification files uploaded through the admin UI are stored
     # on the backend; proxy the exact /google<hash>.html paths so Google can
     # fetch them unauthenticated.
