@@ -15,6 +15,7 @@ import { Button, Card, Input } from "../../../components/ui/Primitives";
 import { useApp } from "../../../store/AppContext";
 import { SectionHeader, SettingsTabFrame, SettingsToggle, TestResult } from "../SettingsControls";
 import type { SettingsTabProps, TestOutcome } from "../types";
+import { GoogleVerificationCard } from "./GoogleVerificationCard";
 
 interface Announcement {
   title: string;
@@ -160,6 +161,8 @@ export const BasicSettingsTab: React.FC<SettingsTabProps> = ({
           </Button>
         </div>
       </Card>
+
+      {user?.is_admin && <GoogleVerificationCard toast={toast} />}
 
       {user?.is_admin && (
         <Card className="p-5">

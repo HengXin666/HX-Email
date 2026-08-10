@@ -12,6 +12,10 @@ from hx_email.api.impl.external import (
     register_external_system_routes,
     register_external_temp_mail_routes,
 )
+from hx_email.api.impl.google_verification_routes import (
+    register_google_verification_routes,
+    register_google_verification_serve_route,
+)
 from hx_email.api.impl.mail.pool import register_pool_admin_routes
 from hx_email.api.impl.mail_routes import register_mail_routes
 from hx_email.api.impl.overview import (
@@ -60,6 +64,7 @@ def register_routes(
     # Health + static-file routes stay on app directly (no /api/v1 prefix)
     register_health_routes(app)
     register_static_routes(app, settings)
+    register_google_verification_serve_route(app, settings)
 
     # All business API routes go under /api/v1
     api = APIRouter(prefix="/api/v1")
@@ -77,6 +82,7 @@ def register_routes(
     register_settings_test_routes(api, settings)
     register_cf_worker_sync_route(api, settings)
     register_data_transfer_routes(api, settings, pause_scheduler, resume_scheduler)
+    register_google_verification_routes(api, settings)
     register_pool_admin_routes(api, settings)
     register_audit_routes(api, settings)
     register_plugin_crud_routes(api, settings)

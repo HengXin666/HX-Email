@@ -6,6 +6,7 @@ import { brandRedirectPlugin } from "./brand_redirect_plugin";
 const apiTarget = process.env.HX_EMAIL_API_TARGET ?? "http://127.0.0.1:8000";
 const apiProxy = {
   "/api/v1": apiTarget,
+  "/google": apiTarget,
 };
 
 export default defineConfig({

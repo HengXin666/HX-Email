@@ -14,6 +14,7 @@ import { brandRedirectPlugin } from "./brand_redirect_plugin";
 var apiTarget = (_a = process.env.HX_EMAIL_API_TARGET) !== null && _a !== void 0 ? _a : "http://127.0.0.1:8000";
 var apiProxy = {
     "/api/v1": apiTarget,
+    "/google": apiTarget,
 };
 export default defineConfig({
     plugins: [react(), brandRedirectPlugin()],
