@@ -10,6 +10,9 @@ const BRAND_REDIRECTS: Record<string, string> = {
   "/privacy": "/privacy.html",
   "/privacy/": "/privacy.html",
   "/privacy-policy": "/privacy.html",
+  "/terms": "/terms.html",
+  "/terms/": "/terms.html",
+  "/terms-of-service": "/terms.html",
 };
 
 const redirectBrandPaths = (

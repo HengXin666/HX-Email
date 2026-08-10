@@ -48,6 +48,9 @@ describe("brand pages redirects (dev server)", () => {
       ["/privacy", "/privacy.html"],
       ["/privacy/", "/privacy.html"],
       ["/privacy-policy", "/privacy.html"],
+      ["/terms", "/terms.html"],
+      ["/terms/", "/terms.html"],
+      ["/terms-of-service", "/terms.html"],
     ];
     for (const [from, to] of expected) {
       const response = await fetch(`${baseUrl}${from}`, { redirect: "manual" });
@@ -64,5 +67,9 @@ describe("brand pages redirects (dev server)", () => {
     const privacy = await fetch(`${baseUrl}/privacy.html`);
     expect(privacy.status).toBe(200);
     expect(await privacy.text()).toContain("隐私政策");
+
+    const terms = await fetch(`${baseUrl}/terms.html`);
+    expect(terms.status).toBe(200);
+    expect(await terms.text()).toContain("服务条款");
   });
 });

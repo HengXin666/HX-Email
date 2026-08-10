@@ -8,6 +8,7 @@
 | --- | --- | --- |
 | 应用首页(公开,无需登录) | `/home.html`;站点根路径 `/`、`/home` 直接输出该页(无重定向) | `web/public/home.html` |
 | 隐私政策 | `/privacy.html` | `web/public/privacy.html` |
+| 服务条款 | `/terms.html` | `web/public/terms.html` |
 
 - 生产环境由 `web/nginx.conf.template` 将 `/`、`/home`、`/privacy` 等路径直接输出对应静态页(不产生重定向,避免代理改写 Location 导致端口/协议异常);开发与预览环境由 `web/brand_redirect_plugin.ts` 保持一致。
 - 首页明确描述了应用用途(多邮箱统一管理、验证码自动读取、平台绑定等),并链接回登录页 `/login`,Google 审核员无需登录即可看到。
@@ -39,7 +40,10 @@ curl -s https://email.woa.qzz.io/google18261d952ce2f02c.html
 3. **填写公开链接**:
    - 应用首页: `https://email.woa.qzz.io/home.html`(不要填根域名,避免经重定向)
    - 应用隐私政策: `https://email.woa.qzz.io/privacy.html`
+   - 应用服务条款: `https://email.woa.qzz.io/terms.html`
 4. 确认应用处于"正在验证"状态并重新提交验证,等待 Google 审核。
+
+> Google 要求同意屏幕上的三个链接(应用首页、隐私权政策、服务条款)都指向公开可访问的页面,三者缺一不可。
 
 ## 本地验证命令
 

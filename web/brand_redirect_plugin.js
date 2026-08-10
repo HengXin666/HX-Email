@@ -8,6 +8,9 @@ var BRAND_REDIRECTS = {
     "/privacy": "/privacy.html",
     "/privacy/": "/privacy.html",
     "/privacy-policy": "/privacy.html",
+    "/terms": "/terms.html",
+    "/terms/": "/terms.html",
+    "/terms-of-service": "/terms.html",
 };
 var redirectBrandPaths = function (req, res, next) {
     var _a, _b;
