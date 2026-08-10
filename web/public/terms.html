@@ -1,13 +1,13 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="HX-Email 服务条款：说明使用多邮箱统一管理平台时的服务范围、账户责任与免责声明。"
+      content="HX-Email Terms of Service: the scope of the service, account responsibilities and disclaimers for the self-hosted multi-mailbox management platform."
     />
-    <title>服务条款 · HX-Email</title>
+    <title>Terms of Service · HX-Email</title>
     <style>
       :root {
         color-scheme: dark;
@@ -57,13 +57,51 @@
       .logo span {
         color: #3fb950;
       }
-      .nav a {
-        color: #8b949e;
+      html:not(.zh) .lang-zh {
+        display: none;
+      }
+      html.zh .lang-en {
+        display: none;
+      }
+      .nav-right {
+        display: flex;
+        align-items: center;
+        gap: 16px;
         font-size: 14px;
       }
-      .nav a:hover {
+      .nav-right a {
+        color: #8b949e;
+      }
+      .nav-right a:hover {
         color: #f0f6fc;
         text-decoration: none;
+      }
+      .lang-switch {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        border: 1px solid #30363d;
+        border-radius: 999px;
+        padding: 2px;
+        font-size: 12px;
+      }
+      .lang-switch button {
+        border: 0;
+        background: transparent;
+        color: #8b949e;
+        padding: 4px 10px;
+        border-radius: 999px;
+        cursor: pointer;
+        font-size: 12px;
+      }
+      .lang-switch button.active {
+        background: #1f6feb;
+        color: #fff;
+      }
+      @media (max-width: 640px) {
+        .nav-right {
+          gap: 10px;
+        }
       }
       main {
         max-width: 860px;
@@ -128,11 +166,102 @@
     <header>
       <div class="nav">
         <a class="logo" href="/home.html">HX<span>-Email</span></a>
-        <a href="/home.html">返回首页</a>
+        <div class="nav-right">
+          <a class="lang-en" href="/home.html">Home</a>
+          <a class="lang-zh" href="/home.html">首页</a>
+          <span class="lang-switch" role="group" aria-label="Language">
+            <button type="button" data-lang="zh" aria-pressed="false">中文</button>
+            <button type="button" data-lang="en" class="active" aria-pressed="true">EN</button>
+          </span>
+        </div>
       </div>
     </header>
 
-    <main>
+    <main class="lang-en">
+      <h1>Terms of Service</h1>
+      <p class="meta">Effective date: August 10, 2026</p>
+
+      <p>
+        HX-Email ("the Service") is a self-hosted multi-mailbox management platform for centrally
+        managing mailbox accounts, temp mailboxes and platform bindings, with support for automatic
+        verification-code reading, sending and forwarding mail, and automation notifications. By
+        using the Service you agree to these terms; if you do not agree, please stop using it.
+      </p>
+
+      <h2>1. Service Description</h2>
+      <p>The Service is deployed and operated by you. Its core features include:</p>
+      <ul>
+        <li>Centrally managing multiple mailbox accounts, temp mailboxes and platform bindings;</li>
+        <li>Automatically fetching mail and detecting and highlighting verification codes;</li>
+        <li>Sending and forwarding mail and running automation tasks and notifications according to your configuration;</li>
+        <li>Providing instance backup, export, import and restore features.</li>
+      </ul>
+      <p class="highlight">
+        Self-hosting notice: this is self-hosted software. The deployer (you or the operator
+        providing the service to you) is responsible for running, maintaining and securing the server.
+      </p>
+
+      <h2>2. Accounts and Use</h2>
+      <ul>
+        <li>You must keep your account passwords and mailbox credentials safe and are responsible for activity under your account;</li>
+        <li>You may only use the Service to process mailboxes and data you are authorized to access;</li>
+        <li>Do not use the Service for spam, fraud, infringing on others' rights or any activity that violates applicable law;</li>
+        <li>The deployer may close registration, adjust access permissions or terminate violating accounts at any time.</li>
+      </ul>
+
+      <h2>3. User Responsibilities</h2>
+      <p>
+        You are responsible for ensuring that the mail servers, credentials and external services
+        (SMTP, IMAP, Telegram, Webhook, etc.) you configure belong to you or that you are authorized
+        to use them, and you bear the costs and consequences of using those external services. Keep
+        your credentials secure and avoid leaking them.
+      </p>
+
+      <h2>4. Data and Privacy</h2>
+      <p>
+        How the Service handles your data is described in our
+        <a href="/privacy.html">Privacy Policy</a>. The Service is self-hosted: by default your data
+        is stored only on your own server and is never sold or shared with third parties.
+      </p>
+
+      <h2>5. Third-Party Services</h2>
+      <p>
+        When the Service interacts with external services you configure (mail servers, notification
+        channels, etc.), it transmits only the data necessary for that interaction, according to your
+        configuration. Such interaction is governed by the third-party services' own terms and
+        policies; we are not responsible for their behavior.
+      </p>
+
+      <h2>6. Disclaimer</h2>
+      <p>
+        The Service is provided "as is" without any express or implied warranty. To the fullest
+        extent permitted by applicable law, we are not liable for any direct or indirect loss arising
+        from the use of or inability to use the Service, data loss, failed mail sending or receiving,
+        or incorrect verification-code recognition.
+      </p>
+
+      <h2>7. Service Availability and Changes</h2>
+      <p>
+        The Service may be intermittently unavailable due to deployer maintenance, upgrades, network
+        failures or force majeure. We may update, adjust or discontinue parts of the Service at any
+        time and will make reasonable efforts to announce material changes in advance.
+      </p>
+
+      <h2>8. Changes to These Terms</h2>
+      <p>
+        These terms may be updated as the Service evolves. Updates are reflected in the effective
+        date at the top of this page. Continuing to use the Service after an update constitutes
+        acceptance of the updated terms.
+      </p>
+
+      <h2>9. Contact Us</h2>
+      <p>
+        If you have any questions about these terms, contact us at:
+        <a href="mailto:loli&#64;woa&#46;qzz&#46;io">loli&#64;woa&#46;qzz&#46;io</a>
+      </p>
+    </main>
+
+    <main class="lang-zh">
       <h1>服务条款</h1>
       <p class="meta">生效日期：2026 年 8 月 10 日</p>
 
@@ -194,15 +323,23 @@
       <h2>9. 联系我们</h2>
       <p>
         如果您对本条款有任何疑问，请通过以下邮箱与我们联系：
-        <a href="mailto:loli&#64;woa&#46;qzz&#46;io">loli&#64;woa&#46;qzz&#46;io</a>。
+        <a href="mailto:loli&#64;woa&#46;qzz&#46;io">loli&#64;woa&#46;qzz&#46;io</a>
       </p>
     </main>
 
     <footer>
       <div class="footer-inner">
-        <span>© <span id="copyright-year">2026</span> HX-Email. All rights reserved.</span>
-        <span>
-          <a href="/home.html">返回首页</a>
+        <span class="lang-en">© <span class="copyright-year">2026</span> HX-Email. All rights reserved.</span>
+        <span class="lang-en">
+          <a href="/home.html">Home</a>
+          <span aria-hidden="true"> · </span>
+          <a href="/privacy.html">Privacy Policy</a>
+          <span aria-hidden="true"> · </span>
+          <a href="/login">Console</a>
+        </span>
+        <span class="lang-zh">© <span class="copyright-year">2026</span> HX-Email 版权所有。</span>
+        <span class="lang-zh">
+          <a href="/home.html">首页</a>
           <span aria-hidden="true"> · </span>
           <a href="/privacy.html">隐私政策</a>
           <span aria-hidden="true"> · </span>
@@ -211,7 +348,49 @@
       </div>
     </footer>
     <script>
-      document.getElementById("copyright-year").textContent = new Date().getFullYear();
+      (function () {
+        var KEY = "hx-lang";
+        function detectLang() {
+          var nav = navigator.language || (navigator.languages && navigator.languages[0]) || "en";
+          return nav.toLowerCase().indexOf("zh") === 0 ? "zh" : "en";
+        }
+        function applyLang(lang) {
+          document.documentElement.classList.toggle("zh", lang === "zh");
+          document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+          document.title = lang === "zh" ? "服务条款 · HX-Email" : "Terms of Service · HX-Email";
+          var meta = document.querySelector('meta[name="description"]');
+          if (meta) {
+            meta.setAttribute(
+              "content",
+              lang === "zh"
+                ? "HX-Email 服务条款：说明使用多邮箱统一管理平台时的服务范围、账户责任与免责声明。"
+                : "HX-Email Terms of Service: the scope of the service, account responsibilities and disclaimers for the self-hosted multi-mailbox management platform."
+            );
+          }
+          document.querySelectorAll(".lang-switch button").forEach(function (btn) {
+            var active = btn.getAttribute("data-lang") === lang;
+            btn.classList.toggle("active", active);
+            btn.setAttribute("aria-pressed", String(active));
+          });
+        }
+        document.querySelectorAll(".lang-switch button").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var lang = btn.getAttribute("data-lang");
+            applyLang(lang);
+            try {
+              localStorage.setItem(KEY, lang);
+            } catch (e) {}
+          });
+        });
+        var saved = null;
+        try {
+          saved = localStorage.getItem(KEY);
+        } catch (e) {}
+        applyLang(saved === "zh" || saved === "en" ? saved : detectLang());
+      })();
+      document.querySelectorAll(".copyright-year").forEach(function (el) {
+        el.textContent = new Date().getFullYear();
+      });
     </script>
   </body>
 </html>

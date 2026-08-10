@@ -190,12 +190,39 @@ describe("public brand pages", () => {
   });
 
   it("provides a public terms-of-service page linked from the homepage", () => {
-    expect(TERMS_HTML).toContain("<title>服务条款");
+    expect(TERMS_HTML).toContain("<title>Terms of Service");
     expect(TERMS_HTML).toContain("生效日期");
     for (const section of ["服务说明", "账户与使用", "用户责任", "免责声明", "联系我们"]) {
       expect(TERMS_HTML).toContain(section);
     }
     expect(TERMS_HTML).toContain('href="/home.html"');
     expect(TERMS_HTML).toContain('href="/privacy.html"');
+  });
+
+  it("separates privacy and terms into English/Chinese versions, English by default", () => {
+    // Both policy pages use the same language switcher pattern as the homepage:
+    // static (no-JS) HTML is English-first, Chinese is a toggled version, and
+    // the browser language decides the default (zh* -> Chinese, else English).
+    for (const page of [PRIVACY_HTML, TERMS_HTML]) {
+      expect(page).toContain('<html lang="en">');
+      expect(page).toContain('class="active" aria-pressed="true">EN');
+      expect(page).toContain('data-lang="zh"');
+      expect(page).toContain('data-lang="en"');
+      expect(page).toContain('<main class="lang-en">');
+      expect(page).toContain('<main class="lang-zh">');
+      expect(page).toContain("navigator.language");
+      expect(page).toContain('indexOf("zh") === 0 ? "zh" : "en"');
+      expect(page).toContain('saved === "zh" || saved === "en" ? saved : detectLang()');
+    }
+    // The terms page now also ships a full English version for en users.
+    for (const section of [
+      "Service Description",
+      "Accounts and Use",
+      "User Responsibilities",
+      "Disclaimer",
+      "Contact Us",
+    ]) {
+      expect(TERMS_HTML).toContain(section);
+    }
   });
 });

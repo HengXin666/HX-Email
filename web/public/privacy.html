@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="HX-Email Privacy Policy / 隐私政策: what data we collect, how we use, store and protect it, and the rights you have over your data — including Google user data accessed through OAuth."
+      content="HX-Email Privacy Policy: what data we collect, how we use, store and protect it, and the rights you have over your data — including Google user data accessed through OAuth."
     />
-    <title>Privacy Policy 隐私政策 · HX-Email</title>
+    <title>Privacy Policy · HX-Email</title>
     <style>
       :root {
         color-scheme: dark;
@@ -57,13 +57,52 @@
       .logo span {
         color: #3fb950;
       }
-      .nav a {
-        color: #8b949e;
+
+      html:not(.zh) .lang-zh {
+        display: none;
+      }
+      html.zh .lang-en {
+        display: none;
+      }
+      .nav-right {
+        display: flex;
+        align-items: center;
+        gap: 16px;
         font-size: 14px;
       }
-      .nav a:hover {
+      .nav-right a {
+        color: #8b949e;
+      }
+      .nav-right a:hover {
         color: #f0f6fc;
         text-decoration: none;
+      }
+      .lang-switch {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        border: 1px solid #30363d;
+        border-radius: 999px;
+        padding: 2px;
+        font-size: 12px;
+      }
+      .lang-switch button {
+        border: 0;
+        background: transparent;
+        color: #8b949e;
+        padding: 4px 10px;
+        border-radius: 999px;
+        cursor: pointer;
+        font-size: 12px;
+      }
+      .lang-switch button.active {
+        background: #1f6feb;
+        color: #fff;
+      }
+      @media (max-width: 640px) {
+        .nav-right {
+          gap: 10px;
+        }
       }
       main {
         max-width: 860px;
@@ -79,16 +118,6 @@
         color: #8b949e;
         font-size: 14px;
         margin-bottom: 40px;
-      }
-      .lang-hint {
-        display: inline-block;
-        background: #161b22;
-        border: 1px solid #30363d;
-        color: #8b949e;
-        font-size: 13px;
-        border-radius: 20px;
-        padding: 2px 12px;
-        margin-bottom: 24px;
       }
       h2 {
         margin: 36px 0 12px;
@@ -118,14 +147,6 @@
         color: #8b949e;
         font-size: 14px;
       }
-      .zh {
-        margin-top: 64px;
-        border-top: 1px solid #21262d;
-        padding-top: 8px;
-      }
-      .zh h2 {
-        color: #3fb950;
-      }
       footer {
         border-top: 1px solid #21262d;
         padding: 28px 0;
@@ -151,11 +172,18 @@
     <header>
       <div class="nav">
         <a class="logo" href="/home.html">HX<span>-Email</span></a>
-        <a href="/home.html">Home 首页</a>
+        <div class="nav-right">
+          <a class="lang-en" href="/home.html">Home</a>
+          <a class="lang-zh" href="/home.html">首页</a>
+          <span class="lang-switch" role="group" aria-label="Language">
+            <button type="button" data-lang="zh" aria-pressed="false">中文</button>
+            <button type="button" data-lang="en" class="active" aria-pressed="true">EN</button>
+          </span>
+        </div>
       </div>
     </header>
 
-    <main>
+    <main class="lang-en">
       <h1>Privacy Policy 隐私政策</h1>
       <p class="meta">Effective date 生效日期：August 10, 2026 · 2026 年 8 月 10 日</p>
       <p>
@@ -235,94 +263,142 @@
       <p>
         If you have any questions about this policy or your data, contact us at:
         <a href="mailto:loli&#64;woa&#46;qzz&#46;io">loli&#64;woa&#46;qzz&#46;io</a>
-      </p>
+      </p>    </main>
 
-      <div class="zh">
-        <h1 style="font-size: 28px">隐私政策（中文版）</h1>
-        <p class="meta">生效日期：2026 年 8 月 10 日</p>
+    <main class="lang-zh">
+      <h1>隐私政策</h1>
+      <p class="meta">生效日期：2026 年 8 月 10 日</p>
 
-        <h2>1. 我们收集的信息</h2>
-        <ul>
-          <li><strong>账号信息</strong>：您主动添加的邮箱地址、SMTP/IMAP 服务器配置、第三方平台账号绑定关系，以及您的登录账户信息。</li>
-          <li><strong>邮件内容</strong>：您通过本服务收取、发送或转发的邮件，包括其中的验证码、正文与附件信息。</li>
-          <li><strong>运行数据</strong>：系统设置、分组与标签、轮询与自动化任务配置、操作日志等为提供功能所必需的数据。</li>
-        </ul>
-        <p>我们不会在您不知情的情况下收集与上述功能无关的个人信息。</p>
+      <h2>1. 我们收集的信息</h2>
+      <ul>
+        <li><strong>账号信息</strong>：您主动添加的邮箱地址、SMTP/IMAP 服务器配置、第三方平台账号绑定关系，以及您的登录账户信息。</li>
+        <li><strong>邮件内容</strong>：您通过本服务收取、发送或转发的邮件，包括其中的验证码、正文与附件信息。</li>
+        <li><strong>运行数据</strong>：系统设置、分组与标签、轮询与自动化任务配置、操作日志等为提供功能所必需的数据。</li>
+      </ul>
+      <p>我们不会在您不知情的情况下收集与上述功能无关的个人信息。</p>
 
-        <h2>2. 信息的使用目的</h2>
-        <p>我们仅将收集的信息用于实现本服务的核心功能，包括但不限于：</p>
-        <ul>
-          <li>展示与管理您的邮箱账号与平台绑定关系；</li>
-          <li>按您的配置收取邮件、读取验证码、发送与转发邮件；</li>
-          <li>执行您配置的自动化任务与通知（如 Telegram、Webhook、浏览器通知）；</li>
-          <li>提供备份、导出、导入与恢复功能。</li>
-        </ul>
+      <h2>2. 信息的使用目的</h2>
+      <p>我们仅将收集的信息用于实现本服务的核心功能，包括但不限于：</p>
+      <ul>
+        <li>展示与管理您的邮箱账号与平台绑定关系；</li>
+        <li>按您的配置收取邮件、读取验证码、发送与转发邮件；</li>
+        <li>执行您配置的自动化任务与通知（如 Telegram、Webhook、浏览器通知）；</li>
+        <li>提供备份、导出、导入与恢复功能。</li>
+      </ul>
 
-        <h2>3. Google 用户数据</h2>
-        <p>当您通过 Google OAuth 连接 Gmail 账号时，您明确授权后，本服务仅出于您请求的邮件功能访问您的 Google 数据：</p>
-        <ul>
-          <li><strong>访问范围</strong>：您的 Gmail 邮件（含内容、附件与元数据）以及 Google 账号邮箱地址，使用 <code>https://mail.google.com/</code> 与 OpenID 范围（<code>openid email</code>）；</li>
-          <li><strong>使用方式</strong>：用于收取与展示邮件、自动读取验证码，并按您配置的规则发送、转发邮件与执行自动化；</li>
-          <li><strong>禁止用途</strong>：我们不会将 Google 用户数据用于定向广告、向数据经纪商出售、信用评估，或提供/改进功能以外的任何目的；也不会用于开发、改进或训练 AI/机器学习模型。</li>
-        </ul>
+      <h2>3. Google 用户数据</h2>
+      <p>当您通过 Google OAuth 连接 Gmail 账号时，您明确授权后，本服务仅出于您请求的邮件功能访问您的 Google 数据：</p>
+      <ul>
+        <li><strong>访问范围</strong>：您的 Gmail 邮件（含内容、附件与元数据）以及 Google 账号邮箱地址，使用 <code>https://mail.google.com/</code> 与 OpenID 范围（<code>openid email</code>）；</li>
+        <li><strong>使用方式</strong>：用于收取与展示邮件、自动读取验证码，并按您配置的规则发送、转发邮件与执行自动化；</li>
+        <li><strong>禁止用途</strong>：我们不会将 Google 用户数据用于定向广告、向数据经纪商出售、信用评估，或提供/改进功能以外的任何目的；也不会用于开发、改进或训练 AI/机器学习模型。</li>
+      </ul>
 
-        <h2>4. 数据的存储</h2>
-        <p>本服务是自托管软件：所有数据默认存储于<b>您自己部署的服务器</b>上的本地数据库（SQLite）与数据目录中，由您完全掌控。我们（服务开发者）无法访问您的数据，也不存在云端中央数据库。</p>
-        <p class="highlight">提示：如果您为他人部署或托管本服务，您将作为该实例的数据控制者，请确保遵守您所在地区适用的数据保护法律。</p>
+      <h2>4. 数据的存储</h2>
+      <p>本服务是自托管软件：所有数据默认存储于<b>您自己部署的服务器</b>上的本地数据库（SQLite）与数据目录中，由您完全掌控。我们（服务开发者）无法访问您的数据，也不存在云端中央数据库。</p>
+      <p class="highlight">提示：如果您为他人部署或托管本服务，您将作为该实例的数据控制者，请确保遵守您所在地区适用的数据保护法律。</p>
 
-        <h2>5. 数据的共享与披露</h2>
-        <ul>
-          <li>我们<b>不会</b>向任何第三方出售、出租或共享您的数据。</li>
-          <li>仅在您主动配置的前提下，数据会用于连接您指定的外部服务：例如向您配置的 SMTP 服务器发送邮件、向您配置的 IMAP 服务器收取邮件、向您配置的 Telegram / Webhook 地址推送通知。</li>
-          <li>除法律法规另有规定外，我们不会在未经您同意的情况下对外披露您的数据。</li>
-        </ul>
+      <h2>5. 数据的共享与披露</h2>
+      <ul>
+        <li>我们<b>不会</b>向任何第三方出售、出租或共享您的数据。</li>
+        <li>仅在您主动配置的前提下，数据会用于连接您指定的外部服务：例如向您配置的 SMTP 服务器发送邮件、向您配置的 IMAP 服务器收取邮件、向您配置的 Telegram / Webhook 地址推送通知。</li>
+        <li>除法律法规另有规定外，我们不会在未经您同意的情况下对外披露您的数据。</li>
+      </ul>
 
-        <h2>6. 数据安全</h2>
-        <ul>
-          <li>登录口令与邮箱凭据在存储时进行加密处理；</li>
-          <li>我们建议您通过 HTTPS、强口令、访问控制与定期备份来保护您自己的服务器；</li>
-          <li>您可以通过“设置”中的备份功能导出完整实例数据，或删除不再需要的账号与数据。</li>
-        </ul>
+      <h2>6. 数据安全</h2>
+      <ul>
+        <li>登录口令与邮箱凭据在存储时进行加密处理；</li>
+        <li>我们建议您通过 HTTPS、强口令、访问控制与定期备份来保护您自己的服务器；</li>
+        <li>您可以通过“设置”中的备份功能导出完整实例数据，或删除不再需要的账号与数据。</li>
+      </ul>
 
-        <h2>7. 数据保留与删除</h2>
-        <p>您可以随时在界面中删除账号、邮件或相关记录，也可导出或重置数据。删除实例的数据目录即可永久删除全部数据。我们仅在提供您所使用的功能所需的时间范围内保留数据，或按法律要求保留。请您在操作前自行备份需要保留的数据。</p>
+      <h2>7. 数据保留与删除</h2>
+      <p>您可以随时在界面中删除账号、邮件或相关记录，也可导出或重置数据。删除实例的数据目录即可永久删除全部数据。我们仅在提供您所使用的功能所需的时间范围内保留数据，或按法律要求保留。请您在操作前自行备份需要保留的数据。</p>
 
-        <h2>8. Cookie 与跟踪技术</h2>
-        <p>本服务不投放广告、不包含第三方分析脚本或跟踪器。仅使用登录会话所需的必要机制（如本地会话令牌）来维持您的登录状态。</p>
+      <h2>8. Cookie 与跟踪技术</h2>
+      <p>本服务不投放广告、不包含第三方分析脚本或跟踪器。仅使用登录会话所需的必要机制（如本地会话令牌）来维持您的登录状态。</p>
 
-        <h2>9. 您的权利</h2>
-        <ul>
-          <li>访问与查看：在控制台中查看您的账号、设置与操作记录；</li>
-          <li>更正与更新：随时修改邮箱配置、通知渠道与个人账户信息；</li>
-          <li>导出与迁移：通过实例备份功能导出全部数据；</li>
-          <li>删除：删除账号、记录或整个实例数据。</li>
-        </ul>
+      <h2>9. 您的权利</h2>
+      <ul>
+        <li>访问与查看：在控制台中查看您的账号、设置与操作记录；</li>
+        <li>更正与更新：随时修改邮箱配置、通知渠道与个人账户信息；</li>
+        <li>导出与迁移：通过实例备份功能导出全部数据；</li>
+        <li>删除：删除账号、记录或整个实例数据。</li>
+      </ul>
 
-        <h2>10. 政策更新</h2>
-        <p>本政策可能随服务功能的变化而更新。更新后我们会修改本页顶部的“生效日期”。如果我们改变对 Google 用户数据的使用方式，我们会通过本页面通知您，重大变更会通过页面公告等方式提示您。</p>
+      <h2>10. 政策更新</h2>
+      <p>本政策可能随服务功能的变化而更新。更新后我们会修改本页顶部的“生效日期”。如果我们改变对 Google 用户数据的使用方式，我们会通过本页面通知您，重大变更会通过页面公告等方式提示您。</p>
 
-        <h2>11. 联系我们</h2>
-        <p>
-          如果您对本政策或数据相关事宜有任何疑问，请通过以下邮箱与我们联系：
-          <a href="mailto:loli&#64;woa&#46;qzz&#46;io">loli&#64;woa&#46;qzz&#46;io</a>
-        </p>
-      </div>
-    </main>
+      <h2>11. 联系我们</h2>
+      <p>
+        如果您对本政策或数据相关事宜有任何疑问，请通过以下邮箱与我们联系：
+        <a href="mailto:loli&#64;woa&#46;qzz&#46;io">loli&#64;woa&#46;qzz&#46;io</a>
+      </p>    </main>
 
     <footer>
       <div class="footer-inner">
-        <span>© <span id="copyright-year">2026</span> HX-Email. All rights reserved.</span>
-        <span>
-          <a href="/home.html">Home 首页</a>
+        <span class="lang-en">© <span class="copyright-year">2026</span> HX-Email. All rights reserved.</span>
+        <span class="lang-en">
+          <a href="/home.html">Home</a>
           <span aria-hidden="true"> · </span>
-          <a href="/terms.html">Terms 服务条款</a>
+          <a href="/terms.html">Terms of Service</a>
           <span aria-hidden="true"> · </span>
-          <a href="/login">Console 进入控制台</a>
+          <a href="/login">Console</a>
+        </span>
+        <span class="lang-zh">© <span class="copyright-year">2026</span> HX-Email 版权所有。</span>
+        <span class="lang-zh">
+          <a href="/home.html">首页</a>
+          <span aria-hidden="true"> · </span>
+          <a href="/terms.html">服务条款</a>
+          <span aria-hidden="true"> · </span>
+          <a href="/login">进入控制台</a>
         </span>
       </div>
     </footer>
     <script>
-      document.getElementById("copyright-year").textContent = new Date().getFullYear();
+      (function () {
+        var KEY = "hx-lang";
+        function detectLang() {
+          var nav = navigator.language || (navigator.languages && navigator.languages[0]) || "en";
+          return nav.toLowerCase().indexOf("zh") === 0 ? "zh" : "en";
+        }
+        function applyLang(lang) {
+          document.documentElement.classList.toggle("zh", lang === "zh");
+          document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+          document.title = lang === "zh" ? "隐私政策 · HX-Email" : "Privacy Policy · HX-Email";
+          var meta = document.querySelector('meta[name="description"]');
+          if (meta) {
+            meta.setAttribute(
+              "content",
+              lang === "zh"
+                ? "HX-Email 隐私政策：说明我们收集、使用、存储与保护您的数据的方式，以及您对数据享有的权利，包括通过 OAuth 访问的 Google 用户数据。"
+                : "HX-Email Privacy Policy: what data we collect, how we use, store and protect it, and the rights you have over your data — including Google user data accessed through OAuth."
+            );
+          }
+          document.querySelectorAll(".lang-switch button").forEach(function (btn) {
+            var active = btn.getAttribute("data-lang") === lang;
+            btn.classList.toggle("active", active);
+            btn.setAttribute("aria-pressed", String(active));
+          });
+        }
+        document.querySelectorAll(".lang-switch button").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var lang = btn.getAttribute("data-lang");
+            applyLang(lang);
+            try {
+              localStorage.setItem(KEY, lang);
+            } catch (e) {}
+          });
+        });
+        var saved = null;
+        try {
+          saved = localStorage.getItem(KEY);
+        } catch (e) {}
+        applyLang(saved === "zh" || saved === "en" ? saved : detectLang());
+      })();
+      document.querySelectorAll(".copyright-year").forEach(function (el) {
+        el.textContent = new Date().getFullYear();
+      });
     </script>
   </body>
 </html>

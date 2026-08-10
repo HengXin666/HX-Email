@@ -79,10 +79,10 @@ export const Login: React.FC = () => {
 
   return (
     <div
-      className="relative min-h-screen flex items-center justify-center overflow-hidden bg-cover bg-center px-4 py-10"
+      className="relative flex min-h-screen flex-col overflow-hidden bg-cover bg-center px-4 pt-10 pb-8"
       style={{ backgroundImage: `url(${slidingBack})` }}
     >
-      <div className="relative flex items-center justify-center w-full max-w-[860px] min-h-[600px]">
+      <div className="relative flex w-full max-w-[860px] min-h-[600px] flex-1 items-center justify-center">
         <motion.div
           animate={{
             height: mode === "login" ? 560 : 430,
@@ -226,29 +226,29 @@ export const Login: React.FC = () => {
             </button>
           </div>
         </motion.div>
-
-        <button
-          type="button"
-          onClick={() => setMode(mode === "login" ? "register" : "login")}
-          className="absolute bottom-0 z-40 rounded-md border border-white/20 bg-black/35 px-4 py-2 text-sm text-white backdrop-blur md:hidden"
-        >
-          {mode === "login" ? "新用户? 去注册" : "已拥有账号，去登录"}
-        </button>
-
-        <footer className="absolute inset-x-0 bottom-4 z-30 flex items-center justify-center gap-4 text-xs text-white/60">
-          <a href="/home.html" className="transition hover:text-white">
-            产品首页
-          </a>
-          <span aria-hidden="true">·</span>
-          <a href="/privacy.html" className="transition hover:text-white">
-            隐私政策
-          </a>
-          <span aria-hidden="true">·</span>
-          <a href="/terms.html" className="transition hover:text-white">
-            服务条款
-          </a>
-        </footer>
       </div>
+
+      <button
+        type="button"
+        onClick={() => setMode(mode === "login" ? "register" : "login")}
+        className="mx-auto mt-6 rounded-md border border-white/20 bg-black/35 px-4 py-2 text-sm text-white backdrop-blur md:hidden"
+      >
+        {mode === "login" ? "新用户? 去注册" : "已拥有账号，去登录"}
+      </button>
+
+      <footer className="mt-4 flex items-center justify-center gap-4 text-xs text-white/60">
+        <a href="/home.html" className="transition hover:text-white">
+          产品首页
+        </a>
+        <span aria-hidden="true">·</span>
+        <a href="/privacy.html" className="transition hover:text-white">
+          隐私政策
+        </a>
+        <span aria-hidden="true">·</span>
+        <a href="/terms.html" className="transition hover:text-white">
+          服务条款
+        </a>
+      </footer>
     </div>
   );
 };

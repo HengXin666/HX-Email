@@ -1,8 +1,26 @@
-# HX-Email
+# <img src="web/public/icon-192.png" width="32" height="32" alt="HX-Email 图标" /> HX-Email
 
-HX Email is being rewritten as a FastAPI backend plus a React, TypeScript,
-shadcn/ui and Tailwind frontend. The first slice provides a runnable skeleton
-for later 可用邮箱, 验证码读取 and 平台绑定 work.
+HX-Email 是一款自托管的多邮箱统一管理平台，采用 FastAPI + React / TypeScript
+（shadcn/ui + Tailwind）构建。集中管理邮箱账号、临时邮箱与平台绑定，自动读取
+验证码并按规则收发邮件，让多账号管理简单高效。
+
+## 功能亮点
+
+- **多账号统一管理**：一个界面集中管理 Outlook、Gmail 等邮箱账号，统一查看状态、刷新登录态与维护凭据；
+- **验证码自动读取**：自动识别邮件中的验证码并高亮展示，配合浏览器脚本一键回填；
+- **Google / Gmail 对接**：通过 Google OAuth 连接 Gmail 账号，支持 Gmail 别名投递与 Google 品牌验证（详见下文）；
+- **平台绑定**：记录可用邮箱与外部平台的绑定关系，支持分组、标签与绑定状态管理；
+- **临时邮箱**：内置临时邮箱池，按需创建、按策略回收，保护主邮箱；
+- **邮件自动化**：定时拉取、SMTP 发送、转发，以及 Telegram / Webhook / 自定义脚本管道通知；
+- **导入导出与备份**：管理员可一键备份、导出、导入与恢复整个实例；
+- **主从同步**：双向收敛的实例级同步，支持“VPS 主实例 + 本地从机”互为镜像；
+- **自托管**：数据默认只存于你自己的服务器，不依赖第三方云，隐私可控。
+
+## Google 对接
+
+- **Google OAuth 连接 Gmail**：在「设置 → 邮箱账号」中配置 Google OAuth（Client ID / Client Secret），通过 Google 官方授权流程连接 Gmail 账号，用于收取邮件、自动读取验证码、发送与转发邮件；
+- **Gmail 别名投递**：支持 Gmail 点号（dot）别名等收件地址，验证码读取按收件地址精确匹配，不会串读同一账号下其他地址的邮件；
+- **Google 品牌验证**：内置公开的首页、隐私政策与服务条款页面，并支持在「系统设置 → 基础 → Google 站点验证」上传验证文件、在站点根路径公开提供，完整验证流程见 [docs/google-oauth-verification.md](docs/google-oauth-verification.md)。
 
 ## Requirements
 
@@ -95,9 +113,9 @@ Override ports or hosts when needed:
 HX_EMAIL_BACKEND_PORT=8010 HX_EMAIL_FRONTEND_PORT=5174 ./scripts/dev.sh
 ```
 
-The frontend uses React + TypeScript + Tailwind and starts in dark mode. Its
-entry screen follows the login-card direction from `ref/HX-ANiMe` while keeping
-the task-1 scope to a usable route shell.
+前端使用 React + TypeScript + Tailwind（shadcn/ui）构建，默认深色主题，提供
+登录/注册、总览工作台、邮箱账号、临时邮箱、平台绑定、邮件自动化与系统设置等
+完整界面。
 
 ## Docker 一键部署
 
