@@ -1,5 +1,7 @@
 import secrets
-from dataclasses import dataclass
+import threading
+import time
+from dataclasses import dataclass, field
 
 from hx_email.config import Settings
 from hx_email.database import connect
@@ -11,6 +13,84 @@ class AuthenticatedUser:
     id: int
     username: str
     is_admin: bool
+
+
+LOGIN_MAX_FAILURES: int = 5
+LOGIN_BASE_BACKOFF_SECONDS: float = 30.0
+LOGIN_MAX_BACKOFF_SECONDS: float = 900.0
+LOGIN_IDLE_CLEANUP_SECONDS: float = 3600.0
+LOGIN_MAX_TRACKED_KEYS: int = 10_000
+
+
+@dataclass
+class _LoginAttemptState:
+    failures: int = 0
+    strikes: int = 0
+    locked_until: float = 0.0
+    last_activity: float = field(default_factory=time.monotonic)
+
+
+class LoginRateLimiter:
+    """Throttle login attempts per username and per source IP.
+
+    Consecutive failures accumulate; once LOGIN_MAX_FAILURES is reached the
+    key is locked with an exponentially growing window (base * 2 ** strikes,
+    capped at LOGIN_MAX_BACKOFF_SECONDS).  A successful login resets the
+    tracked state for both the username and the IP.
+    """
+
+    def __init__(self) -> None:
+        self._lock: threading.Lock = threading.Lock()
+        self._states: dict[str, _LoginAttemptState] = {}
+
+    @staticmethod
+    def _keys(username: str, ip: str) -> tuple[str, str]:
+        return f"user:{username}", f"ip:{ip}"
+
+    def acquire(self, username: str, ip: str) -> float | None:
+        """Return Retry-After seconds when locked for username or IP, else None."""
+        now: float = time.monotonic()
+        with self._lock:
+            self._cleanup(now)
+            for key in self._keys(username, ip):
+                state: _LoginAttemptState | None = self._states.get(key)
+                if state is not None and now < state.locked_until:
+                    return max(1.0, state.locked_until - now)
+        return None
+
+    def record_failure(self, username: str, ip: str) -> None:
+        now: float = time.monotonic()
+        with self._lock:
+            self._cleanup(now)
+            for key in self._keys(username, ip):
+                state: _LoginAttemptState = self._states.setdefault(key, _LoginAttemptState())
+                state.last_activity = now
+                state.failures += 1
+                if state.failures >= LOGIN_MAX_FAILURES:
+                    state.locked_until = now + self._backoff_seconds(state.strikes)
+                    state.strikes += 1
+                    state.failures = 0
+
+    def record_success(self, username: str, ip: str) -> None:
+        with self._lock:
+            for key in self._keys(username, ip):
+                self._states.pop(key, None)
+
+    @staticmethod
+    def _backoff_seconds(strikes: int) -> float:
+        return min(LOGIN_MAX_BACKOFF_SECONDS, LOGIN_BASE_BACKOFF_SECONDS * (2.0**strikes))
+
+    def _cleanup(self, now: float) -> None:
+        """Drop idle/expired entries once the tracker grows large."""
+        if len(self._states) < LOGIN_MAX_TRACKED_KEYS:
+            return
+        idle_cutoff: float = now - LOGIN_IDLE_CLEANUP_SECONDS
+        for key, state in list(self._states.items()):
+            if state.last_activity < idle_cutoff and now >= state.locked_until:
+                self._states.pop(key, None)
+
+
+login_rate_limiter: LoginRateLimiter = LoginRateLimiter()
 
 
 def require_inserted_id(value: int | None) -> int:

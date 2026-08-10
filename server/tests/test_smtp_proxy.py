@@ -115,14 +115,14 @@ def test_http_connect_proxy_tunnels_to_smtp_target() -> None:
         return_value=proxy_socket,
     ) as create_connection:
         result = http_connect_via_proxy(
-            "http://127.0.0.1:2334",
+            "http://8.8.8.8:2334",
             "smtp.gmail.com",
             587,
             timeout=15,
         )
 
     assert result is proxy_socket
-    create_connection.assert_called_once_with(("127.0.0.1", 2334), timeout=15)
+    create_connection.assert_called_once_with(("8.8.8.8", 2334), timeout=15)
     assert proxy_socket.sent == [
         b"CONNECT smtp.gmail.com:587 HTTP/1.1\r\nHost: smtp.gmail.com:587\r\n\r\n"
     ]

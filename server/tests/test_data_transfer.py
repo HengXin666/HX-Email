@@ -131,7 +131,7 @@ def test_export_import_round_trips_group_proxy_and_account_metadata(tmp_path) ->
     headers = login_admin(source)
     group = source.post(
         "/api/v1/groups",
-        json={"name": "Proxied", "color": "#ff0000", "proxy_url": "http://127.0.0.1:7890"},
+        json={"name": "Proxied", "color": "#ff0000", "proxy_url": "http://8.8.8.8:7890"},
         headers=headers,
     ).json()
     account = source.post(
@@ -153,7 +153,7 @@ def test_export_import_round_trips_group_proxy_and_account_metadata(tmp_path) ->
 
     exported = source.get("/api/v1/data/export", headers=headers).json()
 
-    assert exported["groups"][0]["proxy_url"] == "http://127.0.0.1:7890"
+    assert exported["groups"][0]["proxy_url"] == "http://8.8.8.8:7890"
     assert exported["email_accounts"][0]["remark"] == "vip account"
     assert exported["email_accounts"][0]["group_id"] == group["id"]
 
@@ -167,7 +167,7 @@ def test_export_import_round_trips_group_proxy_and_account_metadata(tmp_path) ->
     assert imported.status_code == 201
 
     re_exported = target.get("/api/v1/data/export", headers=target_headers).json()
-    assert re_exported["groups"][0]["proxy_url"] == "http://127.0.0.1:7890"
+    assert re_exported["groups"][0]["proxy_url"] == "http://8.8.8.8:7890"
     assert re_exported["email_accounts"][0]["remark"] == "vip account"
     assert re_exported["email_accounts"][0]["group_id"] == re_exported["groups"][0]["id"]
 
