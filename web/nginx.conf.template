@@ -59,6 +59,9 @@ server {
     location = /privacy { try_files /privacy.html =404; }
     location = /privacy/ { try_files /privacy.html =404; }
     location = /privacy-policy { try_files /privacy.html =404; }
+    location = /terms { try_files /terms.html =404; }
+    location = /terms/ { try_files /terms.html =404; }
+    location = /terms-of-service { try_files /terms.html =404; }
 
     # Site root serves the public brand homepage, so visitors (and Google
     # reviewers) can learn about the app without logging in first.

@@ -243,6 +243,10 @@ export const Login: React.FC = () => {
           <a href="/privacy.html" className="transition hover:text-white">
             隐私政策
           </a>
+          <span aria-hidden="true">·</span>
+          <a href="/terms.html" className="transition hover:text-white">
+            服务条款
+          </a>
         </footer>
       </div>
     </div>

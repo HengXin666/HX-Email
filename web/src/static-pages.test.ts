@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 // copies them verbatim into dist and nginx serves them without authentication.
 const HOME_HTML = readFileSync(new URL("../public/home.html", import.meta.url), "utf8");
 const PRIVACY_HTML = readFileSync(new URL("../public/privacy.html", import.meta.url), "utf8");
+const TERMS_HTML = readFileSync(new URL("../public/terms.html", import.meta.url), "utf8");
 
 describe("public brand pages", () => {
   it("exposes a self-contained homepage for brand verification", () => {
@@ -15,6 +16,7 @@ describe("public brand pages", () => {
     expect(HOME_HTML).toContain('lang="zh-CN"');
     expect(HOME_HTML).toContain('href="/home.html"');
     expect(HOME_HTML).toContain('href="/privacy.html"');
+    expect(HOME_HTML).toContain('href="/terms.html"');
     // The page must link back into the real app so it is a genuine landing page.
     expect(HOME_HTML).toContain('href="/login"');
     // The homepage has to state what the application is for.
@@ -41,5 +43,15 @@ describe("public brand pages", () => {
       expect(PRIVACY_HTML).toContain(section);
     }
     expect(PRIVACY_HTML).toContain('href="/home.html"');
+  });
+
+  it("provides a public terms-of-service page linked from the homepage", () => {
+    expect(TERMS_HTML).toContain("<title>服务条款");
+    expect(TERMS_HTML).toContain("生效日期");
+    for (const section of ["服务说明", "账户与使用", "用户责任", "免责声明", "联系我们"]) {
+      expect(TERMS_HTML).toContain(section);
+    }
+    expect(TERMS_HTML).toContain('href="/home.html"');
+    expect(TERMS_HTML).toContain('href="/privacy.html"');
   });
 });
