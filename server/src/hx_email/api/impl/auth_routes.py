@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Header, HTTPException, status
+from fastapi import APIRouter, Header, HTTPException, Request, status
 
 from hx_email.api.dependencies import bearer_token, require_admin, require_user
 from hx_email.api.schemas import Credentials, EnabledToggle
@@ -10,6 +10,7 @@ from hx_email.server.auth import (
     authenticate_token,
     create_session,
     login,
+    login_rate_limiter,
     register_user,
     registration_enabled,
     revoke_session,
@@ -18,12 +19,33 @@ from hx_email.server.auth import (
 )
 
 
+def _client_ip(request: Request) -> str:
+    forwarded: str | None = request.headers.get("x-forwarded-for")
+    if forwarded:
+        first: str = forwarded.split(",")[0].strip()
+        if first:
+            return first
+    if request.client is not None:
+        return request.client.host
+    return "unknown"
+
+
 def register_auth_routes(router: APIRouter, settings: Settings) -> None:
     @router.post("/auth/login")
-    def log_in(credentials: Credentials) -> dict[str, object]:
+    def log_in(credentials: Credentials, request: Request) -> dict[str, object]:
+        client_ip: str = _client_ip(request)
+        retry_after: float | None = login_rate_limiter.acquire(credentials.username, client_ip)
+        if retry_after is not None:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="登录尝试过于频繁, 请稍后再试",
+                headers={"Retry-After": str(int(retry_after))},
+            )
         session = login(settings, credentials.username, credentials.password)
         if session is None:
+            login_rate_limiter.record_failure(credentials.username, client_ip)
             raise HTTPException(status_code=401, detail="Invalid username or password")
+        login_rate_limiter.record_success(credentials.username, client_ip)
         user, access_token = session
         return {
             "access_token": access_token,

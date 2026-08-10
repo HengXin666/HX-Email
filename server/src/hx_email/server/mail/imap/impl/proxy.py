@@ -9,6 +9,8 @@ import ssl as _ssl
 from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
+from hx_email.server.mail.imap.impl.address_guard import validate_proxy_host
+
 if TYPE_CHECKING:
     from hx_email.config import Settings
 
@@ -80,6 +82,7 @@ def http_connect_via_proxy(
 ) -> socket.socket:
     """Open a raw socket to a target through an HTTP CONNECT proxy."""
     proxy_host, proxy_port = _parse_proxy_endpoint(proxy_url)
+    validate_proxy_host(proxy_host)
     sock = socket.create_connection((proxy_host, proxy_port), timeout=timeout)
     try:
         connect_cmd = f"CONNECT {host}:{port} HTTP/1.1\r\nHost: {host}:{port}\r\n\r\n"

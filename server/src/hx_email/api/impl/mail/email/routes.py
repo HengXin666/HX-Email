@@ -32,11 +32,12 @@ def register_email_ops_routes(
         payload: BatchEmailRequest,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_user(settings, authorization)
+        user = require_user(settings, authorization)
         return batch_fetch_emails(
             settings,
             mailbox_provider,
             payload.account_ids,
+            user.id,
             folders=payload.folders,
             skip=payload.skip,
             top=payload.top,
@@ -47,11 +48,12 @@ def register_email_ops_routes(
         payload: DeleteEmailRequest,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_user(settings, authorization)
+        user = require_user(settings, authorization)
         return delete_emails(
             settings,
             mailbox_provider,
             payload.email,
+            user.id,
             payload.ids,
         )
 
@@ -64,7 +66,7 @@ def register_email_ops_routes(
         code_source: Annotated[str, Query()] = "all",
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_user(settings, authorization)
+        user = require_user(settings, authorization)
         try:
             compiled = re.compile(code_regex) if code_regex else None
         except re.error as exc:
@@ -74,6 +76,7 @@ def register_email_ops_routes(
             settings,
             mailbox_provider,
             email_addr,
+            user.id,
             code_length=code_length,
             code_regex=code_regex,
             code_source=code_source,
@@ -89,12 +92,13 @@ def register_email_ops_routes(
         method: Annotated[str | None, Query()] = None,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_user(settings, authorization)
+        user = require_user(settings, authorization)
         try:
             return get_email_detail(
                 settings,
                 mailbox_provider,
                 email_addr,
+                user.id,
                 message_id,
                 folder=folder,
                 method=method,
@@ -112,11 +116,12 @@ def register_email_ops_routes(
         method: Annotated[str | None, Query()] = None,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_user(settings, authorization)
+        user = require_user(settings, authorization)
         return fetch_emails(
             settings,
             mailbox_provider,
             email_addr,
+            user.id,
             folder=folder,
             skip=skip,
             top=top,

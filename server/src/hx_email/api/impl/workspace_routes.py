@@ -12,6 +12,7 @@ from hx_email.api.dependencies import require_user
 from hx_email.api.schemas import GroupCreate, TagCreate, UsableEmailOrganization
 from hx_email.api.serializers import serialize_workbench_email, serialize_workbench_overview
 from hx_email.config import Settings
+from hx_email.server.mail.imap.impl.address_guard import validate_proxy_endpoint
 from hx_email.server.workspace.groups import (
     create_group,
     create_tag,
@@ -36,23 +37,15 @@ class _ProxyTestRequest(BaseModel):
     proxy_url: str
 
 
-def _parse_proxy_url(proxy_url: str) -> tuple[str, int]:
-    """Parse proxy_url into (host, port). Defaults to port 8080 if not specified."""
-    url: str = proxy_url
-    if "://" in url:
-        url = url.split("://", 1)[1]
-    if ":" in url:
-        host, port_str = url.rsplit(":", 1)
-        return host, int(port_str)
-    return url, 8080
-
-
 def _test_proxy_connect(proxy_url: str) -> dict[str, object]:
     """Test proxy connectivity by sending HTTP CONNECT to a known target."""
     if not proxy_url:
         return {"success": False, "latency_ms": 0, "message": "代理地址为空"}
 
-    proxy_host, proxy_port = _parse_proxy_url(proxy_url)
+    try:
+        proxy_host, proxy_port = validate_proxy_endpoint(proxy_url)
+    except ValueError as error:
+        return {"success": False, "latency_ms": 0, "message": str(error)}
     start: float = time.monotonic()
 
     try:
@@ -119,6 +112,11 @@ def register_workspace_routes(router: APIRouter, settings: Settings) -> None:
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
         user = require_user(settings, authorization)
+        if payload.proxy_url.strip():
+            try:
+                validate_proxy_endpoint(payload.proxy_url)
+            except ValueError as error:
+                raise HTTPException(status_code=400, detail=str(error)) from error
         group = create_group(settings, user.id, payload.name, payload.color, payload.proxy_url)
         return {
             "id": group.id,
@@ -153,6 +151,11 @@ def register_workspace_routes(router: APIRouter, settings: Settings) -> None:
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
         user = require_user(settings, authorization)
+        if payload.proxy_url.strip():
+            try:
+                validate_proxy_endpoint(payload.proxy_url)
+            except ValueError as error:
+                raise HTTPException(status_code=400, detail=str(error)) from error
         group = update_group(
             settings, user.id, group_id, payload.name, payload.color, payload.proxy_url
         )

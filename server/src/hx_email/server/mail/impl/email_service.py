@@ -17,16 +17,23 @@ from hx_email.server.mail.verification import (
 )
 
 
-def _find_email_account(settings: Settings, email_addr: str) -> EmailAccountMailbox | None:
+def _find_email_account(
+    settings: Settings,
+    email_addr: str,
+    user_id: int | None = None,
+) -> EmailAccountMailbox | None:
     target_address: str = normalize_delivery_address(email_addr)
+    query: str = """
+        SELECT ea.id, ea.provider, ea.primary_address, ue.address
+        FROM email_accounts ea
+        JOIN usable_emails ue ON ue.email_account_id = ea.id
+    """
+    params: tuple[int, ...] = ()
+    if user_id is not None:
+        query += " WHERE ea.user_id = ? AND ue.user_id = ?"
+        params = (user_id, user_id)
     with connect(settings) as connection:
-        rows = connection.execute(
-            """
-            SELECT ea.id, ea.provider, ea.primary_address, ue.address
-            FROM email_accounts ea
-            JOIN usable_emails ue ON ue.email_account_id = ea.id
-            """
-        ).fetchall()
+        rows = connection.execute(query, params).fetchall()
 
     for row in rows:
         if normalize_delivery_address(str(row["address"] or "")) != target_address:
@@ -75,6 +82,7 @@ def fetch_emails(
     settings: Settings,
     mailbox_provider: MailboxProvider,
     email_addr: str,
+    user_id: int,
     folder: str = "inbox",
     skip: int = 0,
     top: int = 20,
@@ -85,7 +93,7 @@ def fetch_emails(
     Graph → IMAP fallback is handled transparently by FallbackMailProvider
     (injected by app.py).  All consumers automatically get Graph for Outlook.
     """
-    account = _find_email_account(settings, email_addr)
+    account = _find_email_account(settings, email_addr, user_id)
     if account is None:
         return {"emails": [], "method": "none", "has_more": False}
 
@@ -107,12 +115,13 @@ def get_email_detail(
     settings: Settings,
     mailbox_provider: MailboxProvider,
     email_addr: str,
+    user_id: int,
     message_id: str,
     folder: str = "inbox",
     method: str | None = None,
 ) -> dict[str, object]:
     """Get single email with full body. Outlook/Hotmail → Graph first, then IMAP fallback."""
-    account = _find_email_account(settings, email_addr)
+    account = _find_email_account(settings, email_addr, user_id)
     if account is None:
         return _empty_detail(email_addr, message_id)
 
@@ -170,6 +179,7 @@ def batch_fetch_emails(
     settings: Settings,
     mailbox_provider: MailboxProvider,
     account_ids: list[int],
+    user_id: int,
     folders: list[str] | None = None,
     skip: int = 0,
     top: int = 20,
@@ -181,7 +191,7 @@ def batch_fetch_emails(
     failed_count = 0
 
     for account_id in account_ids:
-        account = _fetch_account_by_id(settings, account_id)
+        account = _fetch_account_by_id(settings, account_id, user_id)
         if account is None:
             results.append(
                 {
@@ -225,12 +235,16 @@ def batch_fetch_emails(
     }
 
 
-def _fetch_account_by_id(settings: Settings, account_id: int) -> EmailAccountMailbox | None:
-    """Look up an email account by its primary key."""
+def _fetch_account_by_id(
+    settings: Settings,
+    account_id: int,
+    user_id: int,
+) -> EmailAccountMailbox | None:
+    """Look up an email account by its primary key, scoped to a user."""
     with connect(settings) as connection:
         row = connection.execute(
-            "SELECT id, provider, primary_address FROM email_accounts WHERE id = ?",
-            (account_id,),
+            "SELECT id, provider, primary_address FROM email_accounts WHERE id = ? AND user_id = ?",
+            (account_id, user_id),
         ).fetchone()
     if row is None:
         return None
@@ -243,6 +257,7 @@ def extract_verification_code(
     settings: Settings,
     mailbox_provider: MailboxProvider,
     email_addr: str,
+    user_id: int,
     code_length: int | None = None,
     code_regex: str | None = None,
     code_source: str = "all",
@@ -252,7 +267,7 @@ def extract_verification_code(
     When no custom regex or length is given, uses keyword-context-aware
     extraction that only matches codes near verification keywords.
     """
-    account = _find_email_account(settings, email_addr)
+    account = _find_email_account(settings, email_addr, user_id)
     if account is None:
         return {"verification_code": "", "matched_email_id": "", "match_count": 0}
 
@@ -271,10 +286,11 @@ def delete_emails(
     settings: Settings,
     mailbox_provider: MailboxProvider,
     email_addr: str,
+    user_id: int,
     message_ids: list[str],
 ) -> dict[str, object]:
     """Delete emails by IDs (stub; provider has no delete). Returns {success, deleted_count}."""
-    account = _find_email_account(settings, email_addr)
+    account = _find_email_account(settings, email_addr, user_id)
     if account is None:
         return {"success": False, "deleted_count": 0}
 
