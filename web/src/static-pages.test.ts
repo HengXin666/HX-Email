@@ -9,10 +9,14 @@ import { describe, expect, it } from "vitest";
 const HOME_HTML = readFileSync(new URL("../public/home.html", import.meta.url), "utf8");
 const PRIVACY_HTML = readFileSync(new URL("../public/privacy.html", import.meta.url), "utf8");
 const TERMS_HTML = readFileSync(new URL("../public/terms.html", import.meta.url), "utf8");
+const MANIFEST = JSON.parse(
+  readFileSync(new URL("../public/manifest.webmanifest", import.meta.url), "utf8"),
+) as { name: string; short_name: string };
+const ROBOTS_TXT = readFileSync(new URL("../public/robots.txt", import.meta.url), "utf8");
 
 describe("public brand pages", () => {
   it("exposes a self-contained homepage for brand verification", () => {
-    expect(HOME_HTML).toContain("<title>HX-Email");
+    expect(HOME_HTML).toContain("<title>HX-Email</title>");
     expect(HOME_HTML).toContain('lang="zh-CN"');
     expect(HOME_HTML).toContain('href="/home.html"');
     expect(HOME_HTML).toContain('href="/privacy.html"');
@@ -25,6 +29,45 @@ describe("public brand pages", () => {
     // The OAuth consent-screen app name must match the homepage brand name.
     expect(HOME_HTML).toContain("HX-Email");
     expect(HOME_HTML).not.toContain("HX-EMail");
+  });
+
+  it("pins the app identity consistently across every extractable field", () => {
+    // Google reviewers can pull the app name from several places; every one
+    // must match the OAuth consent-screen name "HX-Email" exactly.
+    for (const needle of [
+      '<meta name="application-name" content="HX-Email" />',
+      '<meta name="apple-mobile-web-app-title" content="HX-Email" />',
+      '<meta property="og:title" content="HX-Email" />',
+      '<meta property="og:site_name" content="HX-Email" />',
+      '<link rel="manifest" href="/manifest.webmanifest" />',
+    ]) {
+      expect(HOME_HTML).toContain(needle);
+    }
+    const ldJson =
+      HOME_HTML.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)?.[1] ?? "";
+    expect(JSON.parse(ldJson)).toMatchObject({
+      "@type": "SoftwareApplication",
+      name: "HX-Email",
+    });
+    expect(MANIFEST.name).toBe("HX-Email");
+    expect(MANIFEST.short_name).toBe("HX-Email");
+  });
+
+  it("does not hide the purpose behind animations or scripts", () => {
+    // The purpose must be plain server-rendered HTML, not gated behind
+    // opacity/scroll-triggered reveals (a common Google review failure).
+    expect(HOME_HTML).not.toMatch(/opacity\s*:\s*0/);
+    expect(HOME_HTML).not.toContain("IntersectionObserver");
+    // The first-screen hero text must state what the app does in raw HTML.
+    const hero = HOME_HTML.match(/<section class="hero">([\s\S]*?)<\/section>/)?.[1] ?? "";
+    expect(hero).toContain("集中管理");
+    expect(hero).toContain("验证码");
+  });
+
+  it("allows search engines and Google's verifier to crawl the site", () => {
+    expect(ROBOTS_TXT).toContain("User-agent: *");
+    expect(ROBOTS_TXT).toContain("Allow: /");
+    expect(ROBOTS_TXT).not.toContain("Disallow: /");
   });
 
   it("shows the app name prominently and supports bilingual content", () => {
