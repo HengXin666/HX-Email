@@ -6,14 +6,17 @@ import { useBrowserNotifications } from "./hooks/useBrowserNotifications";
 import { Accounts } from "./pages/Accounts";
 import { ApiAccess } from "./pages/ApiAccess";
 import { AuditLog } from "./pages/AuditLog";
+import { Home } from "./pages/Home";
 import { Login } from "./pages/Login";
 import { Overview } from "./pages/Overview";
 import { Platforms } from "./pages/Platforms";
 import { PoolAdmin } from "./pages/PoolAdmin";
+import { Privacy } from "./pages/Privacy";
 import { RefreshLogPage } from "./pages/RefreshLog";
 import { SendMail } from "./pages/SendMail";
 import { Settings } from "./pages/Settings";
 import { TempMail } from "./pages/TempMail";
+import { Terms } from "./pages/Terms";
 import { TokenTool } from "./pages/TokenTool";
 import { useApp } from "./store/AppContext";
 
@@ -51,6 +54,17 @@ const App: React.FC = () => {
   return (
     <Routes>
       <Route path="/login" element={token ? <Navigate to="/overview" replace /> : <Login />} />
+      <Route path="/home" element={<Home />} />
+      <Route path="/home/" element={<Home />} />
+      <Route path="/home.html" element={<Home />} />
+      <Route path="/privacy" element={<Privacy />} />
+      <Route path="/privacy/" element={<Privacy />} />
+      <Route path="/privacy-policy" element={<Privacy />} />
+      <Route path="/privacy.html" element={<Privacy />} />
+      <Route path="/terms" element={<Terms />} />
+      <Route path="/terms/" element={<Terms />} />
+      <Route path="/terms-of-service" element={<Terms />} />
+      <Route path="/terms.html" element={<Terms />} />
       <Route
         path="/overview"
         element={
@@ -139,7 +153,7 @@ const App: React.FC = () => {
           </RequireAuth>
         }
       />
-      <Route path="*" element={<Navigate to={token ? "/overview" : "/home.html"} replace />} />
+      <Route path="*" element={<Navigate to={token ? "/overview" : "/home"} replace />} />
     </Routes>
   );
 };
