@@ -93,7 +93,6 @@ export const PRIVACY_EN_SECTIONS: LegalSection[] = [
   },
   {
     heading: "11. Contact Us",
-    paragraphs: ["If you have any questions about this policy or your data, contact us at:"],
   },
 ];
 
@@ -181,6 +180,5 @@ export const PRIVACY_ZH_SECTIONS: LegalSection[] = [
   },
   {
     heading: "11. 联系我们",
-    paragraphs: ["如果您对本政策或数据相关事宜有任何疑问，请通过以下邮箱与我们联系："],
   },
 ];

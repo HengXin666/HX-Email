@@ -57,14 +57,16 @@ const App: React.FC = () => {
       <Route path="/home" element={<Home />} />
       <Route path="/home/" element={<Home />} />
       <Route path="/home.html" element={<Home />} />
-      <Route path="/privacy" element={<Privacy />} />
-      <Route path="/privacy/" element={<Privacy />} />
-      <Route path="/privacy-policy" element={<Privacy />} />
-      <Route path="/privacy.html" element={<Privacy />} />
-      <Route path="/terms" element={<Terms />} />
-      <Route path="/terms/" element={<Terms />} />
-      <Route path="/terms-of-service" element={<Terms />} />
-      <Route path="/terms.html" element={<Terms />} />
+      <Route path="/privacy" element={<Privacy lang="en" />} />
+      <Route path="/privacy/" element={<Privacy lang="en" />} />
+      <Route path="/privacy-policy" element={<Privacy lang="en" />} />
+      <Route path="/privacy.html" element={<Privacy lang="en" />} />
+      <Route path="/privacy/zh" element={<Privacy lang="zh" />} />
+      <Route path="/terms" element={<Terms lang="en" />} />
+      <Route path="/terms/" element={<Terms lang="en" />} />
+      <Route path="/terms-of-service" element={<Terms lang="en" />} />
+      <Route path="/terms.html" element={<Terms lang="en" />} />
+      <Route path="/terms/zh" element={<Terms lang="zh" />} />
       <Route
         path="/overview"
         element={

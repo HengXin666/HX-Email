@@ -254,13 +254,13 @@ export const Login: React.FC = () => {
           <span aria-hidden="true" className="text-white/40">
             ·
           </span>
-          <a href="/privacy" className="transition hover:text-[#24d97f]">
+          <a href="/privacy/zh" className="transition hover:text-[#24d97f]">
             隐私政策
           </a>
           <span aria-hidden="true" className="text-white/40">
             ·
           </span>
-          <a href="/terms" className="transition hover:text-[#24d97f]">
+          <a href="/terms/zh" className="transition hover:text-[#24d97f]">
             服务条款
           </a>
         </div>

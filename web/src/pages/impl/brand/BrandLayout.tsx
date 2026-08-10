@@ -1,6 +1,6 @@
 import React, { type ReactNode, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { type BrandDict, type BrandLang, CONTACT_EMAIL } from "./i18n";
+import { type BrandDict, type BrandLang, CONTACT_EMAIL, privacyPath, termsPath } from "./i18n";
 
 interface BrandLayoutProps {
   dict: BrandDict;
@@ -77,10 +77,13 @@ export const BrandLayout: React.FC<BrandLayoutProps> = ({
                 {dict.navFeatures}
               </a>
             )}
-            <Link to="/privacy" className="text-gh-text-muted transition hover:text-gh-text">
+            <Link
+              to={privacyPath(lang)}
+              className="text-gh-text-muted transition hover:text-gh-text"
+            >
               {dict.navPrivacy}
             </Link>
-            <Link to="/terms" className="text-gh-text-muted transition hover:text-gh-text">
+            <Link to={termsPath(lang)} className="text-gh-text-muted transition hover:text-gh-text">
               {dict.navTerms}
             </Link>
             <Link
@@ -101,10 +104,13 @@ export const BrandLayout: React.FC<BrandLayoutProps> = ({
             <Link to="/home" className="text-gh-text-muted transition hover:text-gh-text">
               {dict.footerHome}
             </Link>
-            <Link to="/privacy" className="text-gh-text-muted transition hover:text-gh-text">
+            <Link
+              to={privacyPath(lang)}
+              className="text-gh-text-muted transition hover:text-gh-text"
+            >
               {dict.footerPrivacy}
             </Link>
-            <Link to="/terms" className="text-gh-text-muted transition hover:text-gh-text">
+            <Link to={termsPath(lang)} className="text-gh-text-muted transition hover:text-gh-text">
               {dict.footerTerms}
             </Link>
             <a

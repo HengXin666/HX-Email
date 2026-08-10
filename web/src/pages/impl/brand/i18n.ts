@@ -177,3 +177,11 @@ const enDict: BrandDict = {
 export const brandDicts: Record<BrandLang, BrandDict> = { zh: zhDict, en: enDict };
 
 export const CONTACT_EMAIL = "loli@woa.qzz.io";
+
+export function privacyPath(lang: BrandLang): string {
+  return lang === "zh" ? "/privacy/zh" : "/privacy";
+}
+
+export function termsPath(lang: BrandLang): string {
+  return lang === "zh" ? "/terms/zh" : "/terms";
+}

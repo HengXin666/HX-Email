@@ -60,6 +60,68 @@ export const TERMS_ZH_SECTIONS: LegalSection[] = [
   },
   {
     heading: "9. 联系我们",
-    paragraphs: ["如果您对本条款有任何疑问，请通过以下邮箱与我们联系："],
+  },
+];
+
+export const TERMS_EN_SECTIONS: LegalSection[] = [
+  {
+    heading: "1. Service Description",
+    paragraphs: ["The Service is deployed and operated by you. Its core features include:"],
+    list: [
+      "Centrally managing multiple mailbox accounts, temp mailboxes and platform bindings;",
+      "Automatically fetching mail and detecting and highlighting verification codes;",
+      "Sending and forwarding mail and running automation tasks and notifications according to your configuration;",
+      "Providing instance backup, export, import and restore features.",
+    ],
+    highlight:
+      "Self-hosting notice: this is self-hosted software. The deployer (you or the operator providing the service to you) is responsible for running, maintaining and securing the server.",
+  },
+  {
+    heading: "2. Accounts and Use",
+    list: [
+      "You must keep your account passwords and mailbox credentials safe and are responsible for activity under your account;",
+      "You may only use the Service to process mailboxes and data you are authorized to access;",
+      "Do not use the Service for spam, fraud, infringing on others' rights or any activity that violates applicable law;",
+      "The deployer may close registration, adjust access permissions or terminate violating accounts at any time.",
+    ],
+  },
+  {
+    heading: "3. User Responsibilities",
+    paragraphs: [
+      "You are responsible for ensuring that the mail servers, credentials and external services (SMTP, IMAP, Telegram, Webhook, etc.) you configure belong to you or that you are authorized to use them, and you bear the costs and consequences of using those external services. Keep your credentials secure and avoid leaking them.",
+    ],
+  },
+  {
+    heading: "4. Data and Privacy",
+    paragraphs: [
+      "How the Service handles your data is described in our Privacy Policy. The Service is self-hosted: by default your data is stored only on your own server and is never sold or shared with third parties.",
+    ],
+  },
+  {
+    heading: "5. Third-Party Services",
+    paragraphs: [
+      "When the Service interacts with external services you configure (mail servers, notification channels, etc.), it transmits only the data necessary for that interaction, according to your configuration. Such interaction is governed by the third-party services' own terms and policies; we are not responsible for their behavior.",
+    ],
+  },
+  {
+    heading: "6. Disclaimer",
+    paragraphs: [
+      'The Service is provided "as is" without any express or implied warranty. To the fullest extent permitted by applicable law, we are not liable for any direct or indirect loss arising from the use of or inability to use the Service, data loss, failed mail sending or receiving, or incorrect verification-code recognition.',
+    ],
+  },
+  {
+    heading: "7. Service Availability and Changes",
+    paragraphs: [
+      "The Service may be intermittently unavailable due to deployer maintenance, upgrades, network failures or force majeure. We may update, adjust or discontinue parts of the Service at any time and will make reasonable efforts to announce material changes in advance.",
+    ],
+  },
+  {
+    heading: "8. Changes to These Terms",
+    paragraphs: [
+      "These terms may be updated as the Service evolves. Updates are reflected in the effective date at the top of this page. Continuing to use the Service after an update constitutes acceptance of the updated terms.",
+    ],
+  },
+  {
+    heading: "9. Contact Us",
   },
 ];

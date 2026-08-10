@@ -2,7 +2,7 @@ import { Inbox, KeyRound, Link2, Mailbox, ShieldCheck, Zap } from "lucide-react"
 import React from "react";
 import { Link } from "react-router-dom";
 import { BrandLayout } from "./impl/brand/BrandLayout";
-import type { BrandDict, BrandLang } from "./impl/brand/i18n";
+import { type BrandDict, type BrandLang, privacyPath } from "./impl/brand/i18n";
 import { useBrandLang } from "./impl/brand/useBrandLang";
 
 interface FeatureCardProps {
@@ -58,7 +58,7 @@ export const Home: React.FC = () => {
                 {dict.heroCta}
               </Link>
               <Link
-                to="/privacy"
+                to={privacyPath(lang)}
                 className="inline-block rounded-lg border border-gh-border bg-gh-canvas-subtle px-7 py-3 text-[15px] font-semibold text-gh-text transition hover:brightness-110"
               >
                 {dict.heroPrivacy}
@@ -142,7 +142,7 @@ export const Home: React.FC = () => {
               </span>
               <p className="text-sm text-gh-text-muted">
                 {dict.privacyP}{" "}
-                <Link to="/privacy" className="text-gh-accent transition hover:underline">
+                <Link to={privacyPath(lang)} className="text-gh-accent transition hover:underline">
                   {dict.privacyLink}
                 </Link>
               </p>

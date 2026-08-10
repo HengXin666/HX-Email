@@ -66,6 +66,11 @@ describe("React brand pages (Google OAuth brand verification)", () => {
     expect(screen.getByText("多账号统一管理")).toBeInTheDocument();
     expect(screen.getByText("为什么 HX-Email 需要您的数据")).toBeInTheDocument();
     expect(screen.queryByText("Core Features")).not.toBeInTheDocument();
+    // Chinese home links to the Chinese legal pages.
+    const zhPrivacyLinks = screen.getAllByRole("link", { name: "隐私政策" });
+    expect(zhPrivacyLinks.some((link) => link.getAttribute("href") === "/privacy/zh")).toBe(true);
+    const zhTermsLinks = screen.getAllByRole("link", { name: "服务条款" });
+    expect(zhTermsLinks.some((link) => link.getAttribute("href") === "/terms/zh")).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: "EN" }));
     expect(screen.getByText("Core Features")).toBeInTheDocument();
@@ -109,11 +114,10 @@ describe("React brand pages (Google OAuth brand verification)", () => {
     expect(screen.getByText("核心功能")).toBeInTheDocument();
   });
 
-  it("covers the privacy-policy sections Google reviewers look for", () => {
-    renderPage("/privacy", <Privacy />);
-    expect(screen.getByRole("heading", { name: "Privacy Policy 隐私政策" })).toBeInTheDocument();
-    expect(screen.getByText(/Effective date 生效日期/)).toBeInTheDocument();
-    // English sections, read by Google's reviewer.
+  it("covers the English privacy-policy sections Google reviewers look for", () => {
+    renderPage("/privacy", <Privacy lang="en" />);
+    expect(screen.getByRole("heading", { name: "Privacy Policy" })).toBeInTheDocument();
+    expect(screen.getByText(/Effective date: August 10, 2026/)).toBeInTheDocument();
     for (const section of [
       "Information We Collect",
       "How We Use Information",
@@ -129,7 +133,25 @@ describe("React brand pages (Google OAuth brand verification)", () => {
     ]) {
       expectHeading(new RegExp(section));
     }
-    // Chinese version stays available for zh users.
+    // The page must be single-language: no Chinese sections mixed in.
+    expect(screen.queryByText("我们收集的信息")).not.toBeInTheDocument();
+    // Explicit disclosures Google's privacy-policy review requires.
+    const body = screen.getByRole("main");
+    expect(within(body).getAllByText(/https:\/\/mail\.google\.com\//)).not.toHaveLength(0);
+    expect(within(body).getAllByText(/do not sell/i)).not.toHaveLength(0);
+    expect(within(body).getAllByText(/targeted advertising/i)).not.toHaveLength(0);
+    expect(within(body).getAllByText(/train AI/i)).not.toHaveLength(0);
+    expect(within(body).getAllByText(/encrypted when stored/i)).not.toHaveLength(0);
+    // Contact email is rendered client-side (safe from edge obfuscation),
+    // and the contact sentence appears exactly once (no duplication).
+    expect(screen.getAllByText(CONTACT_EMAIL)).not.toHaveLength(0);
+    expect(screen.getAllByText(/If you have any questions about this policy/)).toHaveLength(1);
+  });
+
+  it("serves a separate Chinese privacy policy at /privacy/zh", () => {
+    renderPage("/privacy/zh", <Privacy lang="zh" />);
+    expect(screen.getByRole("heading", { name: "隐私政策" })).toBeInTheDocument();
+    expect(screen.getByText(/生效日期：2026 年 8 月 10 日/)).toBeInTheDocument();
     for (const section of [
       "我们收集的信息",
       "数据的存储",
@@ -143,28 +165,42 @@ describe("React brand pages (Google OAuth brand verification)", () => {
     ]) {
       expectHeading(new RegExp(section));
     }
-    // Explicit disclosures Google's privacy-policy review requires.
-    const body = screen.getByRole("main");
-    expect(within(body).getAllByText(/https:\/\/mail\.google\.com\//)).not.toHaveLength(0);
-    expect(within(body).getAllByText(/do not sell/i)).not.toHaveLength(0);
-    expect(within(body).getAllByText(/targeted advertising/i)).not.toHaveLength(0);
-    expect(within(body).getAllByText(/train AI/i)).not.toHaveLength(0);
-    expect(within(body).getAllByText(/encrypted when stored/i)).not.toHaveLength(0);
-    // Contact email is rendered client-side (safe from edge obfuscation).
-    expect(screen.getAllByText(CONTACT_EMAIL)).not.toHaveLength(0);
+    expect(screen.queryByText("Information We Collect")).not.toBeInTheDocument();
+    expect(screen.getAllByText(/如果您对本政策或数据相关事宜有任何疑问/)).toHaveLength(1);
   });
 
-  it("provides a public terms-of-service page linked from the homepage", () => {
-    renderPage("/terms", <Terms />);
+  it("provides public terms-of-service pages in both languages", () => {
+    renderPage("/terms", <Terms lang="en" />);
+    expect(screen.getByRole("heading", { name: "Terms of Service" })).toBeInTheDocument();
+    expect(screen.getByText(/Effective date: August 10, 2026/)).toBeInTheDocument();
+    for (const section of [
+      "Service Description",
+      "Accounts and Use",
+      "User Responsibilities",
+      "Data and Privacy",
+      "Third-Party Services",
+      "Disclaimer",
+      "Service Availability and Changes",
+      "Changes to These Terms",
+      "Contact Us",
+    ]) {
+      expectHeading(new RegExp(section));
+    }
+    expect(screen.queryByText("服务说明")).not.toBeInTheDocument();
+    expect(screen.getAllByText(CONTACT_EMAIL)).not.toHaveLength(0);
+    expect(screen.getAllByText(/If you have any questions about these terms/)).toHaveLength(1);
+    const homeLinks = screen.getAllByRole("link", { name: "Home" });
+    expect(homeLinks.some((link) => link.getAttribute("href") === "/home")).toBe(true);
+    const privacyLinks = screen.getAllByRole("link", { name: "Privacy Policy" });
+    expect(privacyLinks.some((link) => link.getAttribute("href") === "/privacy")).toBe(true);
+
+    renderPage("/terms/zh", <Terms lang="zh" />);
     expect(screen.getByRole("heading", { name: "服务条款" })).toBeInTheDocument();
     expect(screen.getAllByText(/生效日期/)).not.toHaveLength(0);
     for (const section of ["服务说明", "账户与使用", "用户责任", "免责声明", "联系我们"]) {
       expectHeading(new RegExp(section));
     }
-    expect(screen.getAllByText(CONTACT_EMAIL)).not.toHaveLength(0);
-    const homeLinks = screen.getAllByRole("link", { name: "Home" });
-    expect(homeLinks.some((link) => link.getAttribute("href") === "/home")).toBe(true);
-    const privacyLinks = screen.getAllByRole("link", { name: "Privacy Policy" });
-    expect(privacyLinks.some((link) => link.getAttribute("href") === "/privacy")).toBe(true);
+    expect(screen.queryByText("Service Description")).not.toBeInTheDocument();
+    expect(screen.getAllByText(/如果您对本条款有任何疑问/)).toHaveLength(1);
   });
 });
