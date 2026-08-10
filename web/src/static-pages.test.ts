@@ -90,8 +90,9 @@ describe("public brand pages", () => {
 
   it("shows the app name prominently and supports bilingual content", () => {
     // The app name must be the visible H1 heading, not just a side mention.
-    const h1 = HOME_HTML.match(/<h1[^>]*>([\s\S]*?)<\/h1>/)?.[1] ?? "";
-    expect(h1.replace(/<[^>]+>/g, "").trim()).toBe("HX-Email");
+    // Plain text with no nested spans, so any extractor reads exactly "HX-Email".
+    expect(HOME_HTML).toContain("<h1>HX-Email</h1>");
+    expect(HOME_HTML).not.toMatch(/<h1[^>]*>[^<]*<span/);
     // Bilingual switcher with zh-CN default and an English option.
     expect(HOME_HTML).toContain('data-lang="zh-CN"');
     expect(HOME_HTML).toContain('data-lang="en"');
@@ -101,6 +102,13 @@ describe("public brand pages", () => {
     expect(HOME_HTML).toContain('id="data"');
     expect(HOME_HTML).toContain("为什么 HX-Email 需要您的数据");
     expect(HOME_HTML).toContain("Why HX-Email Needs Your Data");
+    // The purpose must also be stated in English in the server-rendered HTML,
+    // so keyword-based reviewers see it regardless of language or JS.
+    expect(HOME_HTML).toContain(
+      "HX-Email is a self-hosted email management application",
+    );
+    // The JS language switcher must never rewrite the exact title.
+    expect(HOME_HTML).toContain('document.title = "HX-Email";');
   });
 
   it("covers the privacy-policy sections Google reviewers look for", () => {

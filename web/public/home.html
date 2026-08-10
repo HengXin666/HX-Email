@@ -168,6 +168,11 @@
         color: #8b949e;
         font-size: 18px;
       }
+      .hero .subtitle-en {
+        margin-top: -18px;
+        font-size: 15px;
+        color: #6e7681;
+      }
       .cta-row {
         display: flex;
         justify-content: center;
@@ -366,9 +371,14 @@
       <section class="hero">
         <div class="container">
           <span class="eyebrow" data-i18n="hero.eyebrow">Self-hosted · 自托管多邮箱管理平台</span>
-          <h1>HX<span class="dot">-</span>Email</h1>
+          <h1>HX-Email</h1>
           <p class="subtitle" data-i18n="hero.subtitle">
             HX-Email 集中管理您所有的邮箱账号、临时邮箱与平台绑定，自动读取验证码、按规则收发邮件，让多个账号的管理变得简单而高效。
+          </p>
+          <p class="subtitle subtitle-en">
+            HX-Email is a self-hosted email management application: manage all your mailbox
+            accounts in one place, auto-read verification codes, and send or forward mail on
+            schedule.
           </p>
           <div class="cta-row">
             <a class="btn btn-primary" href="/login" data-i18n="hero.cta">进入控制台</a>
@@ -609,10 +619,10 @@
           });
           var meta = document.querySelector('meta[name="description"]');
           if (meta && dict["meta.description"]) meta.setAttribute("content", dict["meta.description"]);
-          document.title =
-            lang === "en"
-              ? "HX-Email · Unified Multi-Mailbox Management Platform"
-              : "HX-Email · 多邮箱统一管理平台";
+          document.title = "HX-Email";
+          document.querySelectorAll(".subtitle-en").forEach(function (el) {
+            el.style.display = lang === "en" ? "none" : "";
+          });
           document.querySelectorAll(".lang-switch button").forEach(function (btn) {
             var active = btn.getAttribute("data-lang") === lang;
             btn.classList.toggle("active", active);
