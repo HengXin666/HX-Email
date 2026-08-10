@@ -1,0 +1,10 @@
+{
+  "name": "HX-Email",
+  "short_name": "HX-Email",
+  "description": "Self-hosted multi-mailbox management: connect and manage email accounts, auto-read verification codes, and automate mail flows.",
+  "start_url": "/",
+  "display": "standalone",
+  "lang": "zh-CN",
+  "background_color": "#0d1117",
+  "theme_color": "#0d1117"
+}
