@@ -1,18 +1,16 @@
-"""Google site-verification file upload and serving routes."""
+"""Admin routes for managing the Google site-verification file."""
 
 from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Body, FastAPI, Header, HTTPException, Query, status
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Body, Header, HTTPException, Query, status
 
 from hx_email.api.dependencies import require_admin
 from hx_email.config import Settings
 from hx_email.server.google_verification import (
     delete_verification_file,
     list_verification_files,
-    resolve_verification_file,
     save_verification_file,
 )
 
@@ -27,8 +25,7 @@ def register_google_verification_routes(router: APIRouter, settings: Settings) -
         require_admin(settings, authorization)
         return {
             "files": [
-                {"filename": name, "url": f"/{name}"}
-                for name in list_verification_files(settings)
+                {"filename": name, "url": f"/{name}"} for name in list_verification_files(settings)
             ]
         }
 
@@ -62,18 +59,3 @@ def register_google_verification_routes(router: APIRouter, settings: Settings) -
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="验证文件不存在",
             )
-
-
-def register_google_verification_serve_route(app: FastAPI, settings: Settings) -> None:
-    """Public route serving the verification file at the site root.
-
-    Google fetches ``/google<hash>.html`` without any credentials, so this
-    route lives outside /api/v1 and is reachable without auth.
-    """
-
-    @app.get("/{filename}", include_in_schema=False)
-    def serve_google_verification_file(filename: str) -> FileResponse:
-        file_path = resolve_verification_file(settings, filename)
-        if file_path is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
-        return FileResponse(file_path, media_type="text/html")

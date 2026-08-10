@@ -12,8 +12,10 @@ from hx_email.api.impl.external import (
     register_external_system_routes,
     register_external_temp_mail_routes,
 )
-from hx_email.api.impl.google_verification_routes import (
+from hx_email.api.impl.google_verification.admin_routes import (
     register_google_verification_routes,
+)
+from hx_email.api.impl.google_verification.serve_routes import (
     register_google_verification_serve_route,
 )
 from hx_email.api.impl.mail.pool import register_pool_admin_routes
