@@ -11,7 +11,9 @@ import {
   IconServer,
   IconZap,
 } from "../../../components/icons";
+import { ConfirmModal } from "../../../components/ui/ConfirmModal";
 import { Button, Card, Input } from "../../../components/ui/Primitives";
+import { Spinner } from "../../../components/ui/Spinner";
 import { useApp } from "../../../store/AppContext";
 import { SectionHeader, SettingsTabFrame, SettingsToggle, TestResult } from "../SettingsControls";
 import type { SettingsTabProps, TestOutcome } from "../types";
@@ -21,8 +23,24 @@ interface Announcement {
   title: string;
   body: string;
   html_url: string;
+  current_version: string;
   latest_version: string;
   has_update: boolean;
+}
+
+interface UpdateStatus {
+  enabled: boolean;
+  available: boolean;
+  available_reason: string;
+  running: boolean;
+  phase: string;
+  success: boolean | null;
+  message: string;
+  output: string;
+  target_version: string;
+  started_at: string;
+  finished_at: string;
+  last_update: { success?: boolean; version?: string; finished_at?: string };
 }
 
 interface StatusRowProps {
@@ -46,6 +64,8 @@ const StatusRow: React.FC<StatusRowProps> = ({
   </div>
 );
 
+const displayVersion = (value: string): string => `v${value.replace(/^v/i, "")}`;
+
 export const BasicSettingsTab: React.FC<SettingsTabProps> = ({
   settings,
   setSetting,
@@ -62,18 +82,27 @@ export const BasicSettingsTab: React.FC<SettingsTabProps> = ({
   const [version, setVersion] = useState("");
   const [pythonVersion, setPythonVersion] = useState("");
   const [platform, setPlatform] = useState("");
-  const [hasUpdate, setHasUpdate] = useState(false);
   const [repositoryUrl, setRepositoryUrl] = useState("");
   const [isLoadingAnnouncement, setIsLoadingAnnouncement] = useState(false);
   const [announcement, setAnnouncement] = useState<Announcement | null>(null);
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
+  const [isUpdateDialogOpen, setIsUpdateDialogOpen] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   useEffect(() => {
     void api
       .getVersionCheck()
       .then((result) => {
         setVersion(result.current_version || result.version || "");
-        setHasUpdate(result.has_update);
         setRepositoryUrl(result.repository_url || "");
+        setAnnouncement({
+          title: result.title || result.latest_version || result.current_version,
+          body: result.body || "",
+          html_url: result.html_url || "",
+          current_version: result.current_version,
+          latest_version: result.latest_version || result.current_version,
+          has_update: result.has_update,
+        });
       })
       .catch(() => undefined);
     void api
@@ -82,6 +111,10 @@ export const BasicSettingsTab: React.FC<SettingsTabProps> = ({
         setPythonVersion(result.python_version);
         setPlatform(result.platform);
       })
+      .catch(() => undefined);
+    void api
+      .getUpdateStatus()
+      .then(setUpdateStatus)
       .catch(() => undefined);
   }, []);
 
@@ -137,6 +170,43 @@ export const BasicSettingsTab: React.FC<SettingsTabProps> = ({
     } finally {
       setIsLoadingAnnouncement(false);
     }
+  };
+
+  const startUpdate = async (): Promise<void> => {
+    if (!announcement) return;
+    setIsUpdateDialogOpen(false);
+    setIsUpdating(true);
+    try {
+      await api.applyUpdate(announcement.latest_version);
+      toast("更新已启动，正在拉取新镜像…", "info");
+      pollUpdateStatus();
+    } catch (error: unknown) {
+      setIsUpdating(false);
+      toast(error instanceof Error ? error.message : "启动更新失败", "error");
+    }
+  };
+
+  const pollUpdateStatus = (): void => {
+    window.setTimeout(async () => {
+      try {
+        const status = await api.getUpdateStatus();
+        setUpdateStatus(status);
+        if (status.running) {
+          pollUpdateStatus();
+          return;
+        }
+        setIsUpdating(false);
+        if (status.success) {
+          toast("更新完成，页面即将刷新", "success");
+          window.setTimeout(() => window.location.reload(), 1500);
+        } else {
+          toast(status.message || "更新失败", "error");
+        }
+      } catch {
+        // 更新过程中容器会被重建, 连接短暂中断: 等待服务恢复后重载页面
+        window.setTimeout(() => window.location.reload(), 5000);
+      }
+    }, 2000);
   };
 
   return (
@@ -226,9 +296,50 @@ export const BasicSettingsTab: React.FC<SettingsTabProps> = ({
           <StatusRow
             icon={IconDownload}
             label="版本更新"
-            value={hasUpdate ? "有可用更新" : "已是最新"}
-            color={hasUpdate ? "text-gh-warning" : "text-gh-success"}
+            value={announcement?.has_update ? "有可用更新" : "已是最新"}
+            color={announcement?.has_update ? "text-gh-warning" : "text-gh-success"}
           />
+          {updateStatus?.last_update?.success && (
+            <StatusRow
+              icon={IconCheck}
+              label="上次更新"
+              value={`${displayVersion(updateStatus.last_update.version || "")} ${
+                updateStatus.last_update.finished_at || ""
+              }`}
+              color="text-gh-success"
+            />
+          )}
+          {announcement?.has_update && (
+            <div className="rounded-md border border-gh-warning/40 bg-gh-warning/10 p-3">
+              <div className="text-sm font-medium text-gh-warning">
+                发现新版本 {displayVersion(announcement.latest_version)}
+              </div>
+              <div className="mt-1 text-xs text-gh-text-secondary">
+                当前版本 v{announcement.current_version || version} · {announcement.title}
+              </div>
+              {updateStatus && !updateStatus.available && (
+                <div className="mt-2 text-xs text-gh-text-secondary">
+                  {updateStatus.available_reason}
+                </div>
+              )}
+              {!isUpdating && updateStatus?.available && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="mt-2"
+                  onClick={() => setIsUpdateDialogOpen(true)}
+                >
+                  <IconDownload size={13} /> 立即更新
+                </Button>
+              )}
+              {isUpdating && (
+                <div className="mt-2 flex items-center gap-2 text-xs text-gh-text-secondary">
+                  <Spinner size={14} />
+                  {updateStatus?.phase ? `正在更新（${updateStatus.phase}）…` : "正在更新…"}
+                </div>
+              )}
+            </div>
+          )}
           {repositoryUrl && (
             <StatusRow
               icon={IconCode}
@@ -268,6 +379,15 @@ export const BasicSettingsTab: React.FC<SettingsTabProps> = ({
           )}
         </div>
       </Card>
+      <ConfirmModal
+        open={isUpdateDialogOpen}
+        title={`更新到 ${displayVersion(announcement?.latest_version ?? "")}`}
+        message="将自动拉取最新镜像并重建容器，服务会短暂中断（约 10~60 秒），更新期间请勿关闭页面。是否继续？"
+        confirmLabel="确认更新"
+        loading={isUpdating}
+        onConfirm={() => void startUpdate()}
+        onCancel={() => setIsUpdateDialogOpen(false)}
+      />
     </SettingsTabFrame>
   );
 };

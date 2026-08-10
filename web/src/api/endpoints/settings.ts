@@ -83,10 +83,17 @@ export const settingsApi = {
 
   getVersionCheck: () =>
     request<{
+      success?: boolean;
+      source?: string;
       version?: string;
       current_version: string;
       latest_version?: string;
       has_update: boolean;
+      up_to_date?: boolean;
+      title?: string;
+      body?: string;
+      html_url?: string;
+      published_at?: string;
       repository_url?: string;
     }>("/system/version-check"),
 
@@ -97,12 +104,56 @@ export const settingsApi = {
       current_version: string;
       latest_version: string;
       has_update: boolean;
+      up_to_date: boolean;
       title: string;
       body: string;
       html_url: string;
       published_at: string;
       repository_url: string;
     }>("/system/update-announcement"),
+
+  getUpdateStatus: () =>
+    request<{
+      enabled: boolean;
+      available: boolean;
+      available_reason: string;
+      running: boolean;
+      phase: string;
+      success: boolean | null;
+      message: string;
+      output: string;
+      target_version: string;
+      started_at: string;
+      finished_at: string;
+      last_update: {
+        success?: boolean;
+        version?: string;
+        finished_at?: string;
+      };
+    }>("/system/update/status"),
+
+  applyUpdate: (version: string) =>
+    request<{
+      enabled: boolean;
+      available: boolean;
+      available_reason: string;
+      running: boolean;
+      phase: string;
+      success: boolean | null;
+      message: string;
+      output: string;
+      target_version: string;
+      started_at: string;
+      finished_at: string;
+      last_update: {
+        success?: boolean;
+        version?: string;
+        finished_at?: string;
+      };
+    }>("/system/update/apply", {
+      method: "POST",
+      body: JSON.stringify({ version }),
+    }),
 
   getDeploymentInfo: () =>
     request<{ python_version: string; platform: string }>("/system/deployment-info"),

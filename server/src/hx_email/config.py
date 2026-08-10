@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     sync_url: str = ""
     sync_token: str = ""
     sync_interval_seconds: int = 300
+    # Docker 自动更新: compose 部署时由环境变量传入 (默认 true), 本地开发默认关闭
+    update_enabled: bool = False
+    update_compose_dir: str = "/compose"
+    update_compose_file: str = ""
+    update_image: str = ""
+    update_timeout_seconds: int = 900
 
     @property
     def database_path(self) -> Path:

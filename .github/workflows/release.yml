@@ -1,0 +1,125 @@
+name: release
+
+# 自动构建 Docker 镜像并发布 GitHub Release。
+# 触发方式:
+#   1. 推送 v* 标签 (如 v0.3.0) -> 构建并发布该版本
+#   2. 手动 workflow_dispatch 填版本号 -> 打 v<version> 标签并发布
+# 镜像推送到 ghcr.io/<owner>/hx-email-server 与 hx-email-web, 打 v<version> 与 latest 两个标签。
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "发布版本号 (如 1.2.3, 会打 v1.2.3 标签)"
+        required: false
+        default: ""
+
+env:
+  REGISTRY: ghcr.io
+  IMAGES: hx-email-server hx-email-web
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync
+      - run: npm ci --prefix web
+      - name: Install Playwright Chromium
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+      - run: bash scripts/verify.sh
+
+  build-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      packages: write
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="${{ github.event.inputs.version }}"
+          fi
+          if [ -z "$VERSION" ]; then
+            VERSION="$(sed -n 's/.*VERSION: str = "\([0-9][0-9.]*\)".*/\1/p' server/src/hx_email/server/settings_service.py | head -1)"
+          fi
+          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Invalid version: $VERSION" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Releasing v$VERSION"
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push server image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./server
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ lower(github.repository_owner) }}/hx-email-server:v${{ steps.version.outputs.version }}
+            ${{ env.REGISTRY }}/${{ lower(github.repository_owner) }}/hx-email-server:latest
+          build-args: |
+            APP_VERSION=${{ steps.version.outputs.version }}
+          cache-from: type=gha,scope=hx-email-server
+          cache-to: type=gha,mode=max,scope=hx-email-server
+
+      - name: Build and push web image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./web
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ lower(github.repository_owner) }}/hx-email-web:v${{ steps.version.outputs.version }}
+            ${{ env.REGISTRY }}/${{ lower(github.repository_owner) }}/hx-email-web:latest
+          cache-from: type=gha,scope=hx-email-web
+          cache-to: type=gha,mode=max,scope=hx-email-web
+
+  release:
+    needs: [verify, build-push]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.build-push.outputs.version }}
+          name: v${{ needs.build-push.outputs.version }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false

@@ -13,6 +13,7 @@ name: hx-email
 services:
   backend:
     build: ./server
+    image: ghcr.io/hengsixin666/hx-email-server:${HX_EMAIL_IMAGE_TAG:-latest}
     restart: unless-stopped
     extra_hosts:
       # 让容器内的 host.docker.internal 指向宿主机 (Linux 上也生效)
@@ -26,10 +27,17 @@ services:
       HX_EMAIL_SYNC_URL: ${HX_EMAIL_SYNC_URL:-}
       HX_EMAIL_SYNC_TOKEN: ${HX_EMAIL_SYNC_TOKEN:-}
       HX_EMAIL_SYNC_INTERVAL_SECONDS: ${HX_EMAIL_SYNC_INTERVAL_SECONDS:-300}
+      # Docker 自动更新 (设置 → 系统状态 → 立即更新): 需要挂载 docker.sock 与 ./:/compose
+      HX_EMAIL_UPDATE_ENABLED: ${HX_EMAIL_UPDATE_ENABLED:-true}
+      HX_EMAIL_UPDATE_COMPOSE_DIR: /compose
+      HX_EMAIL_UPDATE_IMAGE: ghcr.io/hengsixin666/hx-email-server:${HX_EMAIL_IMAGE_TAG:-latest}
       HX_EMAIL_BIND_HOST: 0.0.0.0
       HX_EMAIL_BACKEND_PORT: "18090"
     volumes:
       - ./data:/data
+      # 自动更新所需: docker socket (宿主 Docker 控制权) + 仓库目录 (compose 文件/.env)
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./:/compose:ro
     healthcheck:
       test:
         - CMD
@@ -43,6 +51,7 @@ services:
 
   frontend:
     build: ./web
+    image: ghcr.io/hengsixin666/hx-email-web:${HX_EMAIL_IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
       backend:

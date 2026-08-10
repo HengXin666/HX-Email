@@ -2,6 +2,7 @@
 
 import base64
 import json
+import os
 import secrets
 from typing import Any
 from urllib.parse import urlparse
@@ -10,7 +11,7 @@ from hx_email.config import Settings
 from hx_email.database import connect
 from hx_email.security import ENCRYPTED_PREFIX, decrypt_secret, encrypt_secret
 
-VERSION: str = "0.2.0"
+VERSION: str = os.environ.get("HX_EMAIL_APP_VERSION", "0.2.0")
 PROJECT_REPOSITORY_URL: str = "https://github.com/HengXin666/HX-Email"
 
 SETTINGS_DEFAULTS: dict[str, str] = {

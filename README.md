@@ -68,7 +68,17 @@ HX-Email 是一款面向「注册与验证」场景的现代化邮箱管理平�
 - Gmail 账号接入：OAuth 一键授权或应用专用密码
 - 面向 Google OAuth 品牌验证就绪：公开首页、隐私政策、服务条款页面，后台支持上传 Google 站点验证文件
 
-### 主从同步（双向收敛）
+### 自动构建与发布
+
+仓库内置 GitHub Actions 流水线（`.github/workflows/release.yml`），推送到 `v*` 标签（如 `v0.3.0`）时自动完成：
+
+1. 运行完整验证（`bash scripts/verify.sh`）；
+2. 构建并推送 `linux/amd64` 与 `linux/arm64` 双架构镜像到 GitHub Container Registry（`hx-email-server` / `hx-email-web`，打 `vX.Y.Z` 与 `latest` 两个标签）；
+3. 创建 GitHub Release（自动生成变更说明）。
+
+也可在 Actions 页面手动触发 `release` 工作流并填写版本号（如 `0.3.0`），效果相同。发布后，已有部署在「设置 → 系统状态」点击「立即更新」即可升级。
+
+## 主从同步（双向收敛）
 
 - 适合「VPS 主实例 + 本地从机」场景：主 → 从拉取 + 从 → 主推送，两端只增不删、按自然键去重
 - 同步覆盖用户、邮箱账号、可用邮箱、分组 / 标签、平台绑定、临时邮箱、邮箱池、验证码记录、已收邮件与数据目录文件
@@ -88,12 +98,12 @@ HX-Email 是一款面向「注册与验证」场景的现代化邮箱管理平�
 
 ## 技术栈
 
-| 层 | 技术 |
-| --- | --- |
-| 后端 | Python 3.12 · FastAPI · uvicorn · SQLite · uv |
+| 层   | 技术                                                                                                      |
+| ---- | --------------------------------------------------------------------------------------------------------- |
+| 后端 | Python 3.12 · FastAPI · uvicorn · SQLite · uv                                                             |
 | 前端 | React 19 · TypeScript 5.7 · Vite 5 · Tailwind CSS 3 · shadcn/ui · Radix UI · framer-motion · lucide-react |
-| 部署 | Docker · Docker Compose · nginx（前端静态托管与反向代理） |
-| 质量 | ruff · mypy · biome · tsc · knip · Vitest · pytest · Playwright |
+| 部署 | Docker · Docker Compose · nginx（前端静态托管与反向代理）                                                 |
+| 质量 | ruff · mypy · biome · tsc · knip · Vitest · pytest · Playwright                                           |
 
 ## Docker 部署
 
@@ -117,17 +127,19 @@ cp .env.example .env
 
 用任意文本编辑器打开 `.env`，按需修改：
 
-| 变量 | 说明 | 默认值 |
-| --- | --- | --- |
-| `HX_EMAIL_ADMIN_USERNAME` | 初始管理员用户名（仅首次建库时生效） | `admin` |
-| `HX_EMAIL_ADMIN_PASSWORD` | 初始管理员密码（生产环境务必修改） | `admin` |
-| `HX_EMAIL_SECRET_KEY` | 生产环境建议设置一长串随机值并保持不变；用于加密凭据，迁移时两端必须一致 | 空（自动生成） |
-| `HX_EMAIL_DATA_DIR` | 本地开发时数据库与静态文件目录 | `data` |
-| `HX_EMAIL_HTTP_PORT` | Web 界面对外端口 | `8080` |
-| `HX_EMAIL_BACKEND_PORT` | 后端端口（host 模式下仅监听 127.0.0.1，不对外暴露） | `18090` |
-| `HX_EMAIL_SYNC_URL` | 主实例地址（从机同步时填写，如 `http://vps.example.com:8080`） | 空 |
-| `HX_EMAIL_SYNC_TOKEN` | 主实例管理员 Bearer token（登录接口返回） | 空 |
-| `HX_EMAIL_SYNC_INTERVAL_SECONDS` | 从机同步周期（秒）；`0` 表示仅启动时同步一次 | `300` |
+| 变量                             | 说明                                                                     | 默认值         |
+| -------------------------------- | ------------------------------------------------------------------------ | -------------- |
+| `HX_EMAIL_ADMIN_USERNAME`        | 初始管理员用户名（仅首次建库时生效）                                     | `admin`        |
+| `HX_EMAIL_ADMIN_PASSWORD`        | 初始管理员密码（生产环境务必修改）                                       | `admin`        |
+| `HX_EMAIL_SECRET_KEY`            | 生产环境建议设置一长串随机值并保持不变；用于加密凭据，迁移时两端必须一致 | 空（自动生成） |
+| `HX_EMAIL_DATA_DIR`              | 本地开发时数据库与静态文件目录                                           | `data`         |
+| `HX_EMAIL_HTTP_PORT`             | Web 界面对外端口                                                         | `8080`         |
+| `HX_EMAIL_BACKEND_PORT`          | 后端端口（host 模式下仅监听 127.0.0.1，不对外暴露）                      | `18090`        |
+| `HX_EMAIL_SYNC_URL`              | 主实例地址（从机同步时填写，如 `http://vps.example.com:8080`）           | 空             |
+| `HX_EMAIL_SYNC_TOKEN`            | 主实例管理员 Bearer token（登录接口返回）                                | 空             |
+| `HX_EMAIL_SYNC_INTERVAL_SECONDS` | 从机同步周期（秒）；`0` 表示仅启动时同步一次                             | `300`          |
+| `HX_EMAIL_UPDATE_ENABLED`        | Docker 自动更新开关（设置 → 系统状态 → 立即更新）                        | `true`         |
+| `HX_EMAIL_IMAGE_TAG`             | 拉取/构建镜像使用的标签（发布镜像同时打 `vX.Y.Z` 与 `latest`）           | `latest`       |
 
 注意事项：
 
@@ -151,6 +163,8 @@ docker compose -f docker-compose.bridge.yml up -d --build
 
 启动完成后浏览器打开 <http://127.0.0.1:8080>，使用初始账号 `admin` / `admin` 登录（生产环境请先修改）。
 
+> 镜像说明：每次发布版本时，流水线会自动构建并推送 `ghcr.io/<owner>/hx-email-server` 与 `ghcr.io/<owner>/hx-email-web`（同时打 `vX.Y.Z` 与 `latest` 标签）。本地 `docker compose up -d --build` 会优先从源码构建；不带 `--build` 时若本地没有镜像则会拉取对应标签的发布镜像。
+
 **代理填写说明**：系统中的分组代理 / Telegram 代理经常填写 `http://127.0.0.1:7890` 这类宿主机本地代理（Clash / V2Ray 等）。
 
 - host 网络模式（Linux 默认）：容器与宿主机共享网络栈，`127.0.0.1:xxx` 直接生效
@@ -158,10 +172,26 @@ docker compose -f docker-compose.bridge.yml up -d --build
 
 ### 更新与升级
 
+**方式一：界面一键更新（推荐）**
+
+登录后进入「设置 → 系统状态」：
+
+1. 点击「获取更新公告」或打开页面时自动检查，若发现新版本会显示更新提示（更新公告来自 GitHub Releases）；
+2. 点击「立即更新」并确认，系统会自动拉取最新镜像并重建容器，服务短暂中断后自动恢复；
+3. 更新完成后页面自动刷新，显示新的版本号。
+
+该功能由后端通过宿主机 Docker socket 执行 `docker compose pull` + `docker compose up -d` 完成（更新容器独立于当前容器运行，重建过程中不会中断）。compose 文件默认挂载了 `/var/run/docker.sock` 与 `./:/compose` 并默认启用 `HX_EMAIL_UPDATE_ENABLED=true`。
+
+> ⚠️ 安全提示：挂载 docker socket 等于把宿主机的 Docker 控制权交给容器内进程，仅建议在可信主机上使用。不需要该功能时，在 `.env` 设置 `HX_EMAIL_UPDATE_ENABLED=false` 并删除 compose 文件中对应的两行挂载即可。
+
+**方式二：手动更新**
+
 ```bash
 git pull
 docker compose up -d --build
 ```
+
+两种方式都会执行数据库迁移，原有 `./data` 数据保持不变。
 
 ### 数据持久化与迁移
 
