@@ -15,7 +15,9 @@
 ## 控制台侧配置(部署方手工操作)
 
 1. **域名所有权验证**(解决"首页网址对应的网站未注册到名下"):
-   - 在 [Google Search Console](https://search.google.com/search-console) 添加资源,选择域名方式并添加 DNS TXT 记录,或按 `https://email.woa.qzz.io/` 添加"网址前缀"资源并完成验证。
+   - 在 [Google Search Console](https://search.google.com/search-console) 添加资源,推荐"网址前缀"方式并按 `https://email.woa.qzz.io/` 添加,验证方式选择"HTML 文件"。
+   - 下载 Google 生成的 `google<hash>.html` 文件,在 HX-Email 管理后台「系统设置 → 基础 → Google 站点验证」中上传;系统会把它公开提供在 `https://email.woa.qzz.io/google<hash>.html`,点击 Search Console 的"验证"即可完成。
+   - 若希望用域名方式验证,也可添加 DNS TXT 记录。
    - 在 Google Cloud Console 的 OAuth 同意屏幕 -> "授权网域" 中加入 `email.woa.qzz.io`(必须是已验证域名)。
 2. **应用名称统一为 `HX-Email`**(解决"应用名称与首页不一致"):
    - OAuth 同意屏幕的"应用名称"当前配置为 `HX-EMail`,需改为与首页一致的 `HX-Email`。

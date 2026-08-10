@@ -7,6 +7,7 @@ import { auditApi } from "./endpoints/audit";
 import { authApi } from "./endpoints/auth";
 import { backupApi } from "./endpoints/backup";
 import { emailsApi } from "./endpoints/emails";
+import { googleVerificationApi } from "./endpoints/google-verification";
 import { groupsApi } from "./endpoints/groups";
 import { overviewApi } from "./endpoints/overview";
 import { platformsApi } from "./endpoints/platforms";
@@ -26,6 +27,7 @@ export const api = {
   ...poolApi,
   ...tokenApi,
   ...tempMailApi,
+  ...googleVerificationApi,
   ...refreshApi,
   ...settingsApi,
   ...auditApi,

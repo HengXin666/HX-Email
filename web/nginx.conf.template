@@ -63,6 +63,16 @@ server {
     # reviewers) can learn about the app without logging in first.
     location = / { return 301 /home.html; }
 
+    # Google site-verification files uploaded through the admin UI are stored
+    # on the backend; proxy the exact /google<hash>.html paths so Google can
+    # fetch them unauthenticated.
+    location ~ ^/google[0-9a-z]+\.html$ {
+        proxy_pass ${API_TARGET};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
     # SPA fallback for react-router paths
     location / {
         try_files $uri /index.html;

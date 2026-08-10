@@ -49,9 +49,12 @@ async function apiFetch(path: string, init: RequestInit = {}): Promise<Response>
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = getStoredToken();
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
     ...(init.headers as Record<string, string>),
   };
+  // Default to JSON unless the caller picked a body type of its own.
+  if (!("Content-Type" in headers)) {
+    headers["Content-Type"] = "application/json";
+  }
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
   const res = await apiFetch(path, { ...init, headers });
