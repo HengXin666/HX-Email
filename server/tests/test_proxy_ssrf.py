@@ -9,6 +9,7 @@ from hx_email.app import create_app
 from hx_email.config import Settings
 from hx_email.database import migrate
 from hx_email.server.mail.imap.impl.address_guard import (
+    resolve_proxy_host,
     validate_proxy_endpoint,
     validate_proxy_host,
 )
@@ -47,6 +48,19 @@ def test_proxy_validation_allows_public_addresses() -> None:
     assert validate_proxy_endpoint("1.1.1.1:3128") == ("1.1.1.1", 3128)
 
 
+def test_proxy_validation_rejects_ipv4_mapped_ipv6() -> None:
+    for proxy_url in [
+        "http://[::ffff:127.0.0.1]:8080",
+        "http://[::ffff:10.0.0.1]:3128",
+        "http://[::ffff:169.254.169.254]:80",
+        "http://[::ffff:7f00:1]:8080",
+        "http://[64:ff9b::a00:1]:8080",
+        "http://[::ffff:8.8.8.8]:8080",
+    ]:
+        with pytest.raises(ValueError):
+            validate_proxy_endpoint(proxy_url)
+
+
 def test_proxy_validation_rejects_hostname_resolving_to_private(monkeypatch) -> None:
     monkeypatch.setattr(
         "hx_email.server.mail.imap.impl.address_guard.socket.getaddrinfo",
@@ -62,6 +76,51 @@ def test_proxy_validation_allows_hostname_resolving_to_public(monkeypatch) -> No
         lambda host, port: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 0))],
     )
     assert validate_proxy_host("proxy.example.com") == "proxy.example.com"
+
+
+def test_resolve_proxy_host_pins_resolved_ip(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "hx_email.server.mail.imap.impl.address_guard.socket.getaddrinfo",
+        lambda host, port: [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 0)),
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.4.4", 0)),
+        ],
+    )
+    assert resolve_proxy_host("proxy.example.com") == "8.8.8.8"
+
+
+def test_resolve_proxy_host_rejects_any_private_resolved_address(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "hx_email.server.mail.imap.impl.address_guard.socket.getaddrinfo",
+        lambda host, port: [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 0)),
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.5", 0)),
+        ],
+    )
+    with pytest.raises(ValueError):
+        resolve_proxy_host("proxy.example.com")
+
+
+def test_http_connect_via_proxy_connects_to_pinned_ip(monkeypatch) -> None:
+    resolutions: list[str] = []
+
+    def fake_getaddrinfo(host: str, port: int) -> list:
+        resolutions.append(host)
+        if len(resolutions) == 1:
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 0))]
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.5", 0))]
+
+    monkeypatch.setattr(
+        "hx_email.server.mail.imap.impl.address_guard.socket.getaddrinfo",
+        fake_getaddrinfo,
+    )
+    with patch(
+        "hx_email.server.mail.imap.impl.proxy.socket.create_connection"
+    ) as create_connection:
+        create_connection.return_value = FakeProxySocket()
+        http_connect_via_proxy("http://proxy.example.com:2334", "smtp.gmail.com", 587)
+    create_connection.assert_called_once_with(("8.8.8.8", 2334), timeout=30)
+    assert resolutions == ["proxy.example.com"]
 
 
 def test_proxy_test_endpoint_rejects_private_proxy(tmp_path) -> None:

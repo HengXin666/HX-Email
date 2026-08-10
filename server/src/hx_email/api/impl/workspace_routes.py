@@ -12,7 +12,10 @@ from hx_email.api.dependencies import require_user
 from hx_email.api.schemas import GroupCreate, TagCreate, UsableEmailOrganization
 from hx_email.api.serializers import serialize_workbench_email, serialize_workbench_overview
 from hx_email.config import Settings
-from hx_email.server.mail.imap.impl.address_guard import validate_proxy_endpoint
+from hx_email.server.mail.imap.impl.address_guard import (
+    resolve_proxy_endpoint,
+    validate_proxy_endpoint,
+)
 from hx_email.server.workspace.groups import (
     create_group,
     create_tag,
@@ -43,7 +46,7 @@ def _test_proxy_connect(proxy_url: str) -> dict[str, object]:
         return {"success": False, "latency_ms": 0, "message": "代理地址为空"}
 
     try:
-        proxy_host, proxy_port = validate_proxy_endpoint(proxy_url)
+        proxy_host, proxy_port = resolve_proxy_endpoint(proxy_url)
     except ValueError as error:
         return {"success": False, "latency_ms": 0, "message": str(error)}
     start: float = time.monotonic()
