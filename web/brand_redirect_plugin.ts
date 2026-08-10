@@ -4,6 +4,7 @@ import type { Plugin } from "vite";
 // clean URLs. nginx.conf.template redirects these paths to the .html files in
 // production; this plugin keeps dev and preview behavior identical.
 const BRAND_REDIRECTS: Record<string, string> = {
+  "/": "/home.html",
   "/home": "/home.html",
   "/home/": "/home.html",
   "/privacy": "/privacy.html",

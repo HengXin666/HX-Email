@@ -59,6 +59,10 @@ server {
     location = /privacy/ { return 301 /privacy.html; }
     location = /privacy-policy { return 301 /privacy.html; }
 
+    # Site root serves the public brand homepage, so visitors (and Google
+    # reviewers) can learn about the app without logging in first.
+    location = / { return 301 /home.html; }
+
     # SPA fallback for react-router paths
     location / {
         try_files $uri /index.html;

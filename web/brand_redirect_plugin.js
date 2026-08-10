@@ -2,6 +2,7 @@
 // clean URLs. nginx.conf.template redirects these paths to the .html files in
 // production; this plugin keeps dev and preview behavior identical.
 var BRAND_REDIRECTS = {
+    "/": "/home.html",
     "/home": "/home.html",
     "/home/": "/home.html",
     "/privacy": "/privacy.html",
