@@ -27,6 +27,21 @@ describe("public brand pages", () => {
     expect(HOME_HTML).not.toContain("HX-EMail");
   });
 
+  it("shows the app name prominently and supports bilingual content", () => {
+    // The app name must be the visible H1 heading, not just a side mention.
+    const h1 = HOME_HTML.match(/<h1[^>]*>([\s\S]*?)<\/h1>/)?.[1] ?? "";
+    expect(h1.replace(/<[^>]+>/g, "").trim()).toBe("HX-Email");
+    // Bilingual switcher with zh-CN default and an English option.
+    expect(HOME_HTML).toContain('data-lang="zh-CN"');
+    expect(HOME_HTML).toContain('data-lang="en"');
+    expect(HOME_HTML).toContain("hx-home-lang");
+    expect(HOME_HTML).toContain('"nav.console": "Open Console"');
+    // A section that transparently explains why the app requests user data.
+    expect(HOME_HTML).toContain('id="data"');
+    expect(HOME_HTML).toContain("为什么 HX-Email 需要您的数据");
+    expect(HOME_HTML).toContain("Why HX-Email Needs Your Data");
+  });
+
   it("covers the privacy-policy sections Google reviewers look for", () => {
     expect(PRIVACY_HTML).toContain("<title>隐私政策");
     expect(PRIVACY_HTML).toContain("生效日期");
