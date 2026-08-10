@@ -29,6 +29,7 @@ COLUMN_MIGRATIONS: tuple[tuple[str, str, str], ...] = (
     ("groups", "proxy_url", "TEXT NOT NULL DEFAULT ''"),
     ("groups", "notify_enabled", "INTEGER NOT NULL DEFAULT 1"),
     ("fetched_messages", "message_id", "TEXT NOT NULL DEFAULT ''"),
+    ("sessions", "expires_at", "TEXT NOT NULL DEFAULT ''"),
 )
 
 
@@ -75,7 +76,8 @@ def migrate(settings: Settings) -> Path:
             """
             CREATE TABLE IF NOT EXISTS sessions (
                 token TEXT PRIMARY KEY,
-                user_id INTEGER NOT NULL REFERENCES users(id)
+                user_id INTEGER NOT NULL REFERENCES users(id),
+                expires_at TEXT NOT NULL DEFAULT ''
             )
             """
         )

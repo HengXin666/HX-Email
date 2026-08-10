@@ -96,3 +96,54 @@ def test_login_success_resets_failure_counter(tmp_path) -> None:
         json={"username": "admin", "password": "admin"},
     )
     assert ok_again.status_code == 200
+
+
+def test_login_rate_limit_ignores_spoofed_xff_rotation(tmp_path) -> None:
+    """Rotating the client-supplied X-Forwarded-For prefix must not reset the limiter."""
+    settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
+    migrate(settings)
+    client = TestClient(create_app(settings), client=("203.0.113.9", 1234))
+
+    for attempt in range(5):
+        response = client.post(
+            f"{API}/auth/login",
+            json={"username": "xff-rotation-victim-1", "password": "wrong"},
+            headers={"X-Forwarded-For": f"203.0.113.{200 + attempt}, 10.0.0.1"},
+        )
+        assert response.status_code == 401
+
+    locked = client.post(
+        f"{API}/auth/login",
+        json={"username": "xff-rotation-victim-1", "password": "wrong"},
+        headers={"X-Forwarded-For": "203.0.113.250, 10.0.0.1"},
+    )
+    assert locked.status_code == 429
+    assert int(locked.headers["Retry-After"]) >= 1
+
+
+def test_login_rate_limit_honors_trusted_cf_connecting_ip(tmp_path) -> None:
+    """A trusted proxy header pins the bucket even when XFF prefix rotates."""
+    settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
+    migrate(settings)
+    client = TestClient(create_app(settings), client=("203.0.113.10", 1234))
+
+    for attempt in range(5):
+        response = client.post(
+            f"{API}/auth/login",
+            json={"username": "xff-rotation-victim-2", "password": "wrong"},
+            headers={
+                "CF-Connecting-IP": "198.51.100.7",
+                "X-Forwarded-For": f"203.0.113.{200 + attempt}, 198.51.100.7",
+            },
+        )
+        assert response.status_code == 401
+
+    locked = client.post(
+        f"{API}/auth/login",
+        json={"username": "xff-rotation-victim-2", "password": "wrong"},
+        headers={
+            "CF-Connecting-IP": "198.51.100.7",
+            "X-Forwarded-For": "203.0.113.250, 198.51.100.7",
+        },
+    )
+    assert locked.status_code == 429

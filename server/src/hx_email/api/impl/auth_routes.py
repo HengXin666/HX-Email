@@ -1,3 +1,4 @@
+import ipaddress
 from typing import Annotated
 
 from fastapi import APIRouter, Header, HTTPException, Request, status
@@ -19,12 +20,36 @@ from hx_email.server.auth import (
 )
 
 
+def _is_ip_literal(value: str) -> bool:
+    try:
+        ipaddress.ip_address(value)
+    except ValueError:
+        return False
+    return True
+
+
 def _client_ip(request: Request) -> str:
-    forwarded: str | None = request.headers.get("x-forwarded-for")
-    if forwarded:
-        first: str = forwarded.split(",")[0].strip()
-        if first:
-            return first
+    """Resolve the real client IP from trusted proxy headers.
+
+    Cloudflare sets ``CF-Connecting-IP`` to the visitor IP and nginx
+    overwrites ``X-Real-IP`` with ``$remote_addr``; both cannot be forged
+    by end clients through the documented proxy chain. ``X-Forwarded-For``
+    is only consulted when a trusted proxy header is already present, and
+    only its rightmost entry (the one appended by nginx) is honored, so
+    rotating the client-supplied prefix cannot reset the login rate limiter.
+    """
+    cf_ip: str | None = request.headers.get("cf-connecting-ip")
+    if cf_ip and _is_ip_literal(cf_ip):
+        return cf_ip
+    real_ip: str | None = request.headers.get("x-real-ip")
+    if real_ip and _is_ip_literal(real_ip):
+        return real_ip
+    if cf_ip or real_ip:
+        forwarded: str | None = request.headers.get("x-forwarded-for")
+        if forwarded:
+            entries: list[str] = [part.strip() for part in forwarded.split(",") if part.strip()]
+            if entries and _is_ip_literal(entries[-1]):
+                return entries[-1]
     if request.client is not None:
         return request.client.host
     return "unknown"

@@ -241,3 +241,45 @@ def test_snapshot_endpoint_requires_admin_and_reports_status(tmp_path: Path) -> 
     status_response = client.get("/api/v1/sync/status", headers=admin_headers)
     assert status_response.status_code == 200
     assert status_response.json()["enabled"] is False
+
+
+def test_sync_status_redacts_master_url(tmp_path: Path) -> None:
+    from hx_email.server.sync.scheduler import (
+        SyncScheduler,
+        get_sync_status,
+        register_sync_scheduler,
+        unregister_sync_scheduler,
+    )
+
+    settings: Settings = Settings(
+        data_dir=tmp_path / "slave",
+        admin_username="admin",
+        admin_password="admin-password",
+        sync_url="https://internal-master.example.internal:18090",
+        sync_token="secret-token",
+    )
+    migrate(settings)
+    scheduler = SyncScheduler(settings)
+    scheduler.last_run = "2026-08-10T00:00:00Z"
+    scheduler.last_error = (
+        "Could not reach master at https://internal-master.example.internal:18090: timed out"
+    )
+    sync_error = (
+        "Could not reach master at https://internal-master.example.internal:18090: timed out"
+    )
+    scheduler.last_summary = {
+        "error": sync_error,
+        "tables": {},
+        "files": {},
+    }
+    register_sync_scheduler(settings, scheduler)
+    try:
+        status: dict[str, object] = get_sync_status(settings)
+    finally:
+        unregister_sync_scheduler(settings, scheduler)
+
+    assert "internal-master.example.internal" not in str(status["last_error"])
+    assert "<master-url>" in str(status["last_error"])
+    summary: dict[str, object] = dict(status["last_summary"])
+    assert "internal-master.example.internal" not in str(summary.get("error", ""))
+    assert "<master-url>" in str(summary.get("error", ""))
