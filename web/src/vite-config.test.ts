@@ -42,6 +42,7 @@ describe("brand pages redirects (dev server)", () => {
 
   test("redirects clean brand paths to the static pages", async () => {
     const expected: Array<[string, string]> = [
+      ["/", "/home.html"],
       ["/home", "/home.html"],
       ["/home/", "/home.html"],
       ["/privacy", "/privacy.html"],

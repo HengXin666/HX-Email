@@ -17,6 +17,12 @@ describe("public brand pages", () => {
     expect(HOME_HTML).toContain('href="/privacy.html"');
     // The page must link back into the real app so it is a genuine landing page.
     expect(HOME_HTML).toContain('href="/login"');
+    // The homepage has to state what the application is for.
+    expect(HOME_HTML).toContain("集中管理");
+    expect(HOME_HTML).toContain("验证码");
+    // The OAuth consent-screen app name must match the homepage brand name.
+    expect(HOME_HTML).toContain("HX-Email");
+    expect(HOME_HTML).not.toContain("HX-EMail");
   });
 
   it("covers the privacy-policy sections Google reviewers look for", () => {
