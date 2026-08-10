@@ -15,6 +15,7 @@ def merge_groups(
     connection: sqlite3.Connection,
     user_ids: dict[int, int],
     rows: list[dict[str, Any]],
+    overwrite: bool = True,
 ) -> dict[int, int]:
     ids: dict[int, int] = {}
     for row in rows:
@@ -23,17 +24,18 @@ def merge_groups(
             "SELECT id FROM groups WHERE user_id = ? AND name = ?", (user_id, row["name"])
         ).fetchone()
         if existing is not None:
-            connection.execute(
-                "UPDATE groups SET color = ?, proxy_url = ?, notify_enabled = ?,"
-                " polling_enabled = ? WHERE id = ?",
-                (
-                    row["color"],
-                    row["proxy_url"],
-                    int(bool(row["notify_enabled"])),
-                    int(bool(row["polling_enabled"])),
-                    existing[0],
-                ),
-            )
+            if overwrite:
+                connection.execute(
+                    "UPDATE groups SET color = ?, proxy_url = ?, notify_enabled = ?,"
+                    " polling_enabled = ? WHERE id = ?",
+                    (
+                        row["color"],
+                        row["proxy_url"],
+                        int(bool(row["notify_enabled"])),
+                        int(bool(row["polling_enabled"])),
+                        existing[0],
+                    ),
+                )
             ids[int(row["id"])] = int(existing[0])
         else:
             cursor = connection.execute(
@@ -56,6 +58,7 @@ def merge_tags(
     connection: sqlite3.Connection,
     user_ids: dict[int, int],
     rows: list[dict[str, Any]],
+    overwrite: bool = True,
 ) -> dict[int, int]:
     ids: dict[int, int] = {}
     for row in rows:
@@ -64,9 +67,10 @@ def merge_tags(
             "SELECT id FROM tags WHERE user_id = ? AND name = ?", (user_id, row["name"])
         ).fetchone()
         if existing is not None:
-            connection.execute(
-                "UPDATE tags SET color = ? WHERE id = ?", (row["color"], existing[0])
-            )
+            if overwrite:
+                connection.execute(
+                    "UPDATE tags SET color = ? WHERE id = ?", (row["color"], existing[0])
+                )
             ids[int(row["id"])] = int(existing[0])
         else:
             cursor = connection.execute(
@@ -83,6 +87,7 @@ def merge_email_accounts(
     user_ids: dict[int, int],
     group_ids: dict[int, int],
     rows: list[dict[str, Any]],
+    overwrite: bool = True,
 ) -> dict[int, int]:
     ids: dict[int, int] = {}
     for row in rows:
@@ -111,14 +116,15 @@ def merge_email_accounts(
             row.get("last_refresh_at"),
         )
         if existing is not None:
-            connection.execute(
-                "UPDATE email_accounts SET user_id = ?, provider = ?, primary_address = ?,"
-                " display_name = ?, imap_host = ?, imap_port = ?, username = ?,"
-                " imap_password = ?, client_id = ?, refresh_token = ?, status = ?,"
-                " group_id = ?, remark = ?, telegram_enabled = ?, last_refresh_at = ?"
-                " WHERE id = ?",
-                (*values, existing[0]),
-            )
+            if overwrite:
+                connection.execute(
+                    "UPDATE email_accounts SET user_id = ?, provider = ?, primary_address = ?,"
+                    " display_name = ?, imap_host = ?, imap_port = ?, username = ?,"
+                    " imap_password = ?, client_id = ?, refresh_token = ?, status = ?,"
+                    " group_id = ?, remark = ?, telegram_enabled = ?, last_refresh_at = ?"
+                    " WHERE id = ?",
+                    (*values, existing[0]),
+                )
             ids[int(row["id"])] = int(existing[0])
         else:
             cursor = connection.execute(
@@ -138,6 +144,7 @@ def merge_usable_emails(
     account_ids: dict[int, int],
     group_ids: dict[int, int],
     rows: list[dict[str, Any]],
+    overwrite: bool = True,
 ) -> dict[int, int]:
     ids: dict[int, int] = {}
     for row in rows:
@@ -161,12 +168,13 @@ def merge_usable_emails(
             row.get("created_at") or utc_now_iso(),
         )
         if existing is not None:
-            connection.execute(
-                "UPDATE usable_emails SET user_id = ?, email_account_id = ?, address = ?,"
-                " label = ?, kind = ?, status = ?, active = ?, group_id = ?,"
-                " notify_enabled = ?, created_at = ? WHERE id = ?",
-                (*values, existing[0]),
-            )
+            if overwrite:
+                connection.execute(
+                    "UPDATE usable_emails SET user_id = ?, email_account_id = ?, address = ?,"
+                    " label = ?, kind = ?, status = ?, active = ?, group_id = ?,"
+                    " notify_enabled = ?, created_at = ? WHERE id = ?",
+                    (*values, existing[0]),
+                )
             ids[int(row["id"])] = int(existing[0])
         else:
             cursor = connection.execute(
@@ -222,6 +230,7 @@ def merge_platform_bindings(
     email_ids: dict[int, int],
     platform_ids: dict[int, int],
     rows: list[dict[str, Any]],
+    overwrite: bool = True,
 ) -> None:
     for row in rows:
         user_id: int = strict_remap(user_ids, row["user_id"])
@@ -233,10 +242,11 @@ def merge_platform_bindings(
             (user_id, email_id, platform_id),
         ).fetchone()
         if existing is not None:
-            connection.execute(
-                "UPDATE platform_bindings SET status = ?, notes = ? WHERE id = ?",
-                (row["status"], row["notes"], existing[0]),
-            )
+            if overwrite:
+                connection.execute(
+                    "UPDATE platform_bindings SET status = ?, notes = ? WHERE id = ?",
+                    (row["status"], row["notes"], existing[0]),
+                )
         else:
             connection.execute(
                 "INSERT INTO platform_bindings (user_id, usable_email_id, platform_id,"
