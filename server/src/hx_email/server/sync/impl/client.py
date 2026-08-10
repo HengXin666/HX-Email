@@ -15,6 +15,23 @@ class SyncClientError(RuntimeError):
     """Raised when the master snapshot cannot be fetched."""
 
 
+def redact_sync_url(settings: Settings, message: str) -> str:
+    """Mask the master instance URL inside an error message."""
+    sync_url: str = settings.sync_url.strip().rstrip("/")
+    if not sync_url:
+        return message
+    return message.replace(sync_url, "<master-url>")
+
+
+def redact_report_error(settings: Settings, report: dict[str, object]) -> dict[str, object]:
+    """Return a copy of a sync report dict with its error URL redacted."""
+    redacted: dict[str, object] = dict(report)
+    error: object = redacted.get("error")
+    if isinstance(error, str):
+        redacted["error"] = redact_sync_url(settings, error)
+    return redacted
+
+
 def fetch_snapshot(settings: Settings) -> bytes:
     base_url: str = settings.sync_url.strip().rstrip("/")
     if not base_url or not settings.sync_token.strip():

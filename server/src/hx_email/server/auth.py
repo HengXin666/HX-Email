@@ -2,6 +2,7 @@ import secrets
 import threading
 import time
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 
 from hx_email.config import Settings
 from hx_email.database import connect
@@ -20,6 +21,16 @@ LOGIN_BASE_BACKOFF_SECONDS: float = 30.0
 LOGIN_MAX_BACKOFF_SECONDS: float = 900.0
 LOGIN_IDLE_CLEANUP_SECONDS: float = 3600.0
 LOGIN_MAX_TRACKED_KEYS: int = 10_000
+SESSION_TTL_DAYS: int = 30
+
+
+def session_expiry_iso() -> str:
+    """Return an ISO timestamp for a fresh login session."""
+    return (
+        (datetime.now(UTC) + timedelta(days=SESSION_TTL_DAYS))
+        .isoformat(timespec="milliseconds")
+        .replace("+00:00", "Z")
+    )
 
 
 @dataclass
@@ -126,7 +137,7 @@ def authenticate_token(settings: Settings, token: str) -> AuthenticatedUser | No
     with connect(settings) as connection:
         row = connection.execute(
             """
-            SELECT users.id, users.username, users.is_admin
+            SELECT users.id, users.username, users.is_admin, sessions.expires_at
             FROM sessions
             JOIN users ON users.id = sessions.user_id
             WHERE sessions.token = ?
@@ -135,6 +146,21 @@ def authenticate_token(settings: Settings, token: str) -> AuthenticatedUser | No
         ).fetchone()
 
     if row is None:
+        return None
+
+    expires_at: str = str(row["expires_at"] or "")
+    if expires_at:
+        try:
+            expired: bool = datetime.now(UTC) > datetime.fromisoformat(
+                expires_at.replace("Z", "+00:00")
+            )
+        except ValueError:
+            expired = True
+    else:
+        expired = True
+    if expired:
+        with connect(settings) as connection:
+            connection.execute("DELETE FROM sessions WHERE token = ?", (token,))
         return None
 
     return AuthenticatedUser(
@@ -189,8 +215,8 @@ def create_session(settings: Settings, user: AuthenticatedUser, token: str | Non
     token = token or secrets.token_urlsafe(32)
     with connect(settings) as connection:
         connection.execute(
-            "INSERT INTO sessions (token, user_id) VALUES (?, ?)",
-            (token, user.id),
+            "INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)",
+            (token, user.id, session_expiry_iso()),
         )
     return token
 

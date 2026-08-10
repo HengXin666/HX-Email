@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from hx_email.config import Settings
+from hx_email.server.sync.impl.client import redact_report_error, redact_sync_url
 from hx_email.server.sync.service import SyncReport, run_sync
 
 logger = logging.getLogger(__name__)
@@ -121,4 +122,11 @@ def get_sync_status(settings: Settings) -> dict[str, object]:
             "last_error": "",
             "last_summary": {},
         }
-    return scheduler.status()
+    status: dict[str, object] = scheduler.status()
+    last_error: object = status.get("last_error")
+    if isinstance(last_error, str):
+        status["last_error"] = redact_sync_url(settings, last_error)
+    last_summary: object = status.get("last_summary")
+    if isinstance(last_summary, dict):
+        status["last_summary"] = redact_report_error(settings, last_summary)
+    return status

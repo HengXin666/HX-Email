@@ -174,14 +174,13 @@ def register_system_routes(router: APIRouter, settings: Settings) -> None:
     def system_diagnostics(
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_user(settings, authorization)
+        require_admin(settings, authorization)
         import platform
         import sys
 
         return {
             "platform": platform.platform(),
             "python_version": sys.version,
-            "database_path": str(settings.database_path),
             "database_size_bytes": (
                 settings.database_path.stat().st_size if settings.database_path.exists() else 0
             ),
