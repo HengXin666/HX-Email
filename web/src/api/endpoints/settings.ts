@@ -157,4 +157,25 @@ export const settingsApi = {
 
   getDeploymentInfo: () =>
     request<{ python_version: string; platform: string }>("/system/deployment-info"),
+
+  getSyncStatus: () =>
+    request<{
+      running: boolean;
+      enabled: boolean;
+      interval_seconds: number;
+      last_run: string;
+      next_run: string;
+      last_error: string;
+      last_summary: Record<string, unknown>;
+    }>("/sync/status"),
+
+  runSyncNow: () =>
+    request<{
+      started_at: string;
+      finished_at: string;
+      error: string;
+      tables: Record<string, number>;
+      files: Record<string, string>;
+      push: Record<string, unknown>;
+    }>("/sync/run", { method: "POST" }),
 };

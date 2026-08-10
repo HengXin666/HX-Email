@@ -108,6 +108,19 @@ def register_settings_routes(router: APIRouter, settings: Settings) -> None:
             },
         }
 
+    @router.post("/sync/run")
+    def sync_run_now(
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        """Trigger a master-slave sync round immediately (admin only)."""
+        require_admin(settings, authorization)
+        from hx_email.server.sync import run_sync
+        from hx_email.server.sync.scheduler import get_sync_scheduler
+
+        scheduler = get_sync_scheduler(settings)
+        report = scheduler.run_once() if scheduler is not None else run_sync(settings)
+        return report.to_dict()
+
     @router.get("/system/deployment-info")
     def deployment_info(
         authorization: Annotated[str | None, Header()] = None,

@@ -125,6 +125,10 @@ def create_app(
     @app.on_event("startup")
     def _start_bg_fetch() -> None:
         migrate(resolved_settings)
+        from hx_email.server.sync.config import reload_sync_settings, seed_sync_config_from_env
+
+        seed_sync_config_from_env(resolved_settings)
+        reload_sync_settings(resolved_settings)
         polling_scheduler.start()
         sync_scheduler.start()
 

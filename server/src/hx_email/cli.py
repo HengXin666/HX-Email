@@ -4,6 +4,7 @@ from collections.abc import Sequence
 
 from hx_email.config import Settings
 from hx_email.database import migrate
+from hx_email.server.sync.config import reload_sync_settings
 from hx_email.server.sync.service import SyncReport, push_snapshot, run_sync
 
 
@@ -22,7 +23,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"Migration complete: {database_path}")
         return 0
     if args.command == "sync":
-        report: SyncReport = push_snapshot(Settings()) if args.push_only else run_sync(Settings())
+        settings = Settings()
+        migrate(settings)
+        reload_sync_settings(settings)
+        report: SyncReport = push_snapshot(settings) if args.push_only else run_sync(settings)
         print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
         return 1 if report.error else 0
 

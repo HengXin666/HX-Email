@@ -75,7 +75,7 @@ def test_sync_requires_master_configuration(tmp_path: Path) -> None:
     settings: Settings = Settings(data_dir=tmp_path / "slave", sync_url="", sync_token="")
     report = run_sync(settings)
     assert report.error
-    assert "HX_EMAIL_SYNC_URL" in report.error
+    assert "sync_url" in report.error
     assert report.tables == {}
 
 

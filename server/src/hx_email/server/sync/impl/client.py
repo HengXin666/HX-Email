@@ -41,7 +41,7 @@ def redact_report_error(settings: Settings, report: dict[str, object]) -> dict[s
 def _master_base_url(settings: Settings) -> str:
     base_url: str = settings.sync_url.strip().rstrip("/")
     if not base_url or not settings.sync_token.strip():
-        raise SyncClientError("HX_EMAIL_SYNC_URL and HX_EMAIL_SYNC_TOKEN are required")
+        raise SyncClientError("Sync is not configured: set sync_url and sync_token in settings")
     return base_url
 
 

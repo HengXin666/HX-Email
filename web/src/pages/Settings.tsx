@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 import {
   IconCheck,
+  IconDatabase,
   IconMail,
   IconRefresh,
   IconSettings,
@@ -16,17 +17,20 @@ import { useToast } from "../components/ui/Toast";
 import { AutomationSettingsTab } from "../features/settings/automation/AutomationSettingsTab";
 import { ApiSecuritySettingsTab } from "../features/settings/tabs/ApiSecuritySettingsTab";
 import { BasicSettingsTab } from "../features/settings/tabs/BasicSettingsTab";
+import { SyncSettingsTab } from "../features/settings/tabs/SyncSettingsTab";
 import { TempMailSettingsTab } from "../features/settings/tabs/TempMailSettingsTab";
 import { UserManagementSettingsTab } from "../features/settings/tabs/UserManagementSettingsTab";
+
 import type { SettingsTabProps } from "../features/settings/types";
 import { useApp } from "../store/AppContext";
 
-type SettingsTab = "basic" | "tempmail" | "apisecurity" | "automation" | "users";
+type SettingsTab = "basic" | "tempmail" | "apisecurity" | "automation" | "sync" | "users";
 
 const ADMIN_TABS = [
   { key: "tempmail", label: "临时邮箱", icon: IconMail },
   { key: "apisecurity", label: "API 安全", icon: IconShield },
   { key: "automation", label: "自动化", icon: IconZap },
+  { key: "sync", label: "主从同步", icon: IconDatabase },
   { key: "users", label: "用户管理", icon: IconUser },
 ] as const;
 
@@ -127,6 +131,7 @@ export const Settings: React.FC = () => {
               {activeTab === "automation" && user?.is_admin && (
                 <AutomationSettingsTab {...tabProps} />
               )}
+              {activeTab === "sync" && user?.is_admin && <SyncSettingsTab {...tabProps} />}
               {activeTab === "users" && user?.is_admin && (
                 <UserManagementSettingsTab {...tabProps} />
               )}

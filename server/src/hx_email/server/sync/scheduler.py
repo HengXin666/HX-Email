@@ -24,6 +24,7 @@ class SyncScheduler:
         self.stop_event: threading.Event = threading.Event()
         self.thread: threading.Thread | None = None
         self.state_lock: threading.Lock = threading.Lock()
+        self.round_lock: threading.Lock = threading.Lock()
         self.last_run: str = ""
         self.next_run: str = ""
         self.last_error: str = ""
@@ -48,6 +49,9 @@ class SyncScheduler:
     def run(self) -> None:
         logger.info("Sync scheduler started")
         while not self.stop_event.is_set():
+            if not sync_configured(self.settings):
+                logger.info("Sync scheduler stopped: not configured")
+                break
             self.run_once()
             if self.settings.sync_interval_seconds <= 0:
                 self.stop_event.wait()
@@ -61,11 +65,12 @@ class SyncScheduler:
             self.stop_event.wait(interval_seconds)
 
     def run_once(self) -> SyncReport:
-        report: SyncReport = run_sync(self.settings)
-        with self.state_lock:
-            self.last_run = report.finished_at
-            self.last_error = report.error
-            self.last_summary = report.to_dict()
+        with self.round_lock:
+            report: SyncReport = run_sync(self.settings)
+            with self.state_lock:
+                self.last_run = report.finished_at
+                self.last_error = report.error
+                self.last_summary = report.to_dict()
         if report.error:
             logger.warning("Sync round failed: %s", report.error)
         else:
@@ -107,6 +112,27 @@ def unregister_sync_scheduler(settings: Settings, scheduler: SyncScheduler) -> N
         key: str = scheduler_key(settings)
         if SCHEDULERS.get(key) is scheduler:
             SCHEDULERS.pop(key, None)
+
+
+def get_sync_scheduler(settings: Settings) -> SyncScheduler | None:
+    """Return the registered scheduler for this data dir, if any."""
+    with SCHEDULER_LOCK:
+        return SCHEDULERS.get(scheduler_key(settings))
+
+
+def restart_sync_scheduler(settings: Settings) -> None:
+    """Restart the sync scheduler in the background for the current config."""
+
+    def _restart() -> None:
+        with SCHEDULER_LOCK:
+            scheduler: SyncScheduler | None = SCHEDULERS.get(scheduler_key(settings))
+        if scheduler is not None:
+            scheduler.stop()
+            if scheduler.thread is not None:
+                scheduler.thread.join()
+        SyncScheduler(settings).start()
+
+    threading.Thread(target=_restart, daemon=True, name="sync-restart").start()
 
 
 def get_sync_status(settings: Settings) -> dict[str, object]:

@@ -13,6 +13,10 @@ from hx_email.security import ENCRYPTED_PREFIX, decrypt_secret, encrypt_secret
 
 VERSION: str = os.environ.get("HX_EMAIL_APP_VERSION", "0.2.0")
 PROJECT_REPOSITORY_URL: str = "https://github.com/HengXin666/HX-Email"
+_SETTING_UPSERT_SQL: str = (
+    "INSERT INTO system_settings (key, value) VALUES (?, ?) "
+    "ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+)
 
 SETTINGS_DEFAULTS: dict[str, str] = {
     "verification_ai_enabled": "false",
@@ -50,6 +54,9 @@ SETTINGS_DEFAULTS: dict[str, str] = {
     "script_notification_path": "",
     "script_notification_timeout": "15",
     "ui_layout_v2": "{}",
+    "sync_url": "",
+    "sync_token": "",
+    "sync_interval_seconds": "300",
 }
 
 SENSITIVE_KEYS: frozenset[str] = frozenset(
@@ -63,6 +70,7 @@ SENSITIVE_KEYS: frozenset[str] = frozenset(
         "email_notification_smtp_password",
         "webhook_notification_token",
         "google_oauth_client_secret",
+        "sync_token",
     }
 )
 
@@ -132,14 +140,7 @@ def set_setting(settings: Settings, key: str, value: str) -> None:
     """Write a single setting, encoding sensitive values transparently."""
     stored: str = encrypt_secret(settings, value) if key in SENSITIVE_KEYS else value
     with connect(settings) as connection:
-        connection.execute(
-            """
-            INSERT INTO system_settings (key, value)
-            VALUES (?, ?)
-            ON CONFLICT(key) DO UPDATE SET value = excluded.value
-            """,
-            (key, stored),
-        )
+        connection.execute(_SETTING_UPSERT_SQL, (key, stored))
 
 
 def get_all_settings(settings: Settings) -> dict[str, str]:
@@ -244,6 +245,9 @@ def normalize_settings_updates(
         normalized[key] = string_value
 
     merged: dict[str, str] = {**get_all_settings(settings), **normalized}
+    from hx_email.server.sync.config import validate_sync_config
+
+    validate_sync_config(merged)
     webhook_url: str = merged["webhook_notification_url"]
     if webhook_url:
         validate_callback_url(webhook_url, "webhook_notification_url")
@@ -252,9 +256,7 @@ def normalize_settings_updates(
     if merged["email_notification_enabled"] == "true":
         if not merged["email_notification_recipient"]:
             raise ValueError("email_notification_recipient is required for email forwarding")
-        if not any(
-            (merged["email_notification_account_id"], merged["email_notification_smtp_host"])
-        ):
+        if not (merged["email_notification_account_id"] or merged["email_notification_smtp_host"]):
             raise ValueError(
                 "email_notification_account_id or email_notification_smtp_host is required"
             )
@@ -282,14 +284,10 @@ def update_settings(
             stored: str = (
                 encrypt_secret(settings, str_value) if key in SENSITIVE_KEYS else str_value
             )
-            connection.execute(
-                """
-                INSERT INTO system_settings (key, value)
-                VALUES (?, ?)
-                ON CONFLICT(key) DO UPDATE SET value = excluded.value
-                """,
-                (key, stored),
-            )
+            connection.execute(_SETTING_UPSERT_SQL, (key, stored))
+    from hx_email.server.sync.config import apply_sync_config
+
+    apply_sync_config(settings)
     if {"enable_auto_polling", "polling_interval"}.intersection(normalized):
         from hx_email.server.mail.impl.fetch.scheduler import wake_polling_scheduler
 
