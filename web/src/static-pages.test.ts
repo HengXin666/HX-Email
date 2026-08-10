@@ -113,8 +113,26 @@ describe("public brand pages", () => {
   });
 
   it("covers the privacy-policy sections Google reviewers look for", () => {
-    expect(PRIVACY_HTML).toContain("<title>隐私政策");
+    expect(PRIVACY_HTML).toContain("<title>Privacy Policy");
     expect(PRIVACY_HTML).toContain("生效日期");
+    expect(PRIVACY_HTML).toContain("Effective date");
+    // English sections, read by Google's reviewer without any language/JS assumption.
+    for (const section of [
+      "Information We Collect",
+      "How We Use Information",
+      "Google User Data",
+      "Storage",
+      "Sharing and Disclosure",
+      "Data Security",
+      "Data Retention and Deletion",
+      "Cookies and Tracking",
+      "Your Rights",
+      "Policy Updates",
+      "Contact Us",
+    ]) {
+      expect(PRIVACY_HTML).toContain(section);
+    }
+    // Chinese version stays available for zh users.
     for (const section of [
       "我们收集的信息",
       "数据的存储",
@@ -124,10 +142,34 @@ describe("public brand pages", () => {
       "Cookie",
       "您的权利",
       "联系我们",
+      "Google 用户数据",
     ]) {
       expect(PRIVACY_HTML).toContain(section);
     }
+    // Explicit disclosures Google's privacy-policy review requires.
+    expect(PRIVACY_HTML).toContain("https://mail.google.com/");
+    expect(PRIVACY_HTML).toContain("not</strong> sell");
+    expect(PRIVACY_HTML).toContain("targeted advertising");
+    expect(PRIVACY_HTML).toContain("train AI");
+    expect(PRIVACY_HTML).toContain("encrypted when stored");
+    // Contact email is entity-encoded so Cloudflare edge obfuscation cannot
+    // rewrite it into a "[email protected]" placeholder for the reviewer.
+    expect(PRIVACY_HTML).toContain("loli&#64;woa&#46;qzz&#46;io");
+    expect(PRIVACY_HTML).not.toContain("mailto:loli@woa.qzz.io");
+    expect(PRIVACY_HTML).not.toContain("[email");
     expect(PRIVACY_HTML).toContain('href="/home.html"');
+  });
+
+  it("explains Google-data usage transparently on the homepage", () => {
+    // The homepage must state why the app requests user data (Google OAuth / Gmail).
+    expect(HOME_HTML).toContain('class="google-note"');
+    expect(HOME_HTML).toContain("Google Sign-In");
+    expect(HOME_HTML).toContain("explicit consent");
+    expect(HOME_HTML).toContain("Google 登录连接 Gmail");
+    // No raw email literal that Cloudflare could obfuscate on the brand pages.
+    expect(HOME_HTML).not.toContain("mailto:loli@woa.qzz.io");
+    expect(TERMS_HTML).not.toContain("mailto:loli@woa.qzz.io");
+    expect(TERMS_HTML).toContain("loli&#64;woa&#46;qzz&#46;io");
   });
 
   it("provides a public terms-of-service page linked from the homepage", () => {
