@@ -60,7 +60,7 @@ export const BrandLayout: React.FC<BrandLayoutProps> = ({
             className="flex items-center gap-2 whitespace-nowrap text-xl font-bold tracking-wider text-gh-text"
           >
             <img className="h-7 w-7 rounded-md" src="/icon-192.png" alt="" width="28" height="28" />
-            HX<span className="text-gh-success">-Email</span>
+            <span className="text-gh-success">HX-Email</span>
           </Link>
           <nav
             className="flex items-center gap-4 text-sm"

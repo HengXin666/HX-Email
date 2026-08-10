@@ -246,18 +246,24 @@ export const Login: React.FC = () => {
         {mode === "login" ? "新用户? 去注册" : "已拥有账号，去登录"}
       </button>
 
-      <footer className="mt-4 flex items-center justify-center gap-4 text-xs text-white/60">
-        <a href="/home" className="transition hover:text-white">
-          产品首页
-        </a>
-        <span aria-hidden="true">·</span>
-        <a href="/privacy" className="transition hover:text-white">
-          隐私政策
-        </a>
-        <span aria-hidden="true">·</span>
-        <a href="/terms" className="transition hover:text-white">
-          服务条款
-        </a>
+      <footer className="mt-4 flex items-center justify-center">
+        <div className="flex items-center gap-4 rounded-full border border-white/15 bg-black/40 px-5 py-2 text-xs text-white backdrop-blur">
+          <a href="/home" className="transition hover:text-[#24d97f]">
+            产品首页
+          </a>
+          <span aria-hidden="true" className="text-white/40">
+            ·
+          </span>
+          <a href="/privacy" className="transition hover:text-[#24d97f]">
+            隐私政策
+          </a>
+          <span aria-hidden="true" className="text-white/40">
+            ·
+          </span>
+          <a href="/terms" className="transition hover:text-[#24d97f]">
+            服务条款
+          </a>
+        </div>
       </footer>
     </div>
   );
