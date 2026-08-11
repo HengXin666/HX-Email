@@ -20,7 +20,7 @@ name: hx-email
 services:
   backend:
     build: ./server
-    image: ghcr.io/hengsixin666/hx-email-server:${HX_EMAIL_IMAGE_TAG:-latest}
+    image: ghcr.io/hengxin666/hx-email-server:${HX_EMAIL_IMAGE_TAG:-latest}
     network_mode: host
     restart: unless-stopped
     environment:
@@ -35,7 +35,7 @@ services:
       # Docker 自动更新 (设置 → 系统状态 → 立即更新): 需要挂载 docker.sock 与 ./:/compose
       HX_EMAIL_UPDATE_ENABLED: ${HX_EMAIL_UPDATE_ENABLED:-true}
       HX_EMAIL_UPDATE_COMPOSE_DIR: /compose
-      HX_EMAIL_UPDATE_IMAGE: ghcr.io/hengsixin666/hx-email-server:${HX_EMAIL_IMAGE_TAG:-latest}
+      HX_EMAIL_UPDATE_IMAGE: ghcr.io/hengxin666/hx-email-server:${HX_EMAIL_IMAGE_TAG:-latest}
       # host 网络下后端只监听回环, 避免绕过 nginx 暴露到局域网
       HX_EMAIL_BIND_HOST: 127.0.0.1
       HX_EMAIL_BACKEND_PORT: ${HX_EMAIL_BACKEND_PORT:-18090}
@@ -57,7 +57,7 @@ services:
 
   frontend:
     build: ./web
-    image: ghcr.io/hengsixin666/hx-email-web:${HX_EMAIL_IMAGE_TAG:-latest}
+    image: ghcr.io/hengxin666/hx-email-web:${HX_EMAIL_IMAGE_TAG:-latest}
     network_mode: host
     restart: unless-stopped
     depends_on:

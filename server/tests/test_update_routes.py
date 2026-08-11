@@ -186,7 +186,7 @@ def test_update_apply_runs_background_update(tmp_path: Path) -> None:
         admin_username="admin",
         admin_password="admin",
         update_enabled=True,
-        update_image="ghcr.io/hengsixin666/hx-email-server:latest",
+        update_image="ghcr.io/hengxin666/hx-email-server:latest",
     )
     status: dict[str, object] | None = None
     with TestClient(create_app(settings)) as client:
