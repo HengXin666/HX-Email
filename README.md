@@ -207,14 +207,14 @@ docker compose up -d --build
 
 ```dotenv
 HX_EMAIL_SYNC_URL=http://vps.example.com:8080   # 主实例地址
-HX_EMAIL_SYNC_TOKEN=xxx                         # 主实例管理员 Bearer token
+HX_EMAIL_SYNC_TOKEN=xxx                         # 主实例管理员登录 token 或主实例外部 API Key
 HX_EMAIL_SYNC_INTERVAL_SECONDS=300              # 周期（秒）；0 = 仅启动时同步一次
 ```
 
 - 从机启动服务后立即同步一轮（拉取 + 推送），之后按间隔周期同步（后台线程，失败不影响服务）
 - 不启动服务也能手动同步：`hx-email sync`；只推送不拉取：`hx-email sync --push-only`
 - 同步内容：用户、邮箱账号、可用邮箱、分组 / 标签、平台绑定、临时邮箱、邮件池、验证码记录、已收邮件，以及数据目录内的文件（按内容哈希去重）
-- 主实例通过管理员鉴权的 `GET /api/v1/admin/sync/snapshot` 提供快照，可先用该接口验证主实例可达与 token 有效；从机推送走管理员鉴权的 `POST /api/v1/admin/sync/push`
+- 主实例通过 `GET /api/v1/admin/sync/snapshot` 提供快照，可先用该接口验证主实例可达与 token 有效；从机推送走 `POST /api/v1/admin/sync/push`。这两个接口接受主实例管理员登录 token，也接受主实例配置的外部 API Key；若返回 `403 Admin required`，说明 token 有效但不是管理员会话（例如误用了外部 API Key 之外的普通用户 token）
 - 从机首次同步前建议清空数据目录（保持镜像一致）；加密密钥 `.hx_email_secret_key` 仅在从机缺失时写入——若两端各自已有密钥，主实例的加密字段（如 OAuth token）将无法在从机解密，此时请在两端配置相同的 `HX_EMAIL_SECRET_KEY`
 
 ## 本地开发

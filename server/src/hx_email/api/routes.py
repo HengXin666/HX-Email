@@ -4,7 +4,11 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Body, FastAPI, Header, HTTPException, Response, status
 
 from hx_email.api.audit_routes import register_audit_middleware, register_audit_routes
-from hx_email.api.dependencies import require_admin, require_user
+from hx_email.api.dependencies import (
+    require_admin,
+    require_admin_or_sync_key,
+    require_user,
+)
 from hx_email.api.impl.auth_routes import register_auth_routes
 from hx_email.api.impl.external import (
     register_external_message_routes,
@@ -247,7 +251,7 @@ def register_data_transfer_routes(
     def sync_snapshot_data(
         authorization: Annotated[str | None, Header()] = None,
     ) -> Response:
-        require_admin(settings, authorization)
+        require_admin_or_sync_key(settings, authorization)
         archive: bytes = create_instance_backup(settings)
         headers: dict[str, str] = {
             "Cache-Control": "no-store",
@@ -260,7 +264,7 @@ def register_data_transfer_routes(
         archive: Annotated[bytes, Body(media_type="application/zip")],
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_admin(settings, authorization)
+        require_admin_or_sync_key(settings, authorization)
         if not archive or len(archive) > MAX_ARCHIVE_BYTES:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

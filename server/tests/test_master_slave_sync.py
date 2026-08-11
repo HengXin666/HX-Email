@@ -350,6 +350,56 @@ def test_apply_snapshot_insert_only_preserves_local_rows(tmp_path: Path) -> None
     assert addresses == ["account-one@example.com", "master-extra@example.com"]
 
 
+def test_sync_endpoints_accept_external_api_key(tmp_path: Path) -> None:
+    from hx_email.server.settings_service import set_setting
+
+    settings: Settings = Settings(
+        data_dir=tmp_path,
+        admin_username="admin",
+        admin_password="admin-password",
+    )
+    migrate(settings)
+    set_setting(settings, "external_api_key", "sync-peer-key")
+    client: TestClient = TestClient(create_app(settings))
+    key_headers: dict[str, str] = {"Authorization": "Bearer sync-peer-key"}
+
+    snapshot_response = client.get("/api/v1/admin/sync/snapshot", headers=key_headers)
+    assert snapshot_response.status_code == 200
+    assert snapshot_response.headers["content-type"] == "application/zip"
+
+    push_response = client.post(
+        "/api/v1/admin/sync/push",
+        content=b"garbage-not-a-zip",
+        headers={**key_headers, "Content-Type": "application/zip"},
+    )
+    # 鉴权通过 (非 401/403); 因压缩包非法而返回 422 属预期
+    assert push_response.status_code == 422
+
+
+def test_sync_endpoints_reject_unknown_bearer_token(tmp_path: Path) -> None:
+    from hx_email.server.settings_service import set_setting
+
+    settings: Settings = Settings(
+        data_dir=tmp_path,
+        admin_username="admin",
+        admin_password="admin-password",
+    )
+    migrate(settings)
+    set_setting(settings, "external_api_key", "sync-peer-key")
+    client: TestClient = TestClient(create_app(settings))
+    bad_headers: dict[str, str] = {"Authorization": "Bearer not-a-known-token"}
+
+    assert client.get("/api/v1/admin/sync/snapshot", headers=bad_headers).status_code == 401
+    assert (
+        client.post(
+            "/api/v1/admin/sync/push",
+            content=b"data",
+            headers={**bad_headers, "Content-Type": "application/zip"},
+        ).status_code
+        == 401
+    )
+
+
 def test_push_endpoint_requires_admin(tmp_path: Path) -> None:
     settings: Settings = Settings(
         data_dir=tmp_path,

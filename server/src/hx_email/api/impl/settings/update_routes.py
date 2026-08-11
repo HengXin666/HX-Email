@@ -14,6 +14,11 @@ from hx_email.server.self_update import DockerRunner, SelfUpdateService, resolve
 from hx_email.server.settings_service import PROJECT_REPOSITORY_URL, VERSION
 
 _GITHUB_RELEASES_API: str = "https://api.github.com/repos/HengXin666/HX-Email/releases/latest"
+_GITHUB_RELEASES_LIST: str = "https://api.github.com/repos/HengXin666/HX-Email/releases"
+
+
+class NoPublishedReleasesError(RuntimeError):
+    """Raised when the repository exists but has no published release yet."""
 
 
 class UpdateApplyRequest(BaseModel):
@@ -37,17 +42,8 @@ def _is_newer_version(latest: str, current: str) -> bool:
     return latest_parts > current_parts
 
 
-def _fetch_latest_release() -> dict[str, object]:
-    request = urllib.request.Request(
-        _GITHUB_RELEASES_API,
-        headers={
-            "Accept": "application/vnd.github+json",
-            "User-Agent": "HX-Email update checker",
-        },
-    )
-    with urllib.request.urlopen(request, timeout=5) as response:
-        data = json.loads(response.read().decode("utf-8"))
-    latest_version = str(data.get("tag_name") or data.get("name") or VERSION)
+def _release_payload(data: dict[str, object]) -> dict[str, object]:
+    latest_version: str = str(data.get("tag_name") or data.get("name") or VERSION)
     return {
         "success": True,
         "source": "github_release",
@@ -62,12 +58,67 @@ def _fetch_latest_release() -> dict[str, object]:
     }
 
 
+def _fetch_latest_release() -> dict[str, object]:
+    request = urllib.request.Request(
+        _GITHUB_RELEASES_API,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "HX-Email update checker",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        if error.code != 404:
+            raise
+        # releases/latest 404 可能因为仓库还没有任何 Release, 或只有 pre-release/draft
+        # 此时回退到 releases 列表取最新一条; 列表也为空则抛出明确的“暂无发布”错误
+        latest = _fetch_newest_release_from_list()
+        if latest is not None:
+            return latest
+        raise NoPublishedReleasesError() from error
+    return _release_payload(data)
+
+
+def _fetch_newest_release_from_list() -> dict[str, object] | None:
+    request = urllib.request.Request(
+        _GITHUB_RELEASES_LIST,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "HX-Email update checker",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=5) as response:
+        items = json.loads(response.read().decode("utf-8"))
+    if not isinstance(items, list) or not items:
+        return None
+    newest: object = items[0]
+    if not isinstance(newest, dict):
+        return None
+    return _release_payload(newest)
+
+
 def _update_check_payload() -> dict[str, object]:
     """Fetch the latest release announcement with a graceful offline fallback."""
     try:
         payload = _fetch_latest_release()
         payload["up_to_date"] = not bool(payload["has_update"])
         return payload
+    except NoPublishedReleasesError:
+        return {
+            "success": False,
+            "source": "github_release",
+            "current_version": VERSION,
+            "latest_version": VERSION,
+            "has_update": False,
+            "up_to_date": True,
+            "title": "仓库暂无发布版本",
+            "body": "GitHub 仓库尚未发布 Release, 请到发布页面查看或等待新版本发布。",
+            "html_url": f"{PROJECT_REPOSITORY_URL}/releases",
+            "published_at": "",
+            "repository_url": PROJECT_REPOSITORY_URL,
+        }
     except (
         urllib.error.URLError,
         TimeoutError,

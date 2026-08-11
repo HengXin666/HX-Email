@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import io
 import json
 import time
+import urllib.error
 from pathlib import Path
 from unittest.mock import patch
 
@@ -82,6 +84,62 @@ def test_update_announcement_graceful_when_github_offline(tmp_path: Path) -> Non
     assert data["has_update"] is False
     assert data["up_to_date"] is True
     assert data["title"] == "无法获取更新公告"
+
+
+def test_update_announcement_reports_no_releases_when_latest_404(tmp_path: Path) -> None:
+    settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
+    with TestClient(create_app(settings)) as client:
+        headers = login_admin(client, settings)
+        not_found = urllib.error.HTTPError(
+            "https://api.github.com/repos/HengXin666/HX-Email/releases/latest",
+            404,
+            "Not Found",
+            {},
+            io.BytesIO(b"Not Found"),
+        )
+        with patch(
+            "hx_email.api.impl.settings.update_routes.urllib.request.urlopen",
+            side_effect=[
+                not_found,
+                FakeResponse(json.dumps([]).encode("utf-8")),
+            ],
+        ):
+            response = client.get(f"{API_PREFIX}/system/update-announcement", headers=headers)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is False
+    assert data["has_update"] is False
+    assert data["title"] == "仓库暂无发布版本"
+    assert data["html_url"].endswith("/releases")
+
+
+def test_update_announcement_falls_back_to_release_list(tmp_path: Path) -> None:
+    settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
+    with TestClient(create_app(settings)) as client:
+        headers = login_admin(client, settings)
+        not_found = urllib.error.HTTPError(
+            "https://api.github.com/repos/HengXin666/HX-Email/releases/latest",
+            404,
+            "Not Found",
+            {},
+            io.BytesIO(b"Not Found"),
+        )
+        list_payload: bytes = json.dumps(
+            [json.loads(make_release_payload("v8.8.8").decode("utf-8"))]
+        ).encode("utf-8")
+        with patch(
+            "hx_email.api.impl.settings.update_routes.urllib.request.urlopen",
+            side_effect=[not_found, FakeResponse(list_payload)],
+        ):
+            response = client.get(f"{API_PREFIX}/system/version-check", headers=headers)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert data["latest_version"] == "v8.8.8"
+    assert data["has_update"] is True
+    assert data["title"] == "Release v8.8.8"
 
 
 def test_update_status_reports_disabled_when_not_enabled(tmp_path: Path) -> None:

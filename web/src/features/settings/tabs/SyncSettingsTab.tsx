@@ -96,7 +96,7 @@ export const SyncSettingsTab: React.FC<SettingsTabProps> = ({ settings, setSetti
             type="password"
             value={settings.sync_token || ""}
             onChange={(event) => setSetting("sync_token", event.target.value)}
-            placeholder="主实例管理员 Bearer token"
+            placeholder="主实例管理员 token 或外部 API Key"
           />
           <Input
             label="同步间隔 (秒)"
@@ -107,8 +107,8 @@ export const SyncSettingsTab: React.FC<SettingsTabProps> = ({ settings, setSetti
             onChange={(event) => setSetting("sync_interval_seconds", event.target.value)}
           />
           <p className="text-xs text-gh-text-secondary">
-            间隔为 0 表示仅启动时同步一次；Token
-            加密存储，环境变量中的初始值会在首次启动时自动写入设置。
+            间隔为 0 表示仅启动时同步一次；Token 使用主实例管理员登录 token 或主实例外部 API
+            Key，加密存储，环境变量中的初始值会在首次启动时自动写入设置。
           </p>
         </div>
       </Card>
