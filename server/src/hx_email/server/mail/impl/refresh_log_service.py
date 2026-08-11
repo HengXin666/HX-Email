@@ -41,7 +41,15 @@ def insert_refresh_log(
         )
         if status == "success":
             connection.execute(
-                "UPDATE email_accounts SET last_refresh_at = ? WHERE id = ?",
+                "UPDATE email_accounts"
+                " SET last_refresh_at = ?, refresh_failed_at = NULL WHERE id = ?",
+                (now, account_id),
+            )
+        elif status == "failed":
+            # 首次从成功/未失败状态转入失败时, 记录该转移时间; 后续连续失败保持原值
+            connection.execute(
+                "UPDATE email_accounts SET refresh_failed_at = COALESCE(refresh_failed_at, ?)"
+                " WHERE id = ?",
                 (now, account_id),
             )
         return cursor.lastrowid or 0

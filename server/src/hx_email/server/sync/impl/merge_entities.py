@@ -114,6 +114,9 @@ def merge_email_accounts(
             row["remark"],
             int(bool(row["telegram_enabled"])),
             row.get("last_refresh_at"),
+            row.get("created_at") or "",
+            row.get("last_fetch_at"),
+            row.get("refresh_failed_at"),
         )
         if existing is not None:
             if overwrite:
@@ -121,8 +124,8 @@ def merge_email_accounts(
                     "UPDATE email_accounts SET user_id = ?, provider = ?, primary_address = ?,"
                     " display_name = ?, imap_host = ?, imap_port = ?, username = ?,"
                     " imap_password = ?, client_id = ?, refresh_token = ?, status = ?,"
-                    " group_id = ?, remark = ?, telegram_enabled = ?, last_refresh_at = ?"
-                    " WHERE id = ?",
+                    " group_id = ?, remark = ?, telegram_enabled = ?, last_refresh_at = ?,"
+                    " created_at = ?, last_fetch_at = ?, refresh_failed_at = ? WHERE id = ?",
                     (*values, existing[0]),
                 )
             ids[int(row["id"])] = int(existing[0])
@@ -130,8 +133,9 @@ def merge_email_accounts(
             cursor = connection.execute(
                 "INSERT INTO email_accounts (user_id, provider, primary_address, display_name,"
                 " imap_host, imap_port, username, imap_password, client_id, refresh_token,"
-                " status, group_id, remark, telegram_enabled, last_refresh_at)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " status, group_id, remark, telegram_enabled, last_refresh_at, created_at,"
+                " last_fetch_at, refresh_failed_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 values,
             )
             ids[int(row["id"])] = inserted_id(cursor)

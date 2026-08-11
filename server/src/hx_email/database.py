@@ -3,7 +3,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from hx_email.config import Settings
-from hx_email.models import migrate_message_delivery_schema, migrate_polling_schema
+from hx_email.models import (
+    migrate_account_timestamps_schema,
+    migrate_message_delivery_schema,
+    migrate_polling_schema,
+)
 from hx_email.security import hash_password, migrate_stored_secrets
 
 
@@ -113,6 +117,9 @@ def migrate(settings: Settings) -> Path:
                 refresh_token TEXT NOT NULL DEFAULT '',
                 status TEXT NOT NULL DEFAULT 'active',
                 last_refresh_at TEXT,
+                created_at TEXT NOT NULL DEFAULT '',
+                last_fetch_at TEXT,
+                refresh_failed_at TEXT,
                 UNIQUE(user_id, primary_address)
             )
             """
@@ -268,6 +275,7 @@ def migrate(settings: Settings) -> Path:
         )
         migrate_polling_schema(connection)
         migrate_message_delivery_schema(connection)
+        migrate_account_timestamps_schema(connection)
         connection.execute(
             """
             CREATE UNIQUE INDEX IF NOT EXISTS idx_fetched_msg_dedup

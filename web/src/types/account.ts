@@ -22,6 +22,9 @@ export interface EmailAccount {
   usable_emails: UsableEmail[];
   last_refresh_at?: string | null;
   last_refresh_status?: string | null;
+  created_at?: string;
+  last_fetch_at?: string | null;
+  refresh_failed_at?: string | null;
 }
 
 export interface AccountImportResult {

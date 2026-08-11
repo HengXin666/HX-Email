@@ -30,10 +30,10 @@ def export_core_data(settings: Settings, user_id: int) -> dict[str, object]:
         email_accounts = rows(
             connection,
             """
-            SELECT id, provider, primary_address, display_name,
-                   imap_host, imap_port, username, imap_password,
-                   client_id, refresh_token, status,
-                   group_id, remark, telegram_enabled
+            SELECT id, provider, primary_address, display_name, imap_host, imap_port,
+                   username, imap_password, client_id, refresh_token, status,
+                   group_id, remark, telegram_enabled, last_refresh_at,
+                   created_at, last_fetch_at, refresh_failed_at
             FROM email_accounts
             WHERE user_id = ?
             ORDER BY id
@@ -165,15 +165,10 @@ def import_email_accounts(
     for account in payload.get("email_accounts", []):
         old_group_id = account.get("group_id")
         cursor = connection.execute(
-            """
-            INSERT INTO email_accounts (
-                user_id, provider, primary_address, display_name,
-                imap_host, imap_port, username, imap_password,
-                client_id, refresh_token, status,
-                group_id, remark, telegram_enabled
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+            "INSERT INTO email_accounts (user_id, provider, primary_address, display_name,"
+            " imap_host, imap_port, username, imap_password, client_id, refresh_token, status,"
+            " group_id, remark, telegram_enabled, last_refresh_at, created_at, last_fetch_at,"
+            " refresh_failed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 user_id,
                 account["provider"],
@@ -189,6 +184,10 @@ def import_email_accounts(
                 group_ids.get(int(old_group_id)) if old_group_id is not None else None,
                 account.get("remark", ""),
                 1 if account.get("telegram_enabled") else 0,
+                account.get("last_refresh_at"),
+                account.get("created_at") or utc_now_iso(),
+                account.get("last_fetch_at"),
+                account.get("refresh_failed_at"),
             ),
         )
         ids[int(account["id"])] = inserted_id(cursor)

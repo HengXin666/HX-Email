@@ -101,7 +101,7 @@ def fetch_and_store_for_account(
         }
 
     if not raw_messages:
-        _mark_account_refreshed(settings, account_id)
+        _mark_account_fetched(settings, account_id)
         return {
             "account_id": account_id,
             "email": email_addr,
@@ -121,7 +121,7 @@ def fetch_and_store_for_account(
         messages,
     )
 
-    _mark_account_refreshed(settings, account_id)
+    _mark_account_fetched(settings, account_id)
     return {
         "account_id": account_id,
         "email": email_addr,
@@ -156,12 +156,12 @@ def _format_fetch_error(provider: str, error_msg: str) -> str:
     return error_msg
 
 
-def _mark_account_refreshed(settings: Settings, account_id: int) -> None:
+def _mark_account_fetched(settings: Settings, account_id: int) -> None:
     from hx_email.database import connect
 
     with connect(settings) as conn:
         conn.execute(
-            "UPDATE email_accounts SET last_refresh_at = ? WHERE id = ?",
+            "UPDATE email_accounts SET last_fetch_at = ? WHERE id = ?",
             (datetime.now(UTC).isoformat(), account_id),
         )
 

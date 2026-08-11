@@ -44,6 +44,9 @@ class EmailAccount:
     remark: str = ""
     telegram_enabled: bool = True
     last_refresh_at: str | None = None
+    created_at: str = ""
+    last_fetch_at: str | None = None
+    refresh_failed_at: str | None = None
     usable_emails: tuple[UsableEmail, ...] = ()
 
 
@@ -79,9 +82,10 @@ def add_email_account(
                 """
                 INSERT INTO email_accounts (
                     user_id, provider, primary_address, display_name, imap_host,
-                    imap_port, username, imap_password, client_id, refresh_token, group_id
+                    imap_port, username, imap_password, client_id, refresh_token, group_id,
+                    created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     user_id,
@@ -95,6 +99,7 @@ def add_email_account(
                     client_id,
                     encrypt_secret(settings, refresh_token),
                     group_id,
+                    created_at,
                 ),
             )
         except Exception as error:
@@ -143,6 +148,7 @@ def add_email_account(
         client_id=client_id,
         refresh_token=refresh_token,
         group_id=group_id,
+        created_at=created_at,
         usable_emails=(primary_usable_email, *alias_emails),
     )
 
@@ -155,7 +161,8 @@ def deactivate_email_account(
             """
             SELECT id, provider, primary_address, display_name, imap_host,
                    imap_port, username, imap_password, client_id, refresh_token,
-                   group_id, remark, telegram_enabled, last_refresh_at
+                   group_id, remark, telegram_enabled, last_refresh_at,
+                   created_at, last_fetch_at, refresh_failed_at
             FROM email_accounts
             WHERE id = ? AND user_id = ?
             """,
@@ -196,6 +203,9 @@ def deactivate_email_account(
         remark=account["remark"] or "",
         telegram_enabled=bool(account["telegram_enabled"]),
         last_refresh_at=account["last_refresh_at"],
+        created_at=account["created_at"] or "",
+        last_fetch_at=account["last_fetch_at"],
+        refresh_failed_at=account["refresh_failed_at"],
         usable_emails=usable_emails,
     )
 
@@ -206,7 +216,8 @@ def get_email_account(settings: Settings, user_id: int, account_id: int) -> Emai
             """
             SELECT id, provider, primary_address, display_name, status, imap_host,
                    imap_port, username, imap_password, client_id, refresh_token,
-                   group_id, remark, telegram_enabled, last_refresh_at
+                   group_id, remark, telegram_enabled, last_refresh_at,
+                   created_at, last_fetch_at, refresh_failed_at
             FROM email_accounts
             WHERE id = ? AND user_id = ?
             """,
@@ -242,6 +253,9 @@ def get_email_account(settings: Settings, user_id: int, account_id: int) -> Emai
         remark=account["remark"] or "",
         telegram_enabled=bool(account["telegram_enabled"]),
         last_refresh_at=account["last_refresh_at"],
+        created_at=account["created_at"] or "",
+        last_fetch_at=account["last_fetch_at"],
+        refresh_failed_at=account["refresh_failed_at"],
         usable_emails=usable_emails,
     )
 

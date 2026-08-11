@@ -142,6 +142,52 @@ def test_google_refresh_persists_rotated_refresh_token(tmp_path) -> None:
     assert decrypt_secret(settings, stored) == "rotated-google-token"
 
 
+def _read_account_times(settings: Settings, account_id: int) -> dict[str, object]:
+    with connect(settings) as connection:
+        row = connection.execute(
+            "SELECT last_refresh_at, refresh_failed_at FROM email_accounts WHERE id = ?",
+            (account_id,),
+        ).fetchone()
+    assert row is not None
+    return {
+        "last_refresh_at": row["last_refresh_at"],
+        "refresh_failed_at": row["refresh_failed_at"],
+    }
+
+
+def test_refresh_failure_records_first_success_to_failure_transition(tmp_path) -> None:
+    settings = Settings(data_dir=tmp_path)
+    migrate(settings)
+    _insert_proxy_account(settings)
+
+    fail_result = {"success": False, "message": "boom", "error_detail": "invalid_grant"}
+    with patch(
+        "hx_email.server.mail.impl.refresh_service.try_refresh_provider_oauth_token",
+        return_value=fail_result,
+    ):
+        first = refresh_single_account(settings, 1, 1, EmptyMailboxProvider())
+        first_times = _read_account_times(settings, 1)
+        # 连续失败: 保留首次从成功转入失败的时间, 不覆盖
+        refresh_single_account(settings, 1, 1, EmptyMailboxProvider())
+        second_times = _read_account_times(settings, 1)
+
+    assert first["success"] is False
+    assert first_times["refresh_failed_at"] is not None
+    assert first_times["last_refresh_at"] is None
+    assert second_times["refresh_failed_at"] == first_times["refresh_failed_at"]
+
+    with patch(
+        "hx_email.server.mail.impl.refresh_service.try_refresh_provider_oauth_token",
+        return_value={"success": True, "message": "ok", "error_detail": ""},
+    ):
+        refresh_single_account(settings, 1, 1, EmptyMailboxProvider())
+        recovered_times = _read_account_times(settings, 1)
+
+    # 成功后清除失败转移时间, 并记录最近刷新凭证时间
+    assert recovered_times["refresh_failed_at"] is None
+    assert recovered_times["last_refresh_at"] is not None
+
+
 def _insert_proxy_account(settings: Settings) -> None:
     with connect(settings) as conn:
         conn.execute(

@@ -129,6 +129,9 @@ def serialize_email_account(account: EmailAccount) -> dict[str, object]:
         "remark": account.remark,
         "telegram_enabled": account.telegram_enabled,
         "last_refresh_at": account.last_refresh_at,
+        "created_at": account.created_at,
+        "last_fetch_at": account.last_fetch_at,
+        "refresh_failed_at": account.refresh_failed_at,
         "primary_usable_email": serialize_usable_email(account.primary_usable_email),
         "usable_emails": [
             serialize_usable_email(usable_email) for usable_email in account.usable_emails

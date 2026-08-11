@@ -584,13 +584,14 @@ const EmailList: React.FC<{
 
   const group = groups.find((g) => g.id === groupId);
 
-  // Compute latest refresh time across accounts in this filtered view
+  // Compute latest sync (mailbox fetch / token refresh) time across the filtered view
   const latestRefreshAt = useMemo(() => {
     const accountIds = new Set(filtered.map((e) => e.email_account_id).filter(Boolean) as number[]);
     let latest: string | null = null;
     for (const a of accounts || []) {
-      if (accountIds.has(a.id) && a.last_refresh_at) {
-        if (!latest || a.last_refresh_at > latest) latest = a.last_refresh_at;
+      const syncTime: string | null = accountSyncTime(a);
+      if (accountIds.has(a.id) && syncTime) {
+        if (!latest || syncTime > latest) latest = syncTime;
       }
     }
     return latest;
@@ -756,9 +757,8 @@ const EmailCard: React.FC<{
   const cardName: string = email.label || account?.display_name || email.address;
   const kindLabel: string =
     email.kind === "primary" ? "主邮箱" : email.kind === "temp" ? "临时邮箱" : "自定义邮箱";
-  const refreshTimeLabel = account?.last_refresh_at
-    ? formatRelativeTime(account.last_refresh_at)
-    : "";
+  const lastSyncAt: string | null = accountSyncTime(account);
+  const refreshTimeLabel = lastSyncAt ? formatRelativeTime(lastSyncAt) : "";
   const createdTimeLabel = email.created_at ? formatDateTimeFull(email.created_at) : "未记录";
   const [loadingCode, setLoadingCode] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -2412,6 +2412,27 @@ const AddEmailModal: React.FC<{
 };
 
 // ========== 邮箱设置 Modal ==========
+const accountSyncTime = (account: EmailAccount | undefined): string | null => {
+  if (!account) return null;
+  return account.last_fetch_at || account.last_refresh_at || null;
+};
+
+const TimeInfoRow: React.FC<{ label: string; value: string }> = ({ label, value }) => {
+  const display: string = value ? formatDateTimeFull(value) : "未记录";
+  const relative: string = value ? formatRelativeTime(value) : "—";
+  return (
+    <div className="flex items-baseline justify-between gap-2 text-xs">
+      <span className="text-gh-text-secondary shrink-0">{label}</span>
+      <span
+        className="text-gh-text truncate text-right"
+        title={relative === "—" ? undefined : `${label}：${relative}`}
+      >
+        {display}
+      </span>
+    </div>
+  );
+};
+
 const EmailSettingsModal: React.FC<{
   emailId: number | null;
   onClose: () => void;
@@ -2704,6 +2725,18 @@ const EmailSettingsModal: React.FC<{
 
           {activeTab === "info" && (
             <>
+              {/* 账号时间信息: 首次导入 / 最近更新邮件 / 最近刷新凭证 / 最近刷新失败 */}
+              <div className="px-3 py-2.5 rounded-md bg-gh-canvas-inset border border-gh-border space-y-1.5">
+                <div className="text-xs font-medium text-gh-text-muted">账号时间信息</div>
+                <TimeInfoRow label="首次导入" value={settingsAccount?.created_at || ""} />
+                <TimeInfoRow label="最近更新邮件" value={settingsAccount?.last_fetch_at || ""} />
+                <TimeInfoRow label="最近刷新凭证" value={settingsAccount?.last_refresh_at || ""} />
+                <TimeInfoRow
+                  label="刷新凭证失败"
+                  value={settingsAccount?.refresh_failed_at || ""}
+                />
+              </div>
+
               {email.kind === "primary" ? (
                 <div>
                   <Input

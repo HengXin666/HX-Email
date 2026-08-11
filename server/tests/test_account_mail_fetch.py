@@ -92,7 +92,7 @@ def test_fetch_emails_uses_injected_provider_stores_cache_and_updates_refresh_ti
     assert provider.calls == 1
     assert [m["subject"] for m in primary_after.json()["messages"]] == ["Owner code"]
     assert [m["subject"] for m in alias_after.json()["messages"]] == ["Alias code"]
-    assert accounts_after.json()["accounts"][0]["last_refresh_at"]
+    assert accounts_after.json()["accounts"][0]["last_fetch_at"]
 
 
 def test_fetch_emails_only_marks_messages_with_verification_context(tmp_path):
