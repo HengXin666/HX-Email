@@ -70,8 +70,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ lower(github.repository_owner) }}/hx-email-server:v${{ steps.version.outputs.version }}
-            ${{ env.REGISTRY }}/${{ lower(github.repository_owner) }}/hx-email-server:latest
+            ${{ env.REGISTRY }}/hengsixin666/hx-email-server:v${{ steps.version.outputs.version }}
+            ${{ env.REGISTRY }}/hengsixin666/hx-email-server:latest
           build-args: |
             APP_VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha,scope=hx-email-server
@@ -84,8 +84,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ lower(github.repository_owner) }}/hx-email-web:v${{ steps.version.outputs.version }}
-            ${{ env.REGISTRY }}/${{ lower(github.repository_owner) }}/hx-email-web:latest
+            ${{ env.REGISTRY }}/hengsixin666/hx-email-web:v${{ steps.version.outputs.version }}
+            ${{ env.REGISTRY }}/hengsixin666/hx-email-web:latest
           cache-from: type=gha,scope=hx-email-web
           cache-to: type=gha,mode=max,scope=hx-email-web
 
