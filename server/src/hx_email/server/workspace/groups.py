@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from hx_email.config import Settings
 from hx_email.database import connect
 from hx_email.server.auth import require_inserted_id
+from hx_email.server.settings_service import get_setting
 
 
 @dataclass(frozen=True)
@@ -23,15 +24,33 @@ class Tag:
 
 
 def create_group(
-    settings: Settings, user_id: int, name: str, color: str, proxy_url: str = ""
+    settings: Settings,
+    user_id: int,
+    name: str,
+    color: str,
+    proxy_url: str = "",
+    notify_enabled: bool | None = None,
+    polling_enabled: bool | None = None,
 ) -> Group:
+    if notify_enabled is None:
+        notify_enabled = get_setting(settings, "group_default_notify_enabled", "true") == "true"
+    if polling_enabled is None:
+        polling_enabled = get_setting(settings, "group_default_polling_enabled", "true") == "true"
     with connect(settings) as connection:
         cursor = connection.execute(
-            "INSERT INTO groups (user_id, name, color, proxy_url) VALUES (?, ?, ?, ?)",
-            (user_id, name, color, proxy_url),
+            """
+            INSERT INTO groups (user_id, name, color, proxy_url, notify_enabled, polling_enabled)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (user_id, name, color, proxy_url, int(notify_enabled), int(polling_enabled)),
         )
     return Group(
-        id=require_inserted_id(cursor.lastrowid), name=name, color=color, proxy_url=proxy_url
+        id=require_inserted_id(cursor.lastrowid),
+        name=name,
+        color=color,
+        proxy_url=proxy_url,
+        notify_enabled=notify_enabled,
+        polling_enabled=polling_enabled,
     )
 
 
@@ -71,16 +90,28 @@ def update_group(
     name: str,
     color: str,
     proxy_url: str = "",
+    notify_enabled: bool | None = None,
+    polling_enabled: bool | None = None,
 ) -> Group | None:
     with connect(settings) as connection:
         row = connection.execute(
             """
             UPDATE groups
-            SET name = ?, color = ?, proxy_url = ?
+            SET name = ?, color = ?, proxy_url = ?,
+                notify_enabled = COALESCE(?, notify_enabled),
+                polling_enabled = COALESCE(?, polling_enabled)
             WHERE id = ? AND user_id = ?
             RETURNING id, name, color, proxy_url, notify_enabled, polling_enabled
             """,
-            (name, color, proxy_url, group_id, user_id),
+            (
+                name,
+                color,
+                proxy_url,
+                None if notify_enabled is None else int(notify_enabled),
+                None if polling_enabled is None else int(polling_enabled),
+                group_id,
+                user_id,
+            ),
         ).fetchone()
     if row is None:
         return None

@@ -34,6 +34,27 @@ export const AutomationSettingsTab: React.FC<SettingsTabProps> = (props) => {
           </div>
         </div>
       </Card>
+      <Card className="p-5">
+        <SectionHeader>新建分组默认选项</SectionHeader>
+        <div className="max-w-lg space-y-3">
+          <ToggleRow
+            label="自动轮询组内邮箱"
+            description="新建分组时默认勾选「自动轮询组内邮箱」"
+            enabled={settings.group_default_polling_enabled !== "false"}
+            onChange={(value) =>
+              setSetting("group_default_polling_enabled", value ? "true" : "false")
+            }
+          />
+          <ToggleRow
+            label="发送新邮件通知与转发"
+            description="新建分组时默认勾选「发送新邮件通知与转发」"
+            enabled={settings.group_default_notify_enabled !== "false"}
+            onChange={(value) =>
+              setSetting("group_default_notify_enabled", value ? "true" : "false")
+            }
+          />
+        </div>
+      </Card>
       <BrowserNotificationCard toast={toast} />
       <EmailForwardingCard {...props} />
       <MessageForwardingCards {...props} />

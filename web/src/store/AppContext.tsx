@@ -25,8 +25,21 @@ interface AppContextValue extends AppState {
   refreshPlatforms: () => Promise<void>;
   refreshAccounts: () => Promise<void>;
   refreshOverview: () => Promise<void>;
-  createGroup: (name: string, color?: string, proxy_url?: string) => Promise<Group>;
-  updateGroup: (id: number, name: string, color: string, proxy_url?: string) => Promise<Group>;
+  createGroup: (
+    name: string,
+    color?: string,
+    proxy_url?: string,
+    notify_enabled?: boolean,
+    polling_enabled?: boolean,
+  ) => Promise<Group>;
+  updateGroup: (
+    id: number,
+    name: string,
+    color: string,
+    proxy_url?: string,
+    notify_enabled?: boolean,
+    polling_enabled?: boolean,
+  ) => Promise<Group>;
   deleteGroup: (id: number) => Promise<void>;
   createEmail: (address: string, label?: string, groupId?: number | null) => Promise<UsableEmail>;
   organizeEmail: (
@@ -201,8 +214,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const createGroup = useCallback(
-    async (name: string, color?: string, proxy_url?: string) => {
-      const g = await api.createGroup(name, color, proxy_url);
+    async (
+      name: string,
+      color?: string,
+      proxy_url?: string,
+      notify_enabled?: boolean,
+      polling_enabled?: boolean,
+    ) => {
+      const g = await api.createGroup(name, color, proxy_url, notify_enabled, polling_enabled);
       await refreshGroups();
       return g;
     },
@@ -210,8 +229,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
 
   const updateGroup = useCallback(
-    async (id: number, name: string, color: string, proxy_url?: string) => {
-      const g = await api.updateGroup(id, name, color, proxy_url);
+    async (
+      id: number,
+      name: string,
+      color: string,
+      proxy_url?: string,
+      notify_enabled?: boolean,
+      polling_enabled?: boolean,
+    ) => {
+      const g = await api.updateGroup(id, name, color, proxy_url, notify_enabled, polling_enabled);
       await refreshGroups();
       return g;
     },

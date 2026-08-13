@@ -57,6 +57,8 @@ class GroupCreate(BaseModel):
     name: str
     color: str = "#58a6ff"
     proxy_url: str = ""
+    notify_enabled: bool | None = None
+    polling_enabled: bool | None = None
 
 
 class TagCreate(BaseModel):

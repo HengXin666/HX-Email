@@ -11,16 +11,16 @@ from hx_email.server.external_api.impl.mail.helpers import (
     filter_messages,
     resolve_email,
 )
+from hx_email.server.external_api.impl.mail.temp_mail_reader import (
+    temp_get_latest_message,
+    temp_get_message_detail,
+    temp_get_message_raw,
+    temp_get_messages,
+)
 from hx_email.server.mail import MailboxMessage
 from hx_email.server.mail.impl.email_service import _find_email_account
-from hx_email.server.mail.verification import (
-    LINK_PATTERN,
-    DeliveryTarget,
-    MailboxProvider,
-    coerce_message,
-    find_verification_code,
-    first_match,
-)
+from hx_email.server.mail.temp_mail import TempMailProvider
+from hx_email.server.mail.verification import MailboxProvider, coerce_message
 
 
 def get_messages(
@@ -34,11 +34,25 @@ def get_messages(
     subject_contains: str | None = None,
     since_minutes: int | None = None,
     claim_token: str | None = None,
+    temp_mail_providers: dict[str, TempMailProvider] | None = None,
 ) -> dict[str, object]:
     """Fetch messages with optional filters. If claim_token, resolve email from pool claim."""
     resolved_email: str = resolve_email(settings, email, claim_token)
     account = _find_email_account(settings, resolved_email)
     if account is None:
+        if temp_mail_providers:
+            temp_result = temp_get_messages(
+                settings,
+                resolved_email,
+                temp_mail_providers,
+                skip,
+                top,
+                from_contains,
+                subject_contains,
+                since_minutes,
+            )
+            if temp_result is not None:
+                return temp_result
         return {"messages": [], "total": 0, "has_more": False}
 
     raw_all: list[Any] = mailbox_provider.read_messages(account)
@@ -67,11 +81,23 @@ def get_latest_message(
     subject_contains: str | None = None,
     since_minutes: int | None = None,
     claim_token: str | None = None,
+    temp_mail_providers: dict[str, TempMailProvider] | None = None,
 ) -> dict[str, object]:
     """Get single latest message matching filters."""
     resolved_email = resolve_email(settings, email, claim_token)
     account = _find_email_account(settings, resolved_email)
     if account is None:
+        if temp_mail_providers:
+            temp_result = temp_get_latest_message(
+                settings,
+                resolved_email,
+                temp_mail_providers,
+                from_contains,
+                subject_contains,
+                since_minutes,
+            )
+            if temp_result is not None:
+                return temp_result
         return {"found": False, "message": None}
 
     raw_all: list[Any] = mailbox_provider.read_messages(account)
@@ -106,11 +132,21 @@ def get_message_detail(
     message_id: str,
     folder: str = "inbox",
     claim_token: str | None = None,
+    temp_mail_providers: dict[str, TempMailProvider] | None = None,
 ) -> dict[str, object]:
     """Get full message detail with body."""
     resolved_email = resolve_email(settings, email, claim_token)
     account = _find_email_account(settings, resolved_email)
     if account is None:
+        if temp_mail_providers:
+            temp_result = temp_get_message_detail(
+                settings,
+                resolved_email,
+                temp_mail_providers,
+                message_id,
+            )
+            if temp_result is not None:
+                return temp_result
         return {"found": False, "message": None, "detail": "Account not found"}
 
     raw_all: list[Any] = mailbox_provider.read_messages(account)
@@ -142,6 +178,7 @@ def get_message_raw(
     message_id: str,
     folder: str = "inbox",
     claim_token: str | None = None,
+    temp_mail_providers: dict[str, TempMailProvider] | None = None,
 ) -> dict[str, object]:
     """Get raw MIME content of a message.
 
@@ -150,6 +187,15 @@ def get_message_raw(
     resolved_email = resolve_email(settings, email, claim_token)
     account = _find_email_account(settings, resolved_email)
     if account is None:
+        if temp_mail_providers:
+            temp_result = temp_get_message_raw(
+                settings,
+                resolved_email,
+                temp_mail_providers,
+                message_id,
+            )
+            if temp_result is not None:
+                return temp_result
         return {"found": False, "raw": "", "detail": "Account not found"}
 
     raw_all: list[Any] = mailbox_provider.read_messages(account)
@@ -165,76 +211,3 @@ def get_message_raw(
         }
     except (ValueError, IndexError):
         return {"found": False, "raw": "", "detail": "Invalid message ID"}
-
-
-def extract_verification_code(
-    settings: Settings,
-    mailbox_provider: MailboxProvider,
-    email: str,
-    folder: str = "inbox",
-    from_contains: str | None = None,
-    subject_contains: str | None = None,
-    since_minutes: int | None = None,
-    code_length: int | None = None,
-    code_regex: str | None = None,
-    code_source: str = "all",
-    claim_token: str | None = None,
-) -> dict[str, object]:
-    """Extract verification code from messages.
-
-    When no custom regex or length is given, uses keyword-context-aware
-    extraction that only matches codes near verification keywords.
-    """
-    resolved_email = resolve_email(settings, email, claim_token)
-    account = _find_email_account(settings, resolved_email)
-    if account is None:
-        return {"verification_code": "", "matched_email_id": "", "match_count": 0}
-
-    raw_all: list[Any] = mailbox_provider.read_messages(account)
-    all_msgs: list[MailboxMessage] = coerce_messages(raw_all)
-    filtered: list[MailboxMessage] = filter_messages(
-        all_msgs, from_contains, subject_contains, since_minutes
-    )
-    return find_verification_code(
-        filtered,
-        DeliveryTarget(address=resolved_email, provider=account.provider),
-        code_length=code_length,
-        code_regex=code_regex,
-        code_source=code_source,
-    )
-
-
-def extract_verification_link(
-    settings: Settings,
-    mailbox_provider: MailboxProvider,
-    email: str,
-    folder: str = "inbox",
-    from_contains: str | None = None,
-    subject_contains: str | None = None,
-    since_minutes: int | None = None,
-    claim_token: str | None = None,
-) -> dict[str, object]:
-    """Extract verification link from messages."""
-    resolved_email = resolve_email(settings, email, claim_token)
-    account = _find_email_account(settings, resolved_email)
-    if account is None:
-        return {"verification_link": "", "matched_email_id": "", "match_count": 0}
-
-    raw_all: list[Any] = mailbox_provider.read_messages(account)
-    all_msgs: list[MailboxMessage] = coerce_messages(raw_all)
-    filtered: list[MailboxMessage] = filter_messages(
-        all_msgs, from_contains, subject_contains, since_minutes
-    )
-
-    for idx, msg in enumerate(filtered):
-        content = f"{msg.subject}\n{msg.body or ''}"
-        link = first_match(LINK_PATTERN, content)
-        if link is not None:
-            return {
-                "verification_link": link,
-                "matched_email_id": str(idx + 1),
-                "matched_subject": msg.subject,
-                "match_count": 1,
-            }
-
-    return {"verification_link": "", "matched_email_id": "", "match_count": 0}
