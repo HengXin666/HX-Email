@@ -601,3 +601,149 @@ def test_cli_sync_push_only_without_config_exits_nonzero(monkeypatch, tmp_path: 
     monkeypatch.delenv("HX_EMAIL_SYNC_TOKEN", raising=False)
 
     assert main(["sync", "--push-only"]) == 1
+
+
+def test_push_snapshot_cannot_inject_admin_user(tmp_path: Path) -> None:
+    """Fifth-round #4: a forged snapshot must never create/promote admins."""
+    master_settings: Settings = Settings(
+        data_dir=tmp_path / "master",
+        admin_username="admin",
+        admin_password="admin-password",
+    )
+    build_master(master_settings, "one")
+    client: TestClient = TestClient(create_app(master_settings))
+    login_response = client.post(
+        "/api/v1/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    admin_headers: dict[str, str] = {
+        "Authorization": f"Bearer {login_response.json()['access_token']}"
+    }
+
+    slave_settings: Settings = Settings(
+        data_dir=tmp_path / "slave",
+        admin_username="admin",
+        admin_password="admin-password",
+    )
+    build_master(slave_settings, "slave")
+    with connect(slave_settings) as connection:
+        connection.execute(
+            "INSERT INTO users (username, password_hash, is_admin) VALUES ('intruder', 'x', 1)"
+        )
+
+    response = client.post(
+        "/api/v1/admin/sync/push",
+        content=create_instance_backup(slave_settings),
+        headers={**admin_headers, "Content-Type": "application/zip"},
+    )
+
+    assert response.status_code == 200
+    with connect(master_settings) as connection:
+        intruder = connection.execute(
+            "SELECT is_admin FROM users WHERE username = 'intruder'"
+        ).fetchone()
+        admins: list[str] = [
+            str(row[0])
+            for row in connection.execute("SELECT username FROM users WHERE is_admin = 1")
+        ]
+    assert intruder is not None
+    assert intruder[0] == 0
+    assert admins == ["admin"]
+
+
+def test_push_snapshot_does_not_merge_system_settings(tmp_path: Path) -> None:
+    """Fifth-round #4: push must not plant credential-bearing settings."""
+    master_settings: Settings = Settings(
+        data_dir=tmp_path / "master",
+        admin_username="admin",
+        admin_password="admin-password",
+    )
+    build_master(master_settings, "one")
+    client: TestClient = TestClient(create_app(master_settings))
+    login_response = client.post(
+        "/api/v1/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    admin_headers: dict[str, str] = {
+        "Authorization": f"Bearer {login_response.json()['access_token']}"
+    }
+
+    slave_settings: Settings = Settings(
+        data_dir=tmp_path / "slave",
+        admin_username="admin",
+        admin_password="admin-password",
+    )
+    build_master(slave_settings, "slave")
+    with connect(slave_settings) as connection:
+        connection.execute(
+            "INSERT INTO system_settings (key, value) VALUES ('external_api_key', 'planted')"
+        )
+        connection.execute(
+            "INSERT INTO system_settings (key, value) VALUES ('planted_setting', 'planted-value')"
+        )
+
+    response = client.post(
+        "/api/v1/admin/sync/push",
+        content=create_instance_backup(slave_settings),
+        headers={**admin_headers, "Content-Type": "application/zip"},
+    )
+
+    assert response.status_code == 200
+    with connect(master_settings) as connection:
+        rows = connection.execute(
+            "SELECT key FROM system_settings WHERE key IN ('external_api_key', 'planted_setting')"
+        ).fetchall()
+    assert rows == []
+
+
+def test_pull_snapshot_still_merges_system_settings(tmp_path: Path) -> None:
+    master_settings: Settings = Settings(
+        data_dir=tmp_path / "master",
+        admin_username="admin",
+        admin_password="admin-password",
+    )
+    build_master(master_settings, "one")
+    with connect(master_settings) as connection:
+        connection.execute(
+            "INSERT INTO system_settings (key, value) VALUES ('planted_setting', 'master-value')"
+        )
+
+    slave_settings: Settings = Settings(
+        data_dir=tmp_path / "slave",
+        admin_username="admin",
+        admin_password="admin-password",
+    )
+    report = apply_snapshot(slave_settings, create_instance_backup(master_settings))
+
+    assert report.error == ""
+    with connect(slave_settings) as connection:
+        row = connection.execute(
+            "SELECT value FROM system_settings WHERE key = 'planted_setting'"
+        ).fetchone()
+    assert row is not None
+    assert row[0] == "master-value"
+
+
+def test_pull_snapshot_never_overwrites_is_admin(tmp_path: Path) -> None:
+    """Even pull never writes is_admin; admin role is local-only state."""
+    master_settings: Settings = Settings(
+        data_dir=tmp_path / "master",
+        admin_username="admin",
+        admin_password="admin-password",
+    )
+    build_master(master_settings, "one")
+
+    slave_settings: Settings = Settings(
+        data_dir=tmp_path / "slave",
+        admin_username="admin",
+        admin_password="admin-password",
+    )
+    migrate(slave_settings)
+    with connect(slave_settings) as connection:
+        connection.execute("UPDATE users SET is_admin = 0 WHERE username = 'admin'")
+
+    report = apply_snapshot(slave_settings, create_instance_backup(master_settings))
+
+    assert report.error == ""
+    with connect(slave_settings) as connection:
+        row = connection.execute("SELECT is_admin FROM users WHERE username = 'admin'").fetchone()
+    assert row is not None
+    assert row[0] == 0

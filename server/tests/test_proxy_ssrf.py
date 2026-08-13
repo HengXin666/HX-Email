@@ -26,17 +26,23 @@ def login_admin(client: TestClient, settings: Settings) -> dict[str, str]:
     return {"Authorization": f"Bearer {session['access_token']}"}
 
 
-def test_proxy_validation_allows_loopback_and_private_addresses() -> None:
-    """Local/private proxies are the documented deployment (127.0.0.1 / host.docker.internal)."""
+def test_proxy_validation_allows_loopback_and_docker_gateway_hosts() -> None:
+    """Whitelist: loopback plus the Docker gateway hostname stay allowed."""
+    for proxy_url in ["http://127.0.0.1:8080", "http://[::1]:8080"]:
+        validate_proxy_endpoint(proxy_url)
+
+
+def test_proxy_validation_rejects_private_addresses() -> None:
+    """RFC1918/ULA private ranges are no longer reachable (fifth-round regression)."""
     for proxy_url in [
-        "http://127.0.0.1:8080",
         "10.0.0.5:3128",
         "192.168.1.1:8080",
         "http://172.16.0.1:3128",
-        "http://[::1]:8080",
         "http://[fc00::1]:8080",
+        "http://[::ffff:10.0.0.1]:3128",
     ]:
-        validate_proxy_endpoint(proxy_url)
+        with pytest.raises(ValueError):
+            validate_proxy_endpoint(proxy_url)
 
 
 def test_proxy_validation_rejects_metadata_and_reserved_addresses() -> None:
@@ -56,13 +62,10 @@ def test_proxy_validation_allows_public_addresses() -> None:
 
 
 def test_proxy_validation_judges_ipv4_mapped_ipv6_by_embedded_ipv4() -> None:
-    for proxy_url in [
-        "http://[::ffff:127.0.0.1]:8080",
-        "http://[::ffff:10.0.0.1]:3128",
-        "http://[::ffff:8.8.8.8]:8080",
-    ]:
+    for proxy_url in ["http://[::ffff:127.0.0.1]:8080", "http://[::ffff:8.8.8.8]:8080"]:
         validate_proxy_endpoint(proxy_url)
     for proxy_url in [
+        "http://[::ffff:10.0.0.1]:3128",
         "http://[::ffff:169.254.169.254]:80",
         "http://[64:ff9b::a00:1]:8080",
     ]:
@@ -101,6 +104,25 @@ def test_proxy_validation_rejects_hostname_resolving_to_private(monkeypatch) -> 
     )
     with pytest.raises(ValueError):
         validate_proxy_host("metadata.internal")
+
+
+def test_proxy_validation_allows_docker_host_resolving_to_private_gateway(monkeypatch) -> None:
+    """host.docker.internal resolves to a private bridge gateway and must stay allowed."""
+    monkeypatch.setattr(
+        "hx_email.server.mail.imap.impl.address_guard.socket.getaddrinfo",
+        lambda host, port: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("172.17.0.1", 0))],
+    )
+    assert validate_proxy_host("host.docker.internal") == "host.docker.internal"
+    assert resolve_proxy_host("host.docker.internal") == "172.17.0.1"
+
+
+def test_proxy_validation_rejects_hostname_resolving_to_private_rfc1918(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "hx_email.server.mail.imap.impl.address_guard.socket.getaddrinfo",
+        lambda host, port: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.9", 0))],
+    )
+    with pytest.raises(ValueError):
+        validate_proxy_host("proxy.internal")
 
 
 def test_proxy_validation_allows_hostname_resolving_to_public(monkeypatch) -> None:

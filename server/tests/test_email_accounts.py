@@ -38,7 +38,7 @@ def test_adding_email_account_creates_primary_usable_email_in_current_workspace(
             "provider": "imap",
             "primary_address": "shared@example.com",
             "display_name": "Alice IMAP",
-            "imap_host": "imap.example.com",
+            "imap_host": "8.8.8.8",
             "imap_port": 993,
             "username": "shared@example.com",
         },
@@ -167,7 +167,7 @@ def test_deactivating_email_account_deactivates_primary_usable_email(tmp_path):
             "provider": "imap",
             "primary_address": "owner@example.com",
             "display_name": "Owner",
-            "imap_host": "imap.example.com",
+            "imap_host": "8.8.8.8",
             "imap_port": 993,
             "username": "owner@example.com",
         },
@@ -213,7 +213,7 @@ def test_email_account_can_manage_real_alias_usable_emails(tmp_path):
             "provider": "imap",
             "primary_address": "owner@example.com",
             "display_name": "Owner",
-            "imap_host": "imap.example.com",
+            "imap_host": "8.8.8.8",
             "imap_port": 993,
             "username": "owner@example.com",
             "alias_addresses": ["alias-one@example.com", "alias-two@example.com"],
@@ -320,7 +320,7 @@ def test_importing_reference_account_text_supports_imap_and_outlook(tmp_path):
                 [
                     "person@gmail.com----gmail-app-pass",
                     "person@qq.com----qq-auth-code----qq",
-                    "person@custom.test----custom-pass----custom----imap.custom.test----1993",
+                    "person@custom.test----custom-pass----custom----8.8.8.8----1993",
                     "person@outlook.com----unused-pass----client-id----refresh-token",
                 ]
             )
@@ -578,7 +578,7 @@ def test_outlook_mode_rejects_imap_format_lines_instead_of_corrupting_credential
         json={
             "text": "\n".join(
                 [
-                    "person@custom.test----pass----custom----imap.custom.test----1993",
+                    "person@custom.test----pass----custom----8.8.8.8----1993",
                     "person2@custom.test----pass----imap.other.test----993",
                 ]
             ),

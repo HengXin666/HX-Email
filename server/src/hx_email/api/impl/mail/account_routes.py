@@ -19,6 +19,7 @@ from hx_email.server.mail.email_accounts import (
     deactivate_email_account,
     get_email_account,
 )
+from hx_email.server.mail.imap.impl.address_guard import validate_proxy_host
 from hx_email.server.mail.impl.accounts import (
     delete_email_account,
     delete_email_account_by_email,
@@ -56,6 +57,8 @@ def register_email_account_routes(router: APIRouter, settings: Settings) -> None
             raise HTTPException(status_code=422, detail=str(error)) from error
         except DuplicateUsableEmailError as error:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
         return serialize_email_account(account)
 
     # ── Static GET routes MUST be registered BEFORE /{account_id} ──
@@ -172,6 +175,11 @@ def register_email_account_routes(router: APIRouter, settings: Settings) -> None
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
         user = require_user(settings, authorization)
+        if payload.imap_host is not None and payload.imap_host.strip():
+            try:
+                validate_proxy_host(payload.imap_host)
+            except ValueError as error:
+                raise HTTPException(status_code=422, detail=str(error)) from error
         try:
             account = update_email_account(
                 settings,
@@ -192,6 +200,8 @@ def register_email_account_routes(router: APIRouter, settings: Settings) -> None
             raise HTTPException(status_code=422, detail=str(error)) from error
         except DuplicateUsableEmailError as error:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
         if account is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Email account not found"
