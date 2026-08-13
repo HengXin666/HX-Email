@@ -4,6 +4,7 @@ from hx_email.config import Settings
 from hx_email.database import connect, utc_now_iso
 from hx_email.security import decrypt_secret, encrypt_secret
 from hx_email.server.auth import require_inserted_id
+from hx_email.server.mail.imap.impl.address_guard import validate_proxy_host as validate_imap_host
 from hx_email.server.mail.impl.accounts.account_helpers import (
     DuplicateUsableEmailError,
     InvalidAliasAddressError,  # re-exported
@@ -74,6 +75,8 @@ def add_email_account(
     alias_addresses: list[str] | None = None,
     group_id: int | None = None,
 ) -> EmailAccount:
+    if imap_host.strip():
+        validate_imap_host(imap_host)
     alias_addresses = alias_addresses or []
     created_at: str = utc_now_iso()
     with connect(settings) as connection:

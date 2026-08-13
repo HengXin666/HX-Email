@@ -212,10 +212,13 @@ def _import_imap(settings: Settings, user_id: int, lines: list[str], provider: s
         existing = find_account(settings, user_id, email)
         if existing is not None:
             if strategy == "skip": skp += 1; continue
-            update_account_credentials(settings, user_id, int(existing["id"]), ParsedAccountLine(email, pwd, provider, host, port, "", ""))
-            imp += 1; continue
+            try:
+                update_account_credentials(settings, user_id, int(existing["id"]), ParsedAccountLine(email, pwd, provider, host, port, "", ""))
+                imp += 1
+            except (DuplicateUsableEmailError, ValueError) as exc: fld += 1; errors.append({"email": email, "error": str(exc)})
+            continue
         try: add_email_account(settings, user_id, provider, email, email, host, port, email, pwd, "", "", [], group_id); imp += 1
-        except DuplicateUsableEmailError as exc: fld += 1; errors.append({"email": email, "error": str(exc)})
+        except (DuplicateUsableEmailError, ValueError) as exc: fld += 1; errors.append({"email": email, "error": str(exc)})
     return {"imported": imp, "skipped": skp, "failed": fld, "errors": errors[:50], "errors_total": len(errors), "duplicate_strategy": strategy}
 
 
@@ -241,15 +244,18 @@ def _import_auto(settings: Settings, user_id: int, lines: list[str], strategy: s
         existing = find_account(settings, user_id, email)
         if existing is not None:
             if strategy == "skip": skp += 1; bp[prov]["skipped"] += 1; continue
-            if r.line_type == "outlook":
-                update_account_credentials(settings, user_id, int(existing["id"]), ParsedAccountLine(email, r.password, "outlook", "", None, r.client_id, r.refresh_token))
-            else: update_account_credentials(settings, user_id, int(existing["id"]), ParsedAccountLine(email, r.password, prov, r.imap_host, r.imap_port, "", ""))
-            imp += 1; bp[prov]["imported"] += 1; continue
+            try:
+                if r.line_type == "outlook":
+                    update_account_credentials(settings, user_id, int(existing["id"]), ParsedAccountLine(email, r.password, "outlook", "", None, r.client_id, r.refresh_token))
+                else: update_account_credentials(settings, user_id, int(existing["id"]), ParsedAccountLine(email, r.password, prov, r.imap_host, r.imap_port, "", ""))
+                imp += 1; bp[prov]["imported"] += 1
+            except (DuplicateUsableEmailError, ValueError) as exc: fld += 1; bp[prov]["failed"] += 1; errors.append({"email": email, "error": str(exc)})
+            continue
         try:
             if r.line_type == "outlook": add_email_account(settings, user_id, "outlook", email, email, "", None, email, r.password, r.client_id, r.refresh_token, [], group_id)
             else: add_email_account(settings, user_id, prov, email, email, r.imap_host, r.imap_port, email, r.password, "", "", [], group_id)
             imp += 1; bp[prov]["imported"] += 1
-        except DuplicateUsableEmailError as exc: fld += 1; bp[prov]["failed"] += 1; errors.append({"email": email, "error": str(exc)})
+        except (DuplicateUsableEmailError, ValueError) as exc: fld += 1; bp[prov]["failed"] += 1; errors.append({"email": email, "error": str(exc)})
     return {"imported": imp, "skipped": skp, "failed": fld, "by_provider": bp, "errors": errors[:50], "errors_total": len(errors), "duplicate_strategy": strategy, "mode": "auto"}
 
 

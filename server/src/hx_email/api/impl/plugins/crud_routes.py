@@ -39,8 +39,8 @@ def register_plugin_crud_routes(router: APIRouter, settings: Settings) -> None:
         name: str,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_user(settings, authorization)
-        removed = uninstall_plugin(settings, name)
+        user = require_user(settings, authorization)
+        removed = uninstall_plugin(settings, name, user.id)
         if not removed:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -53,8 +53,8 @@ def register_plugin_crud_routes(router: APIRouter, settings: Settings) -> None:
         name: str,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_user(settings, authorization)
-        result = test_plugin_connection(settings, name)
+        user = require_user(settings, authorization)
+        result = test_plugin_connection(settings, name, user.id)
         if not result.get("success"):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

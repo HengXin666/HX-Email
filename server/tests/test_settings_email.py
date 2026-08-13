@@ -97,7 +97,7 @@ def test_email_test_uses_smtp_override_with_custom_account_credentials(tmp_path:
         "custom",
         "sender@example.com",
         "Sender",
-        "imap.custom.example",
+        "8.8.8.8",
         993,
         "sender@example.com",
         "app-password",

@@ -30,8 +30,8 @@ def register_plugin_config_routes(router: APIRouter, settings: Settings) -> None
         name: str,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_user(settings, authorization)
-        config = get_plugin_config(settings, name)
+        user = require_user(settings, authorization)
+        config = get_plugin_config(settings, name, user.id)
         return {"success": True, "config": config if config is not None else {}}
 
     @router.post("/plugins/{name}/config")
@@ -40,6 +40,6 @@ def register_plugin_config_routes(router: APIRouter, settings: Settings) -> None
         payload: PluginConfigWrite,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_user(settings, authorization)
-        save_plugin_config(settings, name, payload.config)
+        user = require_user(settings, authorization)
+        save_plugin_config(settings, name, user.id, payload.config)
         return {"success": True}

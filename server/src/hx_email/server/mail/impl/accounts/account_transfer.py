@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass
-from sqlite3 import Connection, Row
+from sqlite3 import Row
 
 from hx_email.config import Settings
 from hx_email.database import connect
@@ -9,10 +9,9 @@ from hx_email.server.mail.email_accounts import (
     DuplicateUsableEmailError,
     add_email_account,
 )
+from hx_email.server.mail.imap.impl.address_guard import validate_proxy_host
 
-# ---------------------------------------------------------------------------
 # Inlined from providers.py (kept here to avoid a 7th file in impl/)
-# ---------------------------------------------------------------------------
 
 MAIL_PROVIDERS: dict[str, dict[str, object]] = {
     "gmail": {"key": "gmail", "imap_host": "imap.gmail.com", "imap_port": 993},
@@ -46,9 +45,7 @@ def provider_defaults(provider: str) -> dict[str, object]:
     return MAIL_PROVIDERS.get(provider, MAIL_PROVIDERS["custom"])
 
 
-# ---------------------------------------------------------------------------
 # Original account_transfer.py below
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -90,8 +87,12 @@ def import_account_text(
             skipped += 1
             continue
         if existing is not None:
-            update_account_credentials(settings, user_id, int(existing["id"]), parsed)
-            imported += 1
+            try:
+                update_account_credentials(settings, user_id, int(existing["id"]), parsed)
+                imported += 1
+            except ValueError as error:
+                failed += 1
+                errors.append({"line": line_number, "email": parsed.address, "error": str(error)})
             continue
 
         try:
@@ -110,7 +111,7 @@ def import_account_text(
                 [],
             )
             imported += 1
-        except DuplicateUsableEmailError as error:
+        except (DuplicateUsableEmailError, ValueError) as error:
             failed += 1
             errors.append({"line": line_number, "email": parsed.address, "error": str(error)})
 
@@ -251,6 +252,8 @@ def update_account_credentials(
     account_id: int,
     parsed: ParsedAccountLine,
 ) -> None:
+    if parsed.imap_host.strip():
+        validate_proxy_host(parsed.imap_host)
     with connect(settings) as connection:
         connection.execute(
             """
@@ -271,18 +274,14 @@ def update_account_credentials(
                 user_id,
             ),
         )
-        reactivate_account_emails(connection, user_id, account_id)
-
-
-def reactivate_account_emails(connection: Connection, user_id: int, account_id: int) -> None:
-    connection.execute(
-        """
-        UPDATE usable_emails
-        SET status = 'active', active = 1
-        WHERE user_id = ? AND email_account_id = ? AND kind = 'primary'
-        """,
-        (user_id, account_id),
-    )
+        connection.execute(
+            """
+            UPDATE usable_emails
+            SET status = 'active', active = 1
+            WHERE user_id = ? AND email_account_id = ? AND kind = 'primary'
+            """,
+            (user_id, account_id),
+        )
 
 
 def format_account_line(settings: Settings, row: Row) -> str:
