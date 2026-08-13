@@ -2,16 +2,29 @@ import type { Group, Tag } from "../../types";
 import { request } from "../core";
 
 export const groupsApi = {
-  createGroup: (name: string, color = "#58a6ff", proxy_url = "") =>
+  createGroup: (
+    name: string,
+    color = "#58a6ff",
+    proxy_url = "",
+    notify_enabled?: boolean,
+    polling_enabled?: boolean,
+  ) =>
     request<Group>("/groups", {
       method: "POST",
-      body: JSON.stringify({ name, color, proxy_url }),
+      body: JSON.stringify({ name, color, proxy_url, notify_enabled, polling_enabled }),
     }),
 
-  updateGroup: (id: number, name: string, color: string, proxy_url = "") =>
+  updateGroup: (
+    id: number,
+    name: string,
+    color: string,
+    proxy_url = "",
+    notify_enabled?: boolean,
+    polling_enabled?: boolean,
+  ) =>
     request<Group>(`/groups/${id}`, {
       method: "PUT",
-      body: JSON.stringify({ name, color, proxy_url }),
+      body: JSON.stringify({ name, color, proxy_url, notify_enabled, polling_enabled }),
     }),
 
   deleteGroup: (id: number) => request<void>(`/groups/${id}`, { method: "DELETE" }),

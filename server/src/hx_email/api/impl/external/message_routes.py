@@ -16,6 +16,7 @@ from hx_email.server.external_api import (
     require_api_key,
     wait_for_message,
 )
+from hx_email.server.mail.temp_mail import TempMailProvider
 from hx_email.server.mail.verification import MailboxProvider
 from hx_email.server.settings_service import get_setting
 
@@ -37,6 +38,7 @@ def register_external_message_routes(
     app: FastAPI,
     settings: Settings,
     mailbox_provider: MailboxProvider,
+    temp_mail_providers: dict[str, TempMailProvider],
 ) -> None:
     @app.get("/api/external/messages")
     def ext_messages(
@@ -63,6 +65,7 @@ def register_external_message_routes(
             subject_contains=subject_contains,
             since_minutes=since_minutes,
             claim_token=claim_token,
+            temp_mail_providers=temp_mail_providers,
         )
         return external_response(True, data=result)
 
@@ -87,6 +90,7 @@ def register_external_message_routes(
             subject_contains=subject_contains,
             since_minutes=since_minutes,
             claim_token=claim_token,
+            temp_mail_providers=temp_mail_providers,
         )
         return external_response(True, data=result)
 
@@ -107,6 +111,7 @@ def register_external_message_routes(
             message_id,
             folder=folder,
             claim_token=claim_token,
+            temp_mail_providers=temp_mail_providers,
         )
         return external_response(True, data=result)
 
@@ -133,6 +138,7 @@ def register_external_message_routes(
             message_id,
             folder=folder,
             claim_token=claim_token,
+            temp_mail_providers=temp_mail_providers,
         )
         return external_response(True, data=result)
 
@@ -163,6 +169,7 @@ def register_external_message_routes(
             code_regex=code_regex,
             code_source=code_source,
             claim_token=claim_token,
+            temp_mail_providers=temp_mail_providers,
         )
         return external_response(True, data=result)
 
@@ -187,6 +194,7 @@ def register_external_message_routes(
             subject_contains=subject_contains,
             since_minutes=since_minutes,
             claim_token=claim_token,
+            temp_mail_providers=temp_mail_providers,
         )
         return external_response(True, data=result)
 
@@ -223,6 +231,7 @@ def register_external_message_routes(
             poll_interval=poll_interval,
             mode=mode,
             claim_token=claim_token,
+            temp_mail_providers=temp_mail_providers,
         )
         return external_response(True, data=result)
 

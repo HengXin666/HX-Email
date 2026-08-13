@@ -266,7 +266,10 @@ ZIP 是敏感实例备份。复制运行中的 SQLite 目录前应先停止服�
 ```json
 {
   "name": "string",
-  "color": "string" // 可选, 默认 "#58a6ff"
+  "color": "string", // 可选, 默认 "#58a6ff"
+  "proxy_url": "string", // 可选, 代理地址
+  "notify_enabled": true, // 可选, 默认取系统设置 group_default_notify_enabled
+  "polling_enabled": true // 可选, 默认取系统设置 group_default_polling_enabled
 }
 ```
 
@@ -276,7 +279,10 @@ ZIP 是敏感实例备份。复制运行中的 SQLite 目录前应先停止服�
 {
   "id": 1,
   "name": "Work",
-  "color": "#58a6ff"
+  "color": "#58a6ff",
+  "proxy_url": "",
+  "notify_enabled": true,
+  "polling_enabled": true
 }
 ```
 

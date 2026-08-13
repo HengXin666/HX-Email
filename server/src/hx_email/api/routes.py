@@ -112,7 +112,7 @@ def register_external_routes(
 ) -> None:
     """Register external API routes secured by X-API-Key."""
     register_external_system_routes(app, settings)
-    register_external_message_routes(app, settings, mailbox_provider)
+    register_external_message_routes(app, settings, mailbox_provider, temp_mail_providers)
     register_external_pool_routes(app, settings)
     register_external_temp_mail_routes(app, settings, temp_mail_providers)
 

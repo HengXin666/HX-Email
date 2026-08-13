@@ -116,6 +116,8 @@ const GroupSidebar: React.FC<{
   const [showNew, setShowNew] = useState(false);
   const [newName, setNewName] = useState("");
   const [newColor, setNewColor] = useState(COLORS[0]);
+  const [newNotify, setNewNotify] = useState(true);
+  const [newPolling, setNewPolling] = useState(true);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
 
   const counts = useMemo(() => {
@@ -130,7 +132,7 @@ const GroupSidebar: React.FC<{
   const handleCreate = async () => {
     if (!newName.trim()) return;
     try {
-      await createGroup(newName.trim(), newColor);
+      await createGroup(newName.trim(), newColor, undefined, newNotify, newPolling);
       toast("分组已创建", "success");
       setNewName("");
       setShowNew(false);
@@ -238,6 +240,8 @@ const GroupSidebar: React.FC<{
               ))}
             </div>
           </div>
+          <Checkbox label="自动轮询组内邮箱" checked={newPolling} onChange={setNewPolling} />
+          <Checkbox label="发送新邮件通知与转发" checked={newNotify} onChange={setNewNotify} />
         </div>
       </Modal>
 
@@ -320,7 +324,14 @@ const GroupItem: React.FC<{
 const EditGroupModal: React.FC<{
   groupId: number | null;
   onClose: () => void;
-  onUpdate: (id: number, name: string, color: string, proxy_url?: string) => Promise<any>;
+  onUpdate: (
+    id: number,
+    name: string,
+    color: string,
+    proxy_url?: string,
+    notify_enabled?: boolean,
+    polling_enabled?: boolean,
+  ) => Promise<any>;
   onDelete: (id: number) => Promise<any>;
 }> = ({ groupId, onClose, onUpdate, onDelete }) => {
   const { groups, refreshGroups } = useApp();
@@ -353,7 +364,7 @@ const EditGroupModal: React.FC<{
   const handleSave = async () => {
     if (!g || !name.trim()) return;
     try {
-      await onUpdate(g.id, name.trim(), color, proxyUrl);
+      await onUpdate(g.id, name.trim(), color, proxyUrl, notifyEnabled, pollingEnabled);
       toast("分组已更新", "success");
       onClose();
     } catch (err: any) {

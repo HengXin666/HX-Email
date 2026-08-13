@@ -120,7 +120,15 @@ def register_workspace_routes(router: APIRouter, settings: Settings) -> None:
                 validate_proxy_endpoint(payload.proxy_url)
             except ValueError as error:
                 raise HTTPException(status_code=400, detail=str(error)) from error
-        group = create_group(settings, user.id, payload.name, payload.color, payload.proxy_url)
+        group = create_group(
+            settings,
+            user.id,
+            payload.name,
+            payload.color,
+            payload.proxy_url,
+            payload.notify_enabled,
+            payload.polling_enabled,
+        )
         return {
             "id": group.id,
             "name": group.name,
@@ -160,7 +168,14 @@ def register_workspace_routes(router: APIRouter, settings: Settings) -> None:
             except ValueError as error:
                 raise HTTPException(status_code=400, detail=str(error)) from error
         group = update_group(
-            settings, user.id, group_id, payload.name, payload.color, payload.proxy_url
+            settings,
+            user.id,
+            group_id,
+            payload.name,
+            payload.color,
+            payload.proxy_url,
+            payload.notify_enabled,
+            payload.polling_enabled,
         )
         if group is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
