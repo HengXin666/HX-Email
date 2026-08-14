@@ -20,6 +20,33 @@ from hx_email.server.mail.verification import (
         ("Ihr Bestätigungscode lautet 327333.", "", "327333"),
         ("Your verification code is A7B9C2.", "", "A7B9C2"),
         ("Your verification code is 129-458.", "", "129458"),
+        # 2026-08-15 regression: MS Indonesian template (Kode keamanan) used
+        # to return None -> code timeout; now must extract.
+        (
+            "Gunakan kode keamanan berikut untuk akun Microsoft pribadi Anda. "
+            "Kode keamanan: 666419 Hanya masukkan kode ini di situs web resmi.",
+            "Kode keamanan akun Microsoft pribadi",
+            "666419",
+        ),
+        (
+            "Gunakan kod keselamatan berikut untuk akaun Microsoft peribadi. "
+            "Kod keselamatan: 888123.",
+            "Kod keselamatan akaun Microsoft peribadi",
+            "888123",
+        ),
+        ("Mã bảo mật: 555111. Vui lòng không chia sẻ.", "Mã bảo mật tài khoản Microsoft", "555111"),
+        ("รหัสความปลอดภัย: 777333 โปรดอย่าแชร์", "รหัสความปลอดภัยบัญชี Microsoft", "777333"),
+        ("Säkerhetskod: 444222. Dela inte.", "Säkerhetskod Microsoft-konto", "444222"),
+        ("Sikkerhedskode: 333111. Del ikke.", "Sikkerhedskode Microsoft-konto", "333111"),
+        ("Sikkerhetskode: 222999. Ikke del.", "Sikkerhetskode Microsoft-konto", "222999"),
+        ("Varmistuskoodi: 999444. Älä jaa.", "Varmistuskoodi Microsoft-tili", "999444"),
+        ("Bezpečnostní kód: 123987.", "Bezpečnostní kód účtu Microsoft", "123987"),
+        ("Biztonsági kód: 456123.", "Microsoft-fiók biztonsági kódja", "456123"),
+        ("Cod de securitate: 789456.", "Cod de securitate cont Microsoft", "789456"),
+        ("Κωδικός ασφαλείας: 321654.", "Κωδικός ασφαλείας λογαριασμού Microsoft", "321654"),
+        ("Код безпеки: 654987.", "Код безпеки облікового запису Microsoft", "654987"),
+        ("קוד אבטחה: 147258.", "קוד אבטחה חשבון Microsoft", "147258"),
+        ("सुरक्षा कोड: 258369 कृपया साझा न करें", "Microsoft खाता सुरक्षा कोड", "258369"),
     ],
 )
 def test_extracts_contextual_codes_across_languages_and_shapes(
