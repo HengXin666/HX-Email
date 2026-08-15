@@ -92,6 +92,20 @@ class MessagingAdapter(ABC):
   HX-Email 只管理连接与业务，不保存 QQ 密码/票据（最小化泄露面）。
 - TG/Discord：Bot Token 由官方管理，服务端加密存储 token。
 
+### 2.5 零配置使用路径（QQ）
+
+用户视角只有三步：**添加 → 扫码 → 使用**，不暴露任何协议细节：
+
+1. 点击「添加 QQ」，后端自动创建实例并填入 NapCat 本地默认地址
+   （`http://127.0.0.1:3000` OneBot HTTP、`http://127.0.0.1:6099/webui` 登录页），
+   同时自动生成实例级事件 Token；
+2. 页面直接弹出内嵌 NapCat 登录页（即二维码），手机 QQ 扫码即完成登录；
+3. 登录后即可查看会话、收发消息、管理群组。
+
+- 前端不再要求填写 api_base_url / webui_url / event_token 等字段；
+- `event_token` 等敏感配置在 API 返回中脱敏（`***`），仅服务端持有；
+- 若 NapCat 部署在非本机默认端口，可在实例配置接口中按需覆盖。
+
 ## 3. 数据模型
 
 ```sql
@@ -123,27 +137,27 @@ messaging_messages (
 
 ## 4. REST API（前缀 `/api/v1/messaging`）
 
-| 方法   | 路径                                  | 说明                                     |
-| ------ | ------------------------------------- | ---------------------------------------- |
-| GET    | `/catalog`                            | 插件目录（四种平台 + 能力位 + 风险提示） |
-| GET    | `/instances`                          | 当前用户实例列表                         |
-| POST   | `/instances`                          | 创建实例（kind/name/config）             |
-| GET    | `/instances/{id}`                     | 实例详情                                 |
-| DELETE | `/instances/{id}`                     | 删除实例                                 |
-| POST   | `/instances/{id}/connect`             | 连接/启动                                |
-| POST   | `/instances/{id}/disconnect`          | 断开                                     |
-| POST   | `/instances/{id}/login`               | 获取扫码/授权引导                        |
-| POST   | `/instances/{id}/login/status`        | 登录状态                                 |
-| GET    | `/instances/{id}/conversations`       | 会话列表                                 |
-| GET    | `/instances/{id}/messages?chat_id=`   | 消息历史                                 |
-| POST   | `/instances/{id}/send`                | 发送消息                                 |
-| GET    | `/instances/{id}/groups`              | 群列表                                   |
-| POST   | `/instances/{id}/groups/{gid}/action` | 群管理操作                               |
-| POST   | `/events/{kind}`                      | 平台事件回调（`X-Messaging-Token` 鉴权） |
+| 方法   | 路径                                  | 说明                                        |
+| ------ | ------------------------------------- | ------------------------------------------- |
+| GET    | `/catalog`                            | 插件目录（四种平台 + 能力位 + 风险提示）    |
+| GET    | `/instances`                          | 当前用户实例列表                            |
+| POST   | `/instances`                          | 创建实例；QQ 空配置自动填默认值并生成 Token |
+| GET    | `/instances/{id}`                     | 实例详情                                    |
+| DELETE | `/instances/{id}`                     | 删除实例                                    |
+| POST   | `/instances/{id}/connect`             | 连接/启动                                   |
+| POST   | `/instances/{id}/disconnect`          | 断开                                        |
+| POST   | `/instances/{id}/login`               | 获取扫码/授权引导                           |
+| POST   | `/instances/{id}/login/status`        | 登录状态                                    |
+| GET    | `/instances/{id}/conversations`       | 会话列表                                    |
+| GET    | `/instances/{id}/messages?chat_id=`   | 消息历史                                    |
+| POST   | `/instances/{id}/send`                | 发送消息                                    |
+| GET    | `/instances/{id}/groups`              | 群列表                                      |
+| POST   | `/instances/{id}/groups/{gid}/action` | 群管理操作                                  |
+| POST   | `/events/{kind}`                      | 平台事件回调（`X-Messaging-Token` 鉴权）    |
 
 ## 5. 安全与合规
 
-- 配置（含事件 token）整体加密存储（复用 `security.encrypt_secret`）。
+- 配置（含事件 token）整体加密存储（复用 `security.encrypt_secret`），API 返回时对 token 脱敏。
 - 事件回调要求实例级 token，防止伪造消息注入。
 - QQ 第三方协议有封号风险：创建/启用时前端展示风险提示，文档明示合规边界。
 - 默认不自动连接任何实例，必须用户显式启用。

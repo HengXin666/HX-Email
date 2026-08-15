@@ -55,7 +55,7 @@ def instance_dict(
         "kind": instance.kind,
         "name": instance.name,
         "status": instance.status,
-        "config": instance.config,
+        "config": public_config(instance.config),
         "created_at": instance.created_at,
         "updated_at": instance.updated_at,
     }
@@ -125,4 +125,11 @@ def group_dict(value: MessagingGroup) -> dict[str, object]:
         "group_id": value.group_id,
         "name": value.name,
         "member_count": value.member_count,
+    }
+
+
+def public_config(config: dict[str, str]) -> dict[str, str]:
+    """Mask secrets before returning instance config to the browser."""
+    return {
+        key: ("***" if key == "event_token" and value else value) for key, value in config.items()
     }

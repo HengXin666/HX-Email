@@ -295,13 +295,47 @@ def test_group_list_and_action(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -
     assert kick.json()["applied"] is True
 
 
-def test_connect_without_api_base_url_reports_error(tmp_path: Any) -> None:
+def test_connect_with_unreachable_onebot_reports_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
     settings = make_settings(tmp_path)
     migrate(settings)
     client = TestClient(create_app(settings))
     headers = login(client, settings)
-    instance = create_qq_instance(client, headers, api_base_url="")
+    instance = create_qq_instance(client, headers)
+
+    import requests
+
+    def fake_post(
+        self: Any,
+        url: str,
+        json: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        timeout: float = 10.0,
+    ) -> FakeOneBotResponse:
+        raise requests.ConnectionError("connection refused")
+
+    monkeypatch.setattr("hx_email.server.messaging.onebot.requests.Session.post", fake_post)
 
     response = client.post(f"{API}/messaging/instances/{instance['id']}/connect", headers=headers)
     assert response.status_code == 400
-    assert "api_base_url" in response.json()["detail"]
+    assert "OneBot 请求失败" in response.json()["detail"]
+
+
+def test_create_qq_instance_with_empty_config_gets_defaults(tmp_path: Any) -> None:
+    settings = make_settings(tmp_path)
+    migrate(settings)
+    client = TestClient(create_app(settings))
+    headers = login(client, settings)
+
+    response = client.post(
+        f"{API}/messaging/instances",
+        json={"kind": "qq", "name": "zero-config"},
+        headers=headers,
+    )
+    assert response.status_code == 201
+    instance = response.json()["instance"]
+    assert instance["config"]["api_base_url"] == "http://127.0.0.1:3000"
+    assert instance["config"]["webui_url"] == "http://127.0.0.1:6099/webui"
+    assert instance["config"]["event_token"] == "***"

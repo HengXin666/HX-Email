@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 import { IconBell, IconLink, IconPlus, IconRefresh, IconTrash, IconZap } from "../components/icons";
 import { Topbar } from "../components/layout";
-import { Badge, Button, Card, Input } from "../components/ui/Primitives";
+import { Badge, Button, Card, Modal } from "../components/ui/Primitives";
 import { EmptyState, LoadingState } from "../components/ui/StateDisplay";
 import { useToast } from "../components/ui/Toast";
 import type {
@@ -41,13 +41,12 @@ export const Messaging: React.FC = () => {
   const [instances, setInstances] = useState<MessagingInstance[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [loginInstance, setLoginInstance] = useState<MessagingInstance | null>(null);
   const [conversations, setConversations] = useState<MessagingConversation[]>([]);
   const [groups, setGroups] = useState<MessagingGroup[]>([]);
   const [messages, setMessages] = useState<MessagingMessage[]>([]);
   const [activeChat, setActiveChat] = useState<MessagingConversation | null>(null);
   const [sendText, setSendText] = useState("");
-  const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState({ name: "", api_base_url: "", webui_url: "", event_token: "" });
   const [busy, setBusy] = useState<string | null>(null);
 
   const loadAll = useCallback(async () => {
@@ -66,6 +65,25 @@ export const Messaging: React.FC = () => {
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  const handleAddQQ = useCallback(async () => {
+    setBusy("add");
+    try {
+      const instance = await api.createInstance({
+        kind: "qq",
+        name: "QQ 机器人",
+        config: {},
+      });
+      await loadAll();
+      setSelectedId(instance.id);
+      setLoginInstance(instance);
+      toast("实例已创建，请扫描二维码登录", "success");
+    } catch (error: unknown) {
+      toast(error instanceof Error ? error.message : "添加失败", "error");
+    } finally {
+      setBusy(null);
+    }
+  }, [loadAll, toast]);
 
   const openInstance = useCallback(
     async (instance: MessagingInstance) => {
@@ -149,20 +167,22 @@ export const Messaging: React.FC = () => {
     [loadAll, toast],
   );
 
-  const handleLogin = useCallback(
-    async (instance: MessagingInstance) => {
-      try {
-        const ticket = await api.getLogin(instance.id);
-        if (ticket.url) {
-          window.open(ticket.url, "_blank", "noopener,noreferrer");
-        }
-        toast(ticket.instructions || "请在打开的页面中扫码登录", "success");
-      } catch (error: unknown) {
-        toast(error instanceof Error ? error.message : "获取登录引导失败", "error");
+  const handleLoginStatus = useCallback(async () => {
+    if (loginInstance === null) return;
+    try {
+      const state = await api.getLoginStatus(loginInstance.id);
+      if (state.logged_in) {
+        toast(`登录成功：${state.account_name || state.account_id}`, "success");
+        setLoginInstance(null);
+        await loadAll();
+        await openInstance(loginInstance);
+      } else {
+        toast(state.message || "尚未登录，请先扫码", "error");
       }
-    },
-    [toast],
-  );
+    } catch (error: unknown) {
+      toast(error instanceof Error ? error.message : "查询登录状态失败", "error");
+    }
+  }, [loadAll, loginInstance, openInstance, toast]);
 
   const handleDelete = useCallback(
     async (instance: MessagingInstance) => {
@@ -183,29 +203,6 @@ export const Messaging: React.FC = () => {
     },
     [loadAll, selectedId, toast],
   );
-
-  const handleCreate = useCallback(async () => {
-    setBusy("create");
-    try {
-      await api.createInstance({
-        kind: "qq",
-        name: form.name.trim() || "QQ 机器人",
-        config: {
-          api_base_url: form.api_base_url.trim(),
-          webui_url: form.webui_url.trim(),
-          event_token: form.event_token.trim(),
-        },
-      });
-      setShowCreate(false);
-      setForm({ name: "", api_base_url: "", webui_url: "", event_token: "" });
-      toast("实例已创建，请配置 NapCat 事件推送后连接", "success");
-      await loadAll();
-    } catch (error: unknown) {
-      toast(error instanceof Error ? error.message : "创建失败", "error");
-    } finally {
-      setBusy(null);
-    }
-  }, [form, loadAll, toast]);
 
   const handleGroupAction = useCallback(
     async (group: MessagingGroup, action: string) => {
@@ -233,15 +230,16 @@ export const Messaging: React.FC = () => {
     <div className="flex flex-1 flex-col overflow-hidden">
       <Topbar
         title="消息插件"
-        subtitle="以插件方式接入 QQ / 微信 / Telegram / Discord，像收邮件一样收发消息"
+        subtitle="添加 QQ 机器人 → 扫码登录 → 直接收发消息、管理群"
         actions={
           <Button
             variant="primary"
             size="sm"
+            loading={busy === "add"}
             icon={<IconPlus size={14} />}
-            onClick={() => setShowCreate(true)}
+            onClick={handleAddQQ}
           >
-            添加 QQ 实例
+            添加 QQ
           </Button>
         }
       />
@@ -276,7 +274,7 @@ export const Messaging: React.FC = () => {
 
           <h2 className="mt-6 mb-2 text-sm font-semibold text-gh-text">我的实例</h2>
           {instances.length === 0 ? (
-            <EmptyState message="还没有消息实例，点击右上角添加" />
+            <EmptyState message="还没有实例，点右上角「添加 QQ」即可开始" />
           ) : (
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
               {instances.map((instance) => (
@@ -295,8 +293,7 @@ export const Messaging: React.FC = () => {
                         </Badge>
                       </div>
                       <div className="mt-1 text-xs text-gh-text-secondary">
-                        {instance.kind.toUpperCase()} ·{" "}
-                        {instance.config.api_base_url || "未配置 API"}
+                        {instance.kind.toUpperCase()} · {instance.config.api_base_url || "本地默认"}
                       </div>
                     </div>
                     <div className="flex shrink-0 gap-1">
@@ -322,7 +319,7 @@ export const Messaging: React.FC = () => {
                         size="sm"
                         variant="ghost"
                         icon={<IconLink size={14} />}
-                        onClick={() => handleLogin(instance)}
+                        onClick={() => setLoginInstance(instance)}
                       >
                         扫码
                       </Button>
@@ -345,7 +342,7 @@ export const Messaging: React.FC = () => {
                 <h3 className="mb-2 text-sm font-semibold text-gh-text">会话</h3>
                 <div className="max-h-80 space-y-1 overflow-y-auto">
                   {conversations.length === 0 ? (
-                    <EmptyState message="无会话（需先连接并登录）" />
+                    <EmptyState message="无会话（需先扫码登录）" />
                   ) : (
                     conversations.map((conversation) => (
                       <button
@@ -461,56 +458,49 @@ export const Messaging: React.FC = () => {
               </Card>
             </div>
           )}
-
-          {showCreate && (
-            <div className="mt-6 rounded-xl border border-gh-border bg-gh-canvas-subtle p-4">
-              <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-gh-text">
-                <IconPlus size={14} className="text-gh-accent" />
-                添加 QQ 实例（NapCat + OneBot 11）
-              </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <Input
-                  label="实例名称"
-                  placeholder="如：主力 QQ"
-                  value={form.name}
-                  onChange={(event) => setForm({ ...form, name: event.target.value })}
-                />
-                <Input
-                  label="OneBot HTTP 地址"
-                  placeholder="http://127.0.0.1:3000"
-                  value={form.api_base_url}
-                  onChange={(event) => setForm({ ...form, api_base_url: event.target.value })}
-                />
-                <Input
-                  label="NapCat WebUI 地址（扫码用）"
-                  placeholder="http://127.0.0.1:6099/webui"
-                  value={form.webui_url}
-                  onChange={(event) => setForm({ ...form, webui_url: event.target.value })}
-                />
-                <Input
-                  label="事件推送 Token"
-                  placeholder="自定义随机串，需同步填到 NapCat"
-                  value={form.event_token}
-                  onChange={(event) => setForm({ ...form, event_token: event.target.value })}
-                />
-              </div>
-              <div className="mt-3 flex justify-end gap-2">
-                <Button size="sm" variant="ghost" onClick={() => setShowCreate(false)}>
-                  取消
-                </Button>
-                <Button
-                  size="sm"
-                  variant="primary"
-                  loading={busy === "create"}
-                  icon={<IconRefresh size={14} />}
-                  onClick={handleCreate}
-                >
-                  创建
-                </Button>
-              </div>
-            </div>
-          )}
         </div>
+      )}
+
+      {loginInstance && (
+        <Modal
+          open
+          title="扫描二维码登录 QQ"
+          size="md"
+          onClose={() => setLoginInstance(null)}
+          footer={
+            <>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() =>
+                  window.open(loginInstance.config.webui_url, "_blank", "noopener,noreferrer")
+                }
+              >
+                新窗口打开
+              </Button>
+              <Button
+                size="sm"
+                variant="primary"
+                loading={busy === "login-status"}
+                icon={<IconRefresh size={14} />}
+                onClick={handleLoginStatus}
+              >
+                我已扫码，完成登录
+              </Button>
+            </>
+          }
+        >
+          <div className="flex flex-col items-center gap-3">
+            <p className="text-center text-xs text-gh-text-secondary">
+              用手机 QQ 扫描下方二维码，登录后本实例即可开始收发消息
+            </p>
+            <iframe
+              title="NapCat 登录二维码"
+              src={loginInstance.config.webui_url}
+              className="h-80 w-full rounded-lg border border-gh-border bg-white"
+            />
+          </div>
+        </Modal>
       )}
     </div>
   );

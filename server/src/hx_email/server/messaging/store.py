@@ -12,6 +12,9 @@ from hx_email.server.messaging.types import ChatType, MessagingInstance, Messagi
 
 STATUS_STOPPED: str = "stopped"
 
+QQ_DEFAULT_API_BASE_URL: str = "http://127.0.0.1:3000"
+QQ_DEFAULT_WEBUI_URL: str = "http://127.0.0.1:6099/webui"
+
 
 def create_instance(
     settings: Settings,
@@ -20,6 +23,7 @@ def create_instance(
     name: str,
     config: dict[str, str],
 ) -> MessagingInstance:
+    config = with_qq_defaults(kind, config)
     encrypted: str = encrypt_secret(settings, json.dumps(config, ensure_ascii=False))
     with connect(settings) as connection:
         cursor = connection.execute(
@@ -217,3 +221,19 @@ def normalize_chat_type(value: str) -> ChatType:
     if value == "channel":
         return "channel"
     return "private"
+
+
+def with_qq_defaults(kind: str, config: dict[str, str]) -> dict[str, str]:
+    """Fill local NapCat defaults and generate an event token for QQ instances."""
+    import secrets
+
+    if kind != "qq":
+        return dict(config)
+    defaults: dict[str, str] = dict(config)
+    if not defaults.get("api_base_url"):
+        defaults["api_base_url"] = QQ_DEFAULT_API_BASE_URL
+    if not defaults.get("webui_url"):
+        defaults["webui_url"] = QQ_DEFAULT_WEBUI_URL
+    if not defaults.get("event_token"):
+        defaults["event_token"] = secrets.token_hex(16)
+    return defaults
