@@ -97,8 +97,8 @@ class MessagingAdapter(ABC):
 用户视角只有四步：**添加 → 启动 → 扫码 → 使用**，不暴露任何协议细节：
 
 1. 点击「添加 QQ」，后端自动创建实例（默认启用内置引擎、自动生成事件 Token）；
-2. 点击「启动内置引擎」，后端自动下载并拉起受管 QQ 协议引擎（见 2.6），
-   页面直接显示二维码（由后端代理成图片，不依赖用户浏览器访问本机端口）；
+2. 打开登录窗即自动触发「启动内置引擎」：后端自动下载并拉起受管 QQ 协议引擎
+   （见 2.6），页面直接显示二维码（由后端代理成图片，不依赖用户浏览器访问本机端口）；
 3. 手机 QQ 扫码即完成登录，随后即可查看会话、收发消息、管理群组。
 
 - 前端不再要求填写 api_base_url / webui_url / event_token 等字段；
@@ -109,8 +109,10 @@ class MessagingAdapter(ABC):
 
 用户无需安装 NapCat / Lagrange.OneBot。后端在首次使用时：
 
-1. 按 `HX_EMAIL_QQ_ENGINE_URL` 下载引擎压缩包（可选 `HX_EMAIL_QQ_ENGINE_SHA256`
-   校验），解压到 `data/qq-engines/{实例id}/`；
+1. 自动查询官方 GitHub Releases，选择当前平台（linux/win/osx × x64/arm64）
+   的 Lagrange.OneBot 压缩包下载并解压到 `data/qq-engines/{实例id}/`，
+   用户无需配置任何地址；离线/自建镜像可用 `HX_EMAIL_QQ_ENGINE_URL` 覆盖，
+   可选 `HX_EMAIL_QQ_ENGINE_SHA256` 校验；
 2. 自动生成 Lagrange.OneBot 配置（OneBot HTTP 起在随机本机端口，
    HttpPost 事件转发回本服务 `/api/v1/messaging/events/qq`）；
 3. 以子进程方式拉起并守护，登录态持久化在引擎目录，服务重启后复用；

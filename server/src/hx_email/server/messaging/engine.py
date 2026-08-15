@@ -13,6 +13,7 @@ import shutil
 import signal
 import socket
 import subprocess
+import sys
 import time
 import zipfile
 from contextlib import suppress
@@ -37,6 +38,11 @@ QR_PATH_CANDIDATES: tuple[str, ...] = (
     "/qrcode.png",
     "/api/login/qrcode",
 )
+QR_FILE_NAME: str = "qr-0.png"
+LAGRANGE_RELEASES_API: str = (
+    "https://api.github.com/repos/LagrangeDev/Lagrange.Core/releases/latest"
+)
+LAGRANGE_ASSET_PREFIX: str = "Lagrange.OneBot_"
 _PID_FILE_NAME: str = "engine.pid"
 
 
@@ -45,6 +51,45 @@ def pick_free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
         return int(sock.getsockname()[1])
+
+
+def default_asset_rid() -> str:
+    """Map the current platform to a Lagrange.OneBot release asset RID."""
+    machine: str = sys.platform
+    arch: str = "x64" if sys.maxsize > 2**32 else "x86"
+    if machine.startswith("linux"):
+        return f"linux-{arch}"
+    if machine.startswith("win"):
+        return f"win-{arch}"
+    if machine.startswith("darwin"):
+        return "osx-x64" if arch == "x64" else "osx-arm64"
+    return f"linux-{arch}"
+
+
+def resolve_default_download_url() -> str:
+    """Resolve the latest Lagrange.OneBot release asset URL for this platform.
+
+    优先使用环境变量 HX_EMAIL_QQ_ENGINE_URL; 否则查询官方 GitHub Releases,
+    实现「加载插件时自动安装」, 用户无需配置下载地址。
+    """
+    configured: str = os.environ.get(ENGINE_DOWNLOAD_URL_ENV, "").strip()
+    if configured:
+        return configured
+    rid: str = default_asset_rid()
+    response: requests.Response = requests.get(LAGRANGE_RELEASES_API, timeout=30)
+    response.raise_for_status()
+    payload: Any = response.json()
+    assets: Any = payload.get("assets", []) if isinstance(payload, dict) else []
+    for asset in assets:
+        name: str = str(asset.get("name", ""))
+        if name.startswith(LAGRANGE_ASSET_PREFIX) and rid in name and name.endswith(".zip"):
+            url: str = str(asset.get("browser_download_url", ""))
+            if url:
+                return url
+    raise RuntimeError(
+        f"未找到适配平台 ({rid}) 的 Lagrange.OneBot Release 资产, "
+        f"可设置 {ENGINE_DOWNLOAD_URL_ENV} 指定下载地址"
+    )
 
 
 def generate_lagrange_config(
@@ -95,9 +140,7 @@ class QQEngineManager:
         executable: Path = self._dir / DEFAULT_EXECUTABLE_NAME
         if executable.exists():
             return executable
-        url: str = download_url or os.environ.get(ENGINE_DOWNLOAD_URL_ENV, "")
-        if not url:
-            raise RuntimeError("未配置 QQ 引擎下载地址, 请设置 HX_EMAIL_QQ_ENGINE_URL")
+        url: str = download_url or resolve_default_download_url()
         archive: Path = self._dir / "engine.zip"
         with requests.get(url, stream=True, timeout=120) as response:
             response.raise_for_status()
@@ -178,6 +221,9 @@ class QQEngineManager:
                 "image/"
             ):
                 return response.content
+        qr_file: Path = self._dir / QR_FILE_NAME
+        if qr_file.is_file():
+            return qr_file.read_bytes()
         return None
 
     def _api_ready(self, api_port: int) -> bool:

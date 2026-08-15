@@ -515,3 +515,98 @@ def test_engine_start_stop_and_qr_routes(
         f"{API}/messaging/instances/{instance['id']}/engine/stop", headers=headers
     )
     assert stopped.status_code == 200
+
+
+def test_resolve_default_download_url_uses_env_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hx_email.server.messaging.engine import resolve_default_download_url
+
+    monkeypatch.setenv("HX_EMAIL_QQ_ENGINE_URL", "http://mirror/engine.zip")
+    assert resolve_default_download_url() == "http://mirror/engine.zip"
+
+
+def test_resolve_default_download_url_from_github_release(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hx_email.server.messaging.engine import (
+        default_asset_rid,
+        resolve_default_download_url,
+    )
+
+    monkeypatch.delenv("HX_EMAIL_QQ_ENGINE_URL", raising=False)
+    rid = default_asset_rid()
+    asset_name = f"Lagrange.OneBot_0.18.0_{rid}.zip"
+    asset_url = f"https://example.com/{asset_name}"
+
+    class FakeJsonResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, Any]:
+            return {
+                "assets": [
+                    {"name": "other.txt", "browser_download_url": "https://example.com/other"},
+                    {"name": asset_name, "browser_download_url": asset_url},
+                ]
+            }
+
+    monkeypatch.setattr(
+        "hx_email.server.messaging.engine.requests.get",
+        lambda url, timeout: FakeJsonResponse(),
+    )
+
+    assert resolve_default_download_url() == asset_url
+
+
+def test_resolve_default_download_url_raises_without_matching_asset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hx_email.server.messaging.engine import resolve_default_download_url
+
+    monkeypatch.delenv("HX_EMAIL_QQ_ENGINE_URL", raising=False)
+
+    class FakeJsonResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, Any]:
+            return {
+                "assets": [
+                    {
+                        "name": "Lagrange.OneBot_0.18.0_win-x64.zip",
+                        "browser_download_url": "x",
+                    }
+                ]
+            }
+
+    monkeypatch.setattr(
+        "hx_email.server.messaging.engine.requests.get",
+        lambda url, timeout: FakeJsonResponse(),
+    )
+
+    import pytest as _pytest
+
+    with _pytest.raises(RuntimeError):
+        resolve_default_download_url()
+
+
+def test_engine_qr_image_falls_back_to_qr_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    import requests
+    from hx_email.server.messaging.engine import QQEngineManager
+
+    settings = make_settings(tmp_path)
+    manager = QQEngineManager(settings, instance_id=9)
+    manager._dir.mkdir(parents=True)
+    (manager._dir / "engine.pid").write_text("4242")
+    (manager._dir / "qr-0.png").write_bytes(b"PNGFILE")
+    monkeypatch.setattr(QQEngineManager, "_alive", staticmethod(lambda pid: True))
+
+    def fake_get(url: str, timeout: float = 10.0) -> FakeGetResponse:
+        raise requests.ConnectionError("engine webui not serving http")
+
+    monkeypatch.setattr("hx_email.server.messaging.engine.requests.get", fake_get)
+    assert manager.qr_image(22000) == b"PNGFILE"

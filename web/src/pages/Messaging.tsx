@@ -49,6 +49,7 @@ export const Messaging: React.FC = () => {
   const [editApiBaseUrl, setEditApiBaseUrl] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [qrUrl, setQrUrl] = useState<string | null>(null);
+  const [autoStarted, setAutoStarted] = useState(false);
   const [conversations, setConversations] = useState<MessagingConversation[]>([]);
   const [groups, setGroups] = useState<MessagingGroup[]>([]);
   const [messages, setMessages] = useState<MessagingMessage[]>([]);
@@ -140,6 +141,24 @@ export const Messaging: React.FC = () => {
       setBusy(null);
     }
   }, [loadAll, loginInstance, toast]);
+
+  useEffect(() => {
+    if (loginInstance === null) {
+      setAutoStarted(false);
+      return;
+    }
+    if (
+      loginInstance.config.embedded_engine === "true" &&
+      probe !== null &&
+      !probe.api_reachable &&
+      !probing &&
+      !autoStarted &&
+      busy !== "engine-start"
+    ) {
+      setAutoStarted(true);
+      void handleEngineStart();
+    }
+  }, [autoStarted, busy, handleEngineStart, loginInstance, probe, probing]);
 
   const handleSaveConfig = useCallback(async () => {
     if (loginInstance === null) return;
@@ -654,12 +673,14 @@ export const Messaging: React.FC = () => {
             ) : (
               <div className="flex flex-col gap-3">
                 <div className="rounded-lg border border-gh-danger/40 bg-gh-danger/10 px-3 py-2 text-xs text-gh-danger">
-                  {probe?.message ?? "内置引擎尚未启动"}
+                  {busy === "engine-start"
+                    ? "正在自动安装并启动内置引擎..."
+                    : (probe?.message ?? "内置引擎尚未启动")}
                 </div>
                 <ol className="list-decimal space-y-1 pl-4 text-xs text-gh-text-secondary">
-                  <li>点击「启动内置引擎」，后端会自动下载并运行 QQ 协议引擎</li>
-                  <li>首次使用需联网下载引擎（几十 MB），之后无需再安装任何东西</li>
-                  <li>启动完成后自动显示二维码，用手机 QQ 扫码即可</li>
+                  <li>系统会自动下载并运行 QQ 协议引擎（首次需联网，之后无需安装任何东西）</li>
+                  <li>安装完成后自动显示二维码，用手机 QQ 扫码即可</li>
+                  <li>如自动安装失败，可点击下方按钮重试</li>
                 </ol>
                 <button
                   type="button"
