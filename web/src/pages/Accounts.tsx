@@ -110,7 +110,7 @@ const GroupSidebar: React.FC<{
   selectedGroupId: number | null;
   onSelect: (id: number | null) => void;
 }> = ({ selectedGroupId, onSelect }) => {
-  const { groups, emails, createGroup, updateGroup, deleteGroup } = useApp();
+  const { groups, emails, createGroup, updateGroup, deleteGroup, user } = useApp();
   const { toast } = useToast();
   const [editingGroup, setEditingGroup] = useState<number | null>(null);
   const [showNew, setShowNew] = useState(false);
@@ -118,7 +118,35 @@ const GroupSidebar: React.FC<{
   const [newColor, setNewColor] = useState(COLORS[0]);
   const [newNotify, setNewNotify] = useState(true);
   const [newPolling, setNewPolling] = useState(true);
+  const [newProxy, setNewProxy] = useState("");
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+
+  // 创建分组弹窗的默认选项: 管理员从系统设置读取, 普通用户回落为默认勾选/空代理
+  const groupDefaultsRef = React.useRef({ notify: true, polling: true, proxy: "" });
+  useEffect(() => {
+    if (!user?.is_admin) return;
+    api
+      .getSettings()
+      .then((settings) => {
+        groupDefaultsRef.current = {
+          notify: settings.group_default_notify_enabled !== "false",
+          polling: settings.group_default_polling_enabled !== "false",
+          proxy: settings.group_default_proxy_url || "",
+        };
+      })
+      .catch(() => {
+        /* 保留默认值 */
+      });
+  }, [user?.is_admin]);
+
+  const openCreateDialog = () => {
+    setNewName("");
+    setNewColor(COLORS[0]);
+    setNewNotify(groupDefaultsRef.current.notify);
+    setNewPolling(groupDefaultsRef.current.polling);
+    setNewProxy(groupDefaultsRef.current.proxy);
+    setShowNew(true);
+  };
 
   const counts = useMemo(() => {
     const cardEmails: UsableEmail[] = emails.filter((email: UsableEmail) => email.kind !== "alias");
@@ -132,7 +160,7 @@ const GroupSidebar: React.FC<{
   const handleCreate = async () => {
     if (!newName.trim()) return;
     try {
-      await createGroup(newName.trim(), newColor, undefined, newNotify, newPolling);
+      await createGroup(newName.trim(), newColor, newProxy, newNotify, newPolling);
       toast("分组已创建", "success");
       setNewName("");
       setShowNew(false);
@@ -166,7 +194,7 @@ const GroupSidebar: React.FC<{
           分组
         </span>
         <button
-          onClick={() => setShowNew(true)}
+          onClick={openCreateDialog}
           className="p-1 rounded-md text-gh-text-muted hover:text-gh-accent hover:bg-gh-accent/10 transition-colors"
         >
           <IconFolderPlus size={14} />
@@ -240,6 +268,12 @@ const GroupSidebar: React.FC<{
               ))}
             </div>
           </div>
+          <Input
+            label="代理地址（可选）"
+            value={newProxy}
+            onChange={(e) => setNewProxy(e.target.value)}
+            placeholder="例如: 127.0.0.1:7890 或 http://host:port"
+          />
           <Checkbox label="自动轮询组内邮箱" checked={newPolling} onChange={setNewPolling} />
           <Checkbox label="发送新邮件通知与转发" checked={newNotify} onChange={setNewNotify} />
         </div>

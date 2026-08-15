@@ -4,6 +4,7 @@ from typing import Any
 from hx_email.config import Settings
 from hx_email.database import connect, utc_now_iso
 from hx_email.security import decrypt_secret, encrypt_secret
+from hx_email.server.workspace.groups import import_groups
 
 
 class DataImportConflictError(ValueError):
@@ -104,7 +105,7 @@ def import_core_data(
 ) -> dict[str, object]:
     try:
         with connect(settings) as connection:
-            group_ids = import_groups(connection, user_id, payload)
+            group_ids = import_groups(settings, connection, user_id, payload)
             tag_ids = import_tags(connection, user_id, payload)
             account_ids = import_email_accounts(settings, connection, user_id, payload, group_ids)
             email_ids = import_usable_emails(connection, user_id, payload, account_ids, group_ids)
@@ -118,27 +119,6 @@ def import_core_data(
 
 def rows(connection: sqlite3.Connection, query: str, *params: object) -> list[dict[str, object]]:
     return [dict(row) for row in connection.execute(query, params).fetchall()]
-
-
-def import_groups(
-    connection: sqlite3.Connection, user_id: int, payload: dict[str, Any]
-) -> dict[int, int]:
-    ids: dict[int, int] = {}
-    for group in payload.get("groups", []):
-        cursor = connection.execute(
-            "INSERT INTO groups (user_id, name, color, proxy_url, notify_enabled, polling_enabled)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
-            (
-                user_id,
-                group["name"],
-                group.get("color", "#58a6ff"),
-                group.get("proxy_url", ""),
-                int(group.get("notify_enabled", 1)),
-                int(group.get("polling_enabled", 1)),
-            ),
-        )
-        ids[int(group["id"])] = inserted_id(cursor)
-    return ids
 
 
 def import_tags(

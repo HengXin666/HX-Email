@@ -85,6 +85,9 @@ ZIP 是敏感实例备份。复制运行中的 SQLite 目录前应先停止服�
 别名、分组、标签、平台和平台绑定；完整实例迁移请使用 `/admin/backup/*`。
 
 - **认证**: 管理员 Bearer Token
+- **导入默认选项**: 分组若未携带 `proxy_url` / `notify_enabled` / `polling_enabled`，
+  按系统设置 `group_default_proxy_url` / `group_default_notify_enabled` /
+  `group_default_polling_enabled` 填写，而不是全部默认勾选。
 
 ---
 
@@ -267,7 +270,7 @@ ZIP 是敏感实例备份。复制运行中的 SQLite 目录前应先停止服�
 {
   "name": "string",
   "color": "string", // 可选, 默认 "#58a6ff"
-  "proxy_url": "string", // 可选, 代理地址
+  "proxy_url": "string", // 可选, 留空/缺省取系统设置 group_default_proxy_url
   "notify_enabled": true, // 可选, 默认取系统设置 group_default_notify_enabled
   "polling_enabled": true // 可选, 默认取系统设置 group_default_polling_enabled
 }

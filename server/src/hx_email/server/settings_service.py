@@ -36,6 +36,7 @@ SETTINGS_DEFAULTS: dict[str, str] = {
     "pool_external_enabled": "false",
     "enable_auto_polling": "false",
     "polling_interval": "30",
+    "group_default_proxy_url": "",
     "group_default_notify_enabled": "true",
     "group_default_polling_enabled": "true",
     "email_notification_enabled": "false",

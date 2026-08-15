@@ -197,3 +197,81 @@ def test_import_with_dangling_references_returns_422_and_imports_nothing(tmp_pat
     # 失败的导入必须整体回滚, 不留下半套数据
     workbench = client.get("/api/v1/usable-emails", headers=headers)
     assert workbench.json() == {"usable_emails": []}
+
+
+def test_import_uses_system_group_defaults_when_api_payload_omits_options(tmp_path) -> None:
+    settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
+    migrate(settings)
+    client = TestClient(create_app(settings))
+    headers = login_admin(client)
+
+    saved = client.put(
+        "/api/v1/settings",
+        json={
+            "group_default_proxy_url": "http://127.0.0.1:7890",
+            "group_default_notify_enabled": False,
+            "group_default_polling_enabled": False,
+        },
+        headers=headers,
+    )
+    assert saved.status_code == 200
+
+    payload = {
+        "version": 1,
+        "email_accounts": [],
+        "usable_emails": [],
+        "groups": [{"id": 1, "name": "Api Group", "color": "#58a6ff"}],
+        "tags": [],
+        "usable_email_tags": [],
+        "platforms": [],
+        "platform_bindings": [],
+    }
+    imported = client.post("/api/v1/data/import", json=payload, headers=headers)
+
+    assert imported.status_code == 201
+    assert imported.json()["groups"][0]["proxy_url"] == "http://127.0.0.1:7890"
+    assert imported.json()["groups"][0]["notify_enabled"] == 0
+    assert imported.json()["groups"][0]["polling_enabled"] == 0
+
+
+def test_import_keeps_explicit_payload_options_over_system_defaults(tmp_path) -> None:
+    settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
+    migrate(settings)
+    client = TestClient(create_app(settings))
+    headers = login_admin(client)
+
+    client.put(
+        "/api/v1/settings",
+        json={
+            "group_default_proxy_url": "http://127.0.0.1:7890",
+            "group_default_notify_enabled": False,
+            "group_default_polling_enabled": False,
+        },
+        headers=headers,
+    )
+
+    payload = {
+        "version": 1,
+        "email_accounts": [],
+        "usable_emails": [],
+        "groups": [
+            {
+                "id": 1,
+                "name": "Api Group",
+                "color": "#58a6ff",
+                "proxy_url": "http://8.8.8.8:1080",
+                "notify_enabled": True,
+                "polling_enabled": True,
+            }
+        ],
+        "tags": [],
+        "usable_email_tags": [],
+        "platforms": [],
+        "platform_bindings": [],
+    }
+    imported = client.post("/api/v1/data/import", json=payload, headers=headers)
+
+    assert imported.status_code == 201
+    assert imported.json()["groups"][0]["proxy_url"] == "http://8.8.8.8:1080"
+    assert imported.json()["groups"][0]["notify_enabled"] == 1
+    assert imported.json()["groups"][0]["polling_enabled"] == 1

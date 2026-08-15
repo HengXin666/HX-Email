@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+from sqlite3 import Connection
+from typing import Any
 
 from hx_email.config import Settings
 from hx_email.database import connect
@@ -32,6 +34,8 @@ def create_group(
     notify_enabled: bool | None = None,
     polling_enabled: bool | None = None,
 ) -> Group:
+    if not proxy_url:
+        proxy_url = get_setting(settings, "group_default_proxy_url", "")
     if notify_enabled is None:
         notify_enabled = get_setting(settings, "group_default_notify_enabled", "true") == "true"
     if polling_enabled is None:
@@ -61,6 +65,46 @@ def create_tag(settings: Settings, user_id: int, name: str, color: str) -> Tag:
             (user_id, name, color),
         )
     return Tag(id=require_inserted_id(cursor.lastrowid), name=name, color=color)
+
+
+def coerce_bool(value: object, default: bool) -> bool:
+    """Coerce an import payload boolean, falling back to default when missing."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return value != 0
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"1", "true", "yes", "on"}:
+            return True
+        if lowered in {"0", "false", "no", "off"}:
+            return False
+    return default
+
+
+def import_groups(
+    settings: Settings, connection: Connection, user_id: int, payload: dict[str, Any]
+) -> dict[int, int]:
+    """Import groups from a transfer payload, applying system defaults for omitted options."""
+    default_proxy_url: str = get_setting(settings, "group_default_proxy_url", "")
+    default_notify: bool = get_setting(settings, "group_default_notify_enabled", "true") == "true"
+    default_polling: bool = get_setting(settings, "group_default_polling_enabled", "true") == "true"
+    ids: dict[int, int] = {}
+    for group in payload.get("groups", []):
+        cursor = connection.execute(
+            "INSERT INTO groups (user_id, name, color, proxy_url, notify_enabled, polling_enabled)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                user_id,
+                group["name"],
+                group.get("color", "#58a6ff"),
+                group.get("proxy_url") or default_proxy_url,
+                int(coerce_bool(group.get("notify_enabled"), default_notify)),
+                int(coerce_bool(group.get("polling_enabled"), default_polling)),
+            ),
+        )
+        ids[int(group["id"])] = require_inserted_id(cursor.lastrowid)
+    return ids
 
 
 def list_groups(settings: Settings, user_id: int) -> list[Group]:
