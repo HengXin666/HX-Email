@@ -109,10 +109,11 @@ class MessagingAdapter(ABC):
 
 用户无需安装 NapCat / Lagrange.OneBot。后端在首次使用时：
 
-1. 自动查询官方 GitHub Releases，选择当前平台（linux/win/osx × x64/arm64）
-   的 Lagrange.OneBot 压缩包下载并解压到 `data/qq-engines/{实例id}/`，
-   用户无需配置任何地址；离线/自建镜像可用 `HX_EMAIL_QQ_ENGINE_URL` 覆盖，
-   可选 `HX_EMAIL_QQ_ENGINE_SHA256` 校验；
+1. 使用内置锁定版本（`LAGRANGE_PINNED_VERSION`）的 GitHub releases/download
+   直链下载（不走 GitHub API，避免未认证限流），按当前平台
+   （linux/win/osx × x64/arm64）选包并解压到 `data/qq-engines/{实例id}/`；
+   离线/自建镜像可用 `HX_EMAIL_QQ_ENGINE_URL` 覆盖地址，
+   `HX_EMAIL_QQ_ENGINE_VERSION` 可覆盖版本，可选 `HX_EMAIL_QQ_ENGINE_SHA256` 校验；
 2. 自动生成 Lagrange.OneBot 配置（OneBot HTTP 起在随机本机端口，
    HttpPost 事件转发回本服务 `/api/v1/messaging/events/qq`）；
 3. 以子进程方式拉起并守护，登录态持久化在引擎目录，服务重启后复用；

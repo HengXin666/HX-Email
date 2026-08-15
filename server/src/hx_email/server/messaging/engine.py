@@ -39,9 +39,9 @@ QR_PATH_CANDIDATES: tuple[str, ...] = (
     "/api/login/qrcode",
 )
 QR_FILE_NAME: str = "qr-0.png"
-LAGRANGE_RELEASES_API: str = (
-    "https://api.github.com/repos/LagrangeDev/Lagrange.Core/releases/latest"
-)
+LAGRANGE_PINNED_VERSION: str = "0.18.0"
+LAGRANGE_VERSION_ENV: str = "HX_EMAIL_QQ_ENGINE_VERSION"
+LAGRANGE_RELEASE_BASE: str = "https://github.com/LagrangeDev/Lagrange.Core/releases/download"
 LAGRANGE_ASSET_PREFIX: str = "Lagrange.OneBot_"
 _PID_FILE_NAME: str = "engine.pid"
 
@@ -67,29 +67,19 @@ def default_asset_rid() -> str:
 
 
 def resolve_default_download_url() -> str:
-    """Resolve the latest Lagrange.OneBot release asset URL for this platform.
+    """Resolve the engine download URL for this platform.
 
-    优先使用环境变量 HX_EMAIL_QQ_ENGINE_URL; 否则查询官方 GitHub Releases,
-    实现「加载插件时自动安装」, 用户无需配置下载地址。
+    优先级: HX_EMAIL_QQ_ENGINE_URL > 内置锁定版本直链. 直链走 GitHub
+    releases/download (文件下载), 不调用 GitHub API, 避免未认证限流。
+    版本可用 HX_EMAIL_QQ_ENGINE_VERSION 覆盖, 发布时请更新
+    LAGRANGE_PINNED_VERSION 为实测版本。
     """
     configured: str = os.environ.get(ENGINE_DOWNLOAD_URL_ENV, "").strip()
     if configured:
         return configured
+    version: str = os.environ.get(LAGRANGE_VERSION_ENV, "").strip() or LAGRANGE_PINNED_VERSION
     rid: str = default_asset_rid()
-    response: requests.Response = requests.get(LAGRANGE_RELEASES_API, timeout=30)
-    response.raise_for_status()
-    payload: Any = response.json()
-    assets: Any = payload.get("assets", []) if isinstance(payload, dict) else []
-    for asset in assets:
-        name: str = str(asset.get("name", ""))
-        if name.startswith(LAGRANGE_ASSET_PREFIX) and rid in name and name.endswith(".zip"):
-            url: str = str(asset.get("browser_download_url", ""))
-            if url:
-                return url
-    raise RuntimeError(
-        f"未找到适配平台 ({rid}) 的 Lagrange.OneBot Release 资产, "
-        f"可设置 {ENGINE_DOWNLOAD_URL_ENV} 指定下载地址"
-    )
+    return f"{LAGRANGE_RELEASE_BASE}/{version}/{LAGRANGE_ASSET_PREFIX}{version}_{rid}.zip"
 
 
 def generate_lagrange_config(
@@ -142,17 +132,26 @@ class QQEngineManager:
             return executable
         url: str = download_url or resolve_default_download_url()
         archive: Path = self._dir / "engine.zip"
-        with requests.get(url, stream=True, timeout=120) as response:
-            response.raise_for_status()
-            with archive.open("wb") as handle:
-                shutil.copyfileobj(response.raw, handle)
+        try:
+            with requests.get(url, stream=True, timeout=120) as response:
+                response.raise_for_status()
+                with archive.open("wb") as handle:
+                    shutil.copyfileobj(response.raw, handle)
+        except (requests.RequestException, OSError) as error:
+            raise RuntimeError(
+                f"QQ 引擎下载失败: {error}. 请检查网络, 或设置 "
+                f"{ENGINE_DOWNLOAD_URL_ENV} 指定下载地址"
+            ) from error
         expected: str = sha256 or os.environ.get(ENGINE_SHA256_ENV, "")
         if expected:
             digest: str = hashlib.sha256(archive.read_bytes()).hexdigest()
             if digest.lower() != expected.lower():
                 raise RuntimeError("QQ 引擎下载校验失败, 请检查下载地址")
-        with zipfile.ZipFile(archive) as zf:
-            zf.extractall(self._dir)
+        try:
+            with zipfile.ZipFile(archive) as zf:
+                zf.extractall(self._dir)
+        except (zipfile.BadZipFile, OSError) as error:
+            raise RuntimeError(f"QQ 引擎压缩包解析失败: {error}") from error
         archive.unlink(missing_ok=True)
         executable.chmod(0o755)
         return executable
@@ -177,12 +176,15 @@ class QQEngineManager:
         existing_pid: int | None = self._read_pid()
         if existing_pid is not None and self._alive(existing_pid):
             return existing_pid
-        process: subprocess.Popen[bytes] = subprocess.Popen(
-            [str(executable)],
-            cwd=str(self._dir),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        try:
+            process: subprocess.Popen[bytes] = subprocess.Popen(
+                [str(executable)],
+                cwd=str(self._dir),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except OSError as error:
+            raise RuntimeError(f"QQ 引擎进程启动失败: {error}") from error
         self._process = process
         self._write_pid(process.pid)
         deadline: float = time.monotonic() + START_TIMEOUT_SECONDS

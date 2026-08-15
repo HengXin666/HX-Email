@@ -214,6 +214,11 @@ def register_messaging_routes(router: APIRouter, settings: Settings) -> None:
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=str(error),
             ) from error
+        except Exception as error:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"启动内置引擎失败: {error}",
+            ) from error
         merged: dict[str, str] = {
             **config,
             "engine_api_port": str(api_port),
