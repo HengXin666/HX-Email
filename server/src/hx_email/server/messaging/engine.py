@@ -13,7 +13,6 @@ import shutil
 import signal
 import socket
 import subprocess
-import sys
 import time
 import zipfile
 from contextlib import suppress
@@ -22,9 +21,15 @@ from typing import Any
 
 import requests
 from hx_email.config import Settings
+from hx_email.server.messaging.impl.discovery import (
+    ENGINE_DOWNLOAD_URL_ENV,
+    ENGINE_URL_CACHE_NAME,
+    read_cached_url,
+    resolve_default_download_url,
+    write_cached_url,
+)
 
 ENGINE_DIR_NAME: str = "qq-engines"
-ENGINE_DOWNLOAD_URL_ENV: str = "HX_EMAIL_QQ_ENGINE_URL"
 ENGINE_SHA256_ENV: str = "HX_EMAIL_QQ_ENGINE_SHA256"
 DEFAULT_EXECUTABLE_NAME: str = "Lagrange.OneBot"
 DEFAULT_ONEBOT_PORT: int = 3000
@@ -39,10 +44,6 @@ QR_PATH_CANDIDATES: tuple[str, ...] = (
     "/api/login/qrcode",
 )
 QR_FILE_NAME: str = "qr-0.png"
-LAGRANGE_PINNED_VERSION: str = "0.18.0"
-LAGRANGE_VERSION_ENV: str = "HX_EMAIL_QQ_ENGINE_VERSION"
-LAGRANGE_RELEASE_BASE: str = "https://github.com/LagrangeDev/Lagrange.Core/releases/download"
-LAGRANGE_ASSET_PREFIX: str = "Lagrange.OneBot_"
 _PID_FILE_NAME: str = "engine.pid"
 
 
@@ -51,35 +52,6 @@ def pick_free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
         return int(sock.getsockname()[1])
-
-
-def default_asset_rid() -> str:
-    """Map the current platform to a Lagrange.OneBot release asset RID."""
-    machine: str = sys.platform
-    arch: str = "x64" if sys.maxsize > 2**32 else "x86"
-    if machine.startswith("linux"):
-        return f"linux-{arch}"
-    if machine.startswith("win"):
-        return f"win-{arch}"
-    if machine.startswith("darwin"):
-        return "osx-x64" if arch == "x64" else "osx-arm64"
-    return f"linux-{arch}"
-
-
-def resolve_default_download_url() -> str:
-    """Resolve the engine download URL for this platform.
-
-    优先级: HX_EMAIL_QQ_ENGINE_URL > 内置锁定版本直链. 直链走 GitHub
-    releases/download (文件下载), 不调用 GitHub API, 避免未认证限流。
-    版本可用 HX_EMAIL_QQ_ENGINE_VERSION 覆盖, 发布时请更新
-    LAGRANGE_PINNED_VERSION 为实测版本。
-    """
-    configured: str = os.environ.get(ENGINE_DOWNLOAD_URL_ENV, "").strip()
-    if configured:
-        return configured
-    version: str = os.environ.get(LAGRANGE_VERSION_ENV, "").strip() or LAGRANGE_PINNED_VERSION
-    rid: str = default_asset_rid()
-    return f"{LAGRANGE_RELEASE_BASE}/{version}/{LAGRANGE_ASSET_PREFIX}{version}_{rid}.zip"
 
 
 def generate_lagrange_config(
@@ -130,7 +102,8 @@ class QQEngineManager:
         executable: Path = self._dir / DEFAULT_EXECUTABLE_NAME
         if executable.exists():
             return executable
-        url: str = download_url or resolve_default_download_url()
+        cache_file: Path = self._dir.parent / ENGINE_URL_CACHE_NAME
+        url: str = download_url or read_cached_url(cache_file) or resolve_default_download_url()
         archive: Path = self._dir / "engine.zip"
         try:
             with requests.get(url, stream=True, timeout=120) as response:
@@ -154,6 +127,7 @@ class QQEngineManager:
             raise RuntimeError(f"QQ 引擎压缩包解析失败: {error}") from error
         archive.unlink(missing_ok=True)
         executable.chmod(0o755)
+        write_cached_url(cache_file, url)
         return executable
 
     def start(

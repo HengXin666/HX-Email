@@ -520,33 +520,55 @@ def test_engine_start_stop_and_qr_routes(
 def test_resolve_default_download_url_uses_env_override(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from hx_email.server.messaging.engine import resolve_default_download_url
+    from hx_email.server.messaging.impl.discovery import resolve_default_download_url
 
     monkeypatch.setenv("HX_EMAIL_QQ_ENGINE_URL", "http://mirror/engine.zip")
     assert resolve_default_download_url() == "http://mirror/engine.zip"
 
 
-def test_resolve_default_download_url_uses_pinned_version(
+def test_resolve_default_download_url_discovers_latest_release(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from hx_email.server.messaging.engine import (
-        LAGRANGE_PINNED_VERSION,
+    from hx_email.server.messaging.impl.discovery import (
         default_asset_rid,
         resolve_default_download_url,
     )
 
     monkeypatch.delenv("HX_EMAIL_QQ_ENGINE_URL", raising=False)
     monkeypatch.delenv("HX_EMAIL_QQ_ENGINE_VERSION", raising=False)
-    url = resolve_default_download_url()
     rid = default_asset_rid()
-    assert "/releases/download/" in url
-    assert url.endswith(f"Lagrange.OneBot_{LAGRANGE_PINNED_VERSION}_{rid}.zip")
+
+    class FakePage:
+        def __init__(self, url: str = "", text: str = "") -> None:
+            self.url: str = url
+            self.text: str = text
+
+        def raise_for_status(self) -> None:
+            return None
+
+    def fake_get(url: str, **kwargs: object) -> FakePage:
+        if "expanded_assets" in url:
+            return FakePage(
+                text=(
+                    '<a href="/LagrangeDev/Lagrange.Core/releases/download/0.25.0/'
+                    f'Lagrange.OneBot_0.25.0_{rid}.zip">x</a>'
+                )
+            )
+        return FakePage(url="https://github.com/LagrangeDev/Lagrange.Core/releases/tag/0.25.0")
+
+    monkeypatch.setattr("hx_email.server.messaging.impl.discovery.requests.get", fake_get)
+
+    url = resolve_default_download_url()
+    assert url == (
+        "https://github.com/LagrangeDev/Lagrange.Core/releases/download/0.25.0/"
+        f"Lagrange.OneBot_0.25.0_{rid}.zip"
+    )
 
 
 def test_resolve_default_download_url_honors_version_override(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from hx_email.server.messaging.engine import (
+    from hx_email.server.messaging.impl.discovery import (
         default_asset_rid,
         resolve_default_download_url,
     )
@@ -556,6 +578,24 @@ def test_resolve_default_download_url_honors_version_override(
     url = resolve_default_download_url()
     rid = default_asset_rid()
     assert url.endswith(f"Lagrange.OneBot_9.9.9_{rid}.zip")
+
+
+def test_resolve_default_download_url_discovery_failure_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import requests
+    from hx_email.server.messaging.impl.discovery import resolve_default_download_url
+
+    monkeypatch.delenv("HX_EMAIL_QQ_ENGINE_URL", raising=False)
+    monkeypatch.delenv("HX_EMAIL_QQ_ENGINE_VERSION", raising=False)
+
+    def fake_get(url: str, **kwargs: object) -> FakeGetResponse:
+        raise requests.ConnectionError("github unreachable")
+
+    monkeypatch.setattr("hx_email.server.messaging.impl.discovery.requests.get", fake_get)
+
+    with pytest.raises(RuntimeError, match="自动发现"):
+        resolve_default_download_url()
 
 
 def test_ensure_installed_download_failure_raises_runtime_error(
