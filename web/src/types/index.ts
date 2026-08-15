@@ -37,6 +37,7 @@ export type {
   MessagingConversation,
   MessagingGroup,
   MessagingInstance,
+  MessagingLoginProbe,
   MessagingLoginState,
   MessagingLoginTicket,
   MessagingMessage,

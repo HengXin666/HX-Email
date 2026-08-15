@@ -2,13 +2,14 @@ import React, { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 import { IconBell, IconLink, IconPlus, IconRefresh, IconTrash, IconZap } from "../components/icons";
 import { Topbar } from "../components/layout";
-import { Badge, Button, Card, Modal } from "../components/ui/Primitives";
+import { Badge, Button, Card, Input, Modal } from "../components/ui/Primitives";
 import { EmptyState, LoadingState } from "../components/ui/StateDisplay";
 import { useToast } from "../components/ui/Toast";
 import type {
   MessagingConversation,
   MessagingGroup,
   MessagingInstance,
+  MessagingLoginProbe,
   MessagingMessage,
   MessagingPluginInfo,
 } from "../types";
@@ -42,6 +43,11 @@ export const Messaging: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [loginInstance, setLoginInstance] = useState<MessagingInstance | null>(null);
+  const [probe, setProbe] = useState<MessagingLoginProbe | null>(null);
+  const [probing, setProbing] = useState(false);
+  const [editWebuiUrl, setEditWebuiUrl] = useState("");
+  const [editApiBaseUrl, setEditApiBaseUrl] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [conversations, setConversations] = useState<MessagingConversation[]>([]);
   const [groups, setGroups] = useState<MessagingGroup[]>([]);
   const [messages, setMessages] = useState<MessagingMessage[]>([]);
@@ -65,6 +71,49 @@ export const Messaging: React.FC = () => {
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  const runProbe = useCallback(
+    async (instance: MessagingInstance) => {
+      setProbing(true);
+      setProbe(null);
+      try {
+        const result = await api.probeLogin(instance.id);
+        setProbe(result);
+        setEditWebuiUrl(result.webui_url);
+        setEditApiBaseUrl(result.api_base_url);
+      } catch (error: unknown) {
+        toast(error instanceof Error ? error.message : "检测 NapCat 失败", "error");
+      } finally {
+        setProbing(false);
+      }
+    },
+    [toast],
+  );
+
+  useEffect(() => {
+    if (loginInstance !== null) {
+      void runProbe(loginInstance);
+    }
+  }, [loginInstance, runProbe]);
+
+  const handleSaveConfig = useCallback(async () => {
+    if (loginInstance === null) return;
+    setBusy("save-config");
+    try {
+      const updated = await api.updateConfig(loginInstance.id, {
+        webui_url: editWebuiUrl.trim(),
+        api_base_url: editApiBaseUrl.trim(),
+      });
+      setLoginInstance(updated);
+      setShowAdvanced(false);
+      toast("配置已保存，正在重新检测", "success");
+      await loadAll();
+    } catch (error: unknown) {
+      toast(error instanceof Error ? error.message : "保存配置失败", "error");
+    } finally {
+      setBusy(null);
+    }
+  }, [editApiBaseUrl, editWebuiUrl, loadAll, loginInstance, toast]);
 
   const handleAddQQ = useCallback(async () => {
     setBusy("add");
@@ -468,38 +517,101 @@ export const Messaging: React.FC = () => {
           size="md"
           onClose={() => setLoginInstance(null)}
           footer={
-            <>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() =>
-                  window.open(loginInstance.config.webui_url, "_blank", "noopener,noreferrer")
-                }
-              >
-                新窗口打开
-              </Button>
-              <Button
-                size="sm"
-                variant="primary"
-                loading={busy === "login-status"}
-                icon={<IconRefresh size={14} />}
-                onClick={handleLoginStatus}
-              >
-                我已扫码，完成登录
-              </Button>
-            </>
+            probe?.webui_reachable ? (
+              <>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() =>
+                    window.open(loginInstance.config.webui_url, "_blank", "noopener,noreferrer")
+                  }
+                >
+                  新窗口打开
+                </Button>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  loading={busy === "login-status"}
+                  icon={<IconRefresh size={14} />}
+                  onClick={handleLoginStatus}
+                >
+                  我已扫码，完成登录
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button size="sm" variant="ghost" onClick={() => setLoginInstance(null)}>
+                  关闭
+                </Button>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  loading={probing}
+                  icon={<IconRefresh size={14} />}
+                  onClick={() => void runProbe(loginInstance)}
+                >
+                  重新检测
+                </Button>
+              </>
+            )
           }
         >
-          <div className="flex flex-col items-center gap-3">
-            <p className="text-center text-xs text-gh-text-secondary">
-              用手机 QQ 扫描下方二维码，登录后本实例即可开始收发消息
-            </p>
-            <iframe
-              title="NapCat 登录二维码"
-              src={loginInstance.config.webui_url}
-              className="h-80 w-full rounded-lg border border-gh-border bg-white"
-            />
-          </div>
+          {probing ? (
+            <LoadingState message="正在检测 NapCat 服务..." />
+          ) : probe?.webui_reachable ? (
+            <div className="flex flex-col items-center gap-3">
+              <p className="text-center text-xs text-gh-text-secondary">
+                用手机 QQ 扫描下方二维码，登录后本实例即可开始收发消息
+              </p>
+              <iframe
+                title="NapCat 登录二维码"
+                src={loginInstance.config.webui_url}
+                className="h-80 w-full rounded-lg border border-gh-border bg-white"
+              />
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              <div className="rounded-lg border border-gh-danger/40 bg-gh-danger/10 px-3 py-2 text-xs text-gh-danger">
+                {probe?.message ?? "NapCat 服务不可达"}
+              </div>
+              <ol className="list-decimal space-y-1 pl-4 text-xs text-gh-text-secondary">
+                <li>在本机或服务器启动 NapCat（默认 WebUI 6099 / API 3000）</li>
+                <li>确认地址无误后点击「重新检测」</li>
+                <li>若 NapCat 不在默认地址，展开「高级设置」修改</li>
+              </ol>
+              <button
+                type="button"
+                onClick={() => setShowAdvanced((value) => !value)}
+                className="self-start text-xs text-gh-accent hover:underline"
+              >
+                {showAdvanced ? "收起高级设置" : "高级设置（修改 NapCat 地址）"}
+              </button>
+              {showAdvanced && (
+                <div className="grid grid-cols-1 gap-2">
+                  <Input
+                    label="NapCat WebUI 地址（二维码）"
+                    placeholder="http://127.0.0.1:6099/webui"
+                    value={editWebuiUrl}
+                    onChange={(event) => setEditWebuiUrl(event.target.value)}
+                  />
+                  <Input
+                    label="OneBot API 地址"
+                    placeholder="http://127.0.0.1:3000"
+                    value={editApiBaseUrl}
+                    onChange={(event) => setEditApiBaseUrl(event.target.value)}
+                  />
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    loading={busy === "save-config"}
+                    onClick={() => void handleSaveConfig()}
+                  >
+                    保存并重新检测
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
         </Modal>
       )}
     </div>

@@ -339,3 +339,79 @@ def test_create_qq_instance_with_empty_config_gets_defaults(tmp_path: Any) -> No
     assert instance["config"]["api_base_url"] == "http://127.0.0.1:3000"
     assert instance["config"]["webui_url"] == "http://127.0.0.1:6099/webui"
     assert instance["config"]["event_token"] == "***"
+
+
+class FakeGetResponse:
+    def __init__(self, status_code: int) -> None:
+        self.status_code: int = status_code
+
+
+def test_login_probe_reports_unreachable_napcat(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    settings = make_settings(tmp_path)
+    migrate(settings)
+    client = TestClient(create_app(settings))
+    headers = login(client, settings)
+    instance = create_qq_instance(client, headers)
+
+    import requests
+
+    def fake_get(url: str, timeout: float = 10.0) -> FakeGetResponse:
+        raise requests.ConnectionError("refused")
+
+    monkeypatch.setattr("hx_email.server.messaging.impl.probe.requests.get", fake_get)
+
+    response = client.post(
+        f"{API}/messaging/instances/{instance['id']}/login/probe", headers=headers
+    )
+    assert response.status_code == 200
+    probe = response.json()["probe"]
+    assert probe["webui_reachable"] is False
+    assert probe["api_reachable"] is False
+    assert "NapCat 未启动" in probe["message"]
+
+
+def test_login_probe_reports_online_when_endpoints_respond(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    settings = make_settings(tmp_path)
+    migrate(settings)
+    client = TestClient(create_app(settings))
+    headers = login(client, settings)
+    instance = create_qq_instance(client, headers)
+
+    def fake_get(url: str, timeout: float = 10.0) -> FakeGetResponse:
+        return FakeGetResponse(200)
+
+    monkeypatch.setattr("hx_email.server.messaging.impl.probe.requests.get", fake_get)
+
+    response = client.post(
+        f"{API}/messaging/instances/{instance['id']}/login/probe", headers=headers
+    )
+    assert response.status_code == 200
+    probe = response.json()["probe"]
+    assert probe["webui_reachable"] is True
+    assert probe["api_reachable"] is True
+    assert "NapCat 在线" in probe["message"]
+
+
+def test_update_instance_config_merges_and_masks_token(tmp_path: Any) -> None:
+    settings = make_settings(tmp_path)
+    migrate(settings)
+    client = TestClient(create_app(settings))
+    headers = login(client, settings)
+    instance = create_qq_instance(client, headers)
+
+    response = client.put(
+        f"{API}/messaging/instances/{instance['id']}/config",
+        json={"config": {"webui_url": "http://10.0.0.2:6099/webui"}},
+        headers=headers,
+    )
+    assert response.status_code == 200
+    updated = response.json()["instance"]
+    assert updated["config"]["webui_url"] == "http://10.0.0.2:6099/webui"
+    assert updated["config"]["api_base_url"] == "http://127.0.0.1:3000"
+    assert updated["config"]["event_token"] == "***"

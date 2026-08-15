@@ -2,6 +2,7 @@ import type {
   MessagingConversation,
   MessagingGroup,
   MessagingInstance,
+  MessagingLoginProbe,
   MessagingLoginState,
   MessagingLoginTicket,
   MessagingMessage,
@@ -77,4 +78,15 @@ export const messagingApi = {
       `/messaging/instances/${id}/groups/${encodeURIComponent(groupId)}/action`,
       { method: "POST", body: JSON.stringify(data) },
     ),
+
+  probeLogin: (id: number) =>
+    request<{ probe: MessagingLoginProbe }>(`/messaging/instances/${id}/login/probe`, {
+      method: "POST",
+    }).then((r) => r.probe),
+
+  updateConfig: (id: number, config: Record<string, string>) =>
+    request<{ instance: MessagingInstance }>(`/messaging/instances/${id}/config`, {
+      method: "PUT",
+      body: JSON.stringify({ config }),
+    }).then((r) => r.instance),
 };

@@ -21,3 +21,7 @@ class MessagingGroupActionRequest(BaseModel):
     action: str
     member_id: str = ""
     duration_seconds: int = 0
+
+
+class MessagingConfigUpdate(BaseModel):
+    config: dict[str, str] = Field(default_factory=dict)

@@ -64,3 +64,11 @@ export interface MessagingLoginState {
   account_name: string;
   message: string;
 }
+
+export interface MessagingLoginProbe {
+  webui_reachable: boolean;
+  api_reachable: boolean;
+  webui_url: string;
+  api_base_url: string;
+  message: string;
+}
