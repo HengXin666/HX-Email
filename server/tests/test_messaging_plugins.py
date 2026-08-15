@@ -517,15 +517,6 @@ def test_engine_start_stop_and_qr_routes(
     assert stopped.status_code == 200
 
 
-def test_resolve_default_download_url_uses_env_override(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from hx_email.server.messaging.impl.discovery import resolve_default_download_url
-
-    monkeypatch.setenv("HX_EMAIL_QQ_ENGINE_URL", "http://mirror/engine.zip")
-    assert resolve_default_download_url() == "http://mirror/engine.zip"
-
-
 def test_resolve_default_download_url_discovers_latest_release(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -642,21 +633,6 @@ def test_resolve_default_download_url_falls_back_to_atom_feed(
     assert resolve_default_download_url() == expected
 
 
-def test_resolve_default_download_url_honors_version_override(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from hx_email.server.messaging.impl.discovery import (
-        default_asset_rid,
-        resolve_default_download_url,
-    )
-
-    monkeypatch.delenv("HX_EMAIL_QQ_ENGINE_URL", raising=False)
-    monkeypatch.setenv("HX_EMAIL_QQ_ENGINE_VERSION", "9.9.9")
-    url = resolve_default_download_url()
-    rid = default_asset_rid()
-    assert url.endswith(f"Lagrange.OneBot_9.9.9_{rid}.zip")
-
-
 def test_resolve_default_download_url_discovery_failure_raises(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -671,7 +647,7 @@ def test_resolve_default_download_url_discovery_failure_raises(
 
     monkeypatch.setattr("hx_email.server.messaging.impl.discovery.requests.get", fake_get)
 
-    with pytest.raises(RuntimeError, match="自动发现"):
+    with pytest.raises(RuntimeError, match="无法获取 QQ 引擎最新版本"):
         resolve_default_download_url()
 
 
@@ -791,3 +767,22 @@ def test_ensure_installed_download_reports_proxy_state(
         "http": "http://127.0.0.1:7890",
         "https": "http://127.0.0.1:7890",
     }
+
+
+def test_settings_proxy_reuses_app_proxy(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    from hx_email.server.messaging.engine import settings_proxy
+
+    settings = make_settings(tmp_path)
+
+    def fake_get_setting(
+        _settings: Any,
+        key: str,
+        default: str = "",
+    ) -> str:
+        return "http://127.0.0.1:7890" if key == "telegram_proxy_url" else default
+
+    monkeypatch.setattr("hx_email.server.messaging.engine.get_setting", fake_get_setting)
+    assert settings_proxy(settings) == "http://127.0.0.1:7890"

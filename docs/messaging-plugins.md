@@ -113,10 +113,8 @@ class MessagingAdapter(ABC):
    再列出该版本资产并按当前平台（linux/win/osx × x64/arm64）选包下载，
    全程不调用 GitHub API（规避未认证限流），「最新即最兼容」；
    首次成功后会缓存下载地址，之后直接复用；
-   离线/自建镜像可用 `HX_EMAIL_QQ_ENGINE_URL` 覆盖地址，
-   `HX_EMAIL_QQ_ENGINE_VERSION` 可固定版本，可选 `HX_EMAIL_QQ_ENGINE_SHA256` 校验；
-   下载/发现请求支持代理：实例「高级设置」的代理地址，或环境变量
-   `HX_EMAIL_QQ_ENGINE_PROXY`（如 `http://127.0.0.1:7890`）；
+   下载/发现请求自动复用应用内已配置的代理（邮箱分组默认代理或 Telegram 代理），
+   也可在实例「高级设置」的代理地址单独覆盖，全程无需环境变量；
 2. 自动生成 Lagrange.OneBot 配置（OneBot HTTP 起在随机本机端口，
    HttpPost 事件转发回本服务 `/api/v1/messaging/events/qq`）；
 3. 以子进程方式拉起并守护，登录态持久化在引擎目录，服务重启后复用；

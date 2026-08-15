@@ -707,7 +707,7 @@ export const Messaging: React.FC = () => {
                       onChange={(event) => setEditWebuiUrl(event.target.value)}
                     />
                     <Input
-                      label="代理地址（可选，下载引擎走此代理）"
+                      label="代理地址（留空则使用系统默认代理）"
                       placeholder="http://127.0.0.1:7890"
                       value={editProxyUrl}
                       onChange={(event) => setEditProxyUrl(event.target.value)}

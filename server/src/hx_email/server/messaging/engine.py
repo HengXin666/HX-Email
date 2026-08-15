@@ -12,6 +12,7 @@ import os
 import shutil
 import signal
 import socket
+import sqlite3
 import subprocess
 import time
 import zipfile
@@ -22,16 +23,15 @@ from typing import Any
 import requests
 from hx_email.config import Settings
 from hx_email.server.messaging.impl.discovery import (
-    ENGINE_DOWNLOAD_URL_ENV,
     ENGINE_URL_CACHE_NAME,
     proxies_for,
     read_cached_url,
     resolve_default_download_url,
     write_cached_url,
 )
+from hx_email.server.settings_service import get_setting
 
 ENGINE_DIR_NAME: str = "qq-engines"
-ENGINE_SHA256_ENV: str = "HX_EMAIL_QQ_ENGINE_SHA256"
 DEFAULT_EXECUTABLE_NAME: str = "Lagrange.OneBot"
 DEFAULT_ONEBOT_PORT: int = 3000
 DEFAULT_WEBUI_PORT: int = 22000
@@ -89,6 +89,22 @@ def generate_lagrange_config(
     }
 
 
+def settings_proxy(settings: Settings) -> str:
+    """Reuse the proxy the user already configured in the app.
+
+    优先取邮箱分组默认代理, 其次取 Telegram 代理; 两者都没有则直连。
+    设置库不可读时按未配置处理, 不影响引擎安装。
+    """
+    for key in ("group_default_proxy_url", "telegram_proxy_url"):
+        try:
+            value: str = get_setting(settings, key, "").strip()
+        except sqlite3.Error:
+            continue
+        if value:
+            return value
+    return ""
+
+
 class QQEngineManager:
     """Per-instance lifecycle for the embedded Lagrange.OneBot engine."""
 
@@ -109,7 +125,7 @@ class QQEngineManager:
         executable: Path = self._dir / DEFAULT_EXECUTABLE_NAME
         if executable.exists():
             return executable
-        effective_proxy: str = proxy_url or self._proxy_url
+        effective_proxy: str = proxy_url or self._proxy_url or settings_proxy(self._settings)
         cache_file: Path = self._dir.parent / ENGINE_URL_CACHE_NAME
         url: str = (
             download_url
@@ -130,10 +146,9 @@ class QQEngineManager:
         except (requests.RequestException, OSError) as error:
             proxy_hint: str = "已配置代理" if effective_proxy else "未配置代理(直连)"
             raise RuntimeError(
-                f"QQ 引擎下载失败 ({proxy_hint}): {error}. 请检查网络与代理, "
-                f"或设置 {ENGINE_DOWNLOAD_URL_ENV} 指定下载地址"
+                f"QQ 引擎下载失败 ({proxy_hint}): {error}. 请检查网络与代理配置后重试"
             ) from error
-        expected: str = sha256 or os.environ.get(ENGINE_SHA256_ENV, "")
+        expected: str = sha256
         if expected:
             digest: str = hashlib.sha256(archive.read_bytes()).hexdigest()
             if digest.lower() != expected.lower():
