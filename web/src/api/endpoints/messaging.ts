@@ -8,7 +8,7 @@ import type {
   MessagingMessage,
   MessagingPluginInfo,
 } from "../../types/messaging";
-import { request } from "../core";
+import { request, requestBlob } from "../core";
 
 export const messagingApi = {
   catalog: () =>
@@ -89,4 +89,17 @@ export const messagingApi = {
       method: "PUT",
       body: JSON.stringify({ config }),
     }).then((r) => r.instance),
+
+  engineStart: (id: number) =>
+    request<{ pid: number; instance: MessagingInstance }>(
+      `/messaging/instances/${id}/engine/start`,
+      { method: "POST" },
+    ).then((r) => r),
+
+  engineStop: (id: number) =>
+    request<{ success: boolean }>(`/messaging/instances/${id}/engine/stop`, {
+      method: "POST",
+    }),
+
+  qrBlob: (id: number) => requestBlob(`/messaging/instances/${id}/login/qr`).then((blob) => blob),
 };

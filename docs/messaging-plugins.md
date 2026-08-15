@@ -94,17 +94,30 @@ class MessagingAdapter(ABC):
 
 ### 2.5 零配置使用路径（QQ）
 
-用户视角只有三步：**添加 → 扫码 → 使用**，不暴露任何协议细节：
+用户视角只有四步：**添加 → 启动 → 扫码 → 使用**，不暴露任何协议细节：
 
-1. 点击「添加 QQ」，后端自动创建实例并填入 NapCat 本地默认地址
-   （`http://127.0.0.1:3000` OneBot HTTP、`http://127.0.0.1:6099/webui` 登录页），
-   同时自动生成实例级事件 Token；
-2. 页面直接弹出内嵌 NapCat 登录页（即二维码），手机 QQ 扫码即完成登录；
-3. 登录后即可查看会话、收发消息、管理群组。
+1. 点击「添加 QQ」，后端自动创建实例（默认启用内置引擎、自动生成事件 Token）；
+2. 点击「启动内置引擎」，后端自动下载并拉起受管 QQ 协议引擎（见 2.6），
+   页面直接显示二维码（由后端代理成图片，不依赖用户浏览器访问本机端口）；
+3. 手机 QQ 扫码即完成登录，随后即可查看会话、收发消息、管理群组。
 
 - 前端不再要求填写 api_base_url / webui_url / event_token 等字段；
 - `event_token` 等敏感配置在 API 返回中脱敏（`***`），仅服务端持有；
-- 若 NapCat 部署在非本机默认端口，可在实例配置接口中按需覆盖。
+- 若需要对接外部已部署的 NapCat/Lagrange，可通过「高级设置」改为外部地址。
+
+### 2.6 内置受管引擎（Embedded Engine）
+
+用户无需安装 NapCat / Lagrange.OneBot。后端在首次使用时：
+
+1. 按 `HX_EMAIL_QQ_ENGINE_URL` 下载引擎压缩包（可选 `HX_EMAIL_QQ_ENGINE_SHA256`
+   校验），解压到 `data/qq-engines/{实例id}/`；
+2. 自动生成 Lagrange.OneBot 配置（OneBot HTTP 起在随机本机端口，
+   HttpPost 事件转发回本服务 `/api/v1/messaging/events/qq`）；
+3. 以子进程方式拉起并守护，登录态持久化在引擎目录，服务重启后复用；
+4. 二维码通过 `GET /api/v1/messaging/instances/{id}/login/qr` 代理为图片，
+   前端轮询刷新，扫完即完成登录。
+
+相关接口：`POST .../engine/start`、`POST .../engine/stop`、`GET .../login/qr`。
 
 ## 3. 数据模型
 
@@ -148,6 +161,9 @@ messaging_messages (
 | POST   | `/instances/{id}/disconnect`          | 断开                                        |
 | POST   | `/instances/{id}/login`               | 获取扫码/授权引导                           |
 | POST   | `/instances/{id}/login/status`        | 登录状态                                    |
+| POST   | `/instances/{id}/engine/start`        | 启动内置 QQ 引擎（自动下载+拉起）           |
+| POST   | `/instances/{id}/engine/stop`         | 停止内置 QQ 引擎                            |
+| GET    | `/instances/{id}/login/qr`            | 内置引擎二维码图片（后端代理）              |
 | GET    | `/instances/{id}/conversations`       | 会话列表                                    |
 | GET    | `/instances/{id}/messages?chat_id=`   | 消息历史                                    |
 | POST   | `/instances/{id}/send`                | 发送消息                                    |

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Header, HTTPException, status
+from fastapi.responses import Response
 
 from hx_email.api.dependencies import require_user
 from hx_email.api.impl.messaging.schemas import (
@@ -20,6 +21,10 @@ from hx_email.api.impl.messaging.serializers import (
     status_dict,
 )
 from hx_email.config import Settings
+from hx_email.server.messaging.engine import (
+    QQEngineManager,
+    pick_free_port,
+)
 from hx_email.server.messaging.impl.probe import probe_qq_login
 from hx_email.server.messaging.registry import catalog, drop_adapter, get_kind
 from hx_email.server.messaging.store import (
@@ -179,3 +184,84 @@ def register_messaging_routes(router: APIRouter, settings: Settings) -> None:
         _instance, adapter = require_instance(settings, user.id, instance_id)
         state: LoginState = adapter.check_login()
         return {"success": True, "login": login_state_dict(state)}
+
+    @router.post("/messaging/instances/{instance_id}/engine/start")
+    def engine_start(
+        instance_id: int,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        user = require_user(settings, authorization)
+        instance, _adapter = require_instance(settings, user.id, instance_id)
+        if instance.kind != "qq":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Only QQ instances support the embedded engine",
+            )
+        config: dict[str, str] = instance.config
+        api_port: int = port_from_config(config, "engine_api_port")
+        webui_port: int = port_from_config(config, "engine_webui_port")
+        while webui_port == api_port:
+            webui_port = pick_free_port()
+        event_url: str = config.get("event_callback_url", "") or (
+            "http://127.0.0.1:8000/api/v1/messaging/events/qq"
+        )
+        token: str = config.get("event_token", "")
+        manager: QQEngineManager = QQEngineManager(settings, instance.id)
+        try:
+            pid: int = manager.start(api_port, webui_port, event_url, token)
+        except RuntimeError as error:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=str(error),
+            ) from error
+        merged: dict[str, str] = {
+            **config,
+            "engine_api_port": str(api_port),
+            "engine_webui_port": str(webui_port),
+            "api_base_url": f"http://127.0.0.1:{api_port}",
+            "webui_url": f"http://127.0.0.1:{webui_port}",
+        }
+        updated = update_instance_config(settings, user.id, instance.id, merged)
+        if updated is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Messaging instance not found",
+            )
+        drop_adapter(instance.id)
+        return {"success": True, "pid": pid, "instance": instance_dict(updated)}
+
+    @router.post("/messaging/instances/{instance_id}/engine/stop")
+    def engine_stop(
+        instance_id: int,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        user = require_user(settings, authorization)
+        instance, _adapter = require_instance(settings, user.id, instance_id)
+        QQEngineManager(settings, instance.id).stop()
+        update_instance_status(settings, instance.id, "stopped")
+        drop_adapter(instance.id)
+        return {"success": True}
+
+    @router.get("/messaging/instances/{instance_id}/login/qr")
+    def login_qr(
+        instance_id: int,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> Response:
+        user = require_user(settings, authorization)
+        instance, _adapter = require_instance(settings, user.id, instance_id)
+        webui_port: int = port_from_config(instance.config, "engine_webui_port")
+        image: bytes | None = QQEngineManager(settings, instance.id).qr_image(webui_port)
+        if image is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="二维码暂不可用, 请先启动内置引擎",
+            )
+        return Response(content=image, media_type="image/png")
+
+
+def port_from_config(config: dict[str, str], key: str) -> int:
+    """Read a port from instance config or allocate a free one."""
+    raw: str = config.get(key, "")
+    if raw.isdigit():
+        return int(raw)
+    return pick_free_port()

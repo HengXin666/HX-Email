@@ -415,3 +415,103 @@ def test_update_instance_config_merges_and_masks_token(tmp_path: Any) -> None:
     assert updated["config"]["webui_url"] == "http://10.0.0.2:6099/webui"
     assert updated["config"]["api_base_url"] == "http://127.0.0.1:3000"
     assert updated["config"]["event_token"] == "***"
+
+
+class FakeEngineProcess:
+    def __init__(self, pid: int) -> None:
+        self.pid: int = pid
+
+    def poll(self) -> None:
+        return None
+
+
+def test_generate_lagrange_config_shape() -> None:
+    from hx_email.server.messaging.engine import generate_lagrange_config
+
+    config = generate_lagrange_config(
+        api_port=31001, webui_port=31002, event_url="http://x/ev", access_token="tok"
+    )
+    implementations = config["OneBot11"]["Implementations"]
+    assert implementations[0]["Type"] == "Http"
+    assert implementations[0]["Port"] == 31001
+    assert implementations[1]["Type"] == "HttpPost"
+    assert implementations[1]["PostUrls"] == ["http://x/ev"]
+    assert config["WebUi"]["Port"] == 31002
+
+
+def test_engine_manager_start_qr_and_stop(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    from hx_email.server.messaging.engine import QQEngineManager
+
+    settings = make_settings(tmp_path)
+    manager = QQEngineManager(settings, instance_id=7)
+    executable = manager._dir / "Lagrange.OneBot"
+    executable.parent.mkdir(parents=True)
+    executable.write_text("#!/bin/sh\nexit 0\n")
+    executable.chmod(0o755)
+
+    monkeypatch.setattr(
+        "hx_email.server.messaging.engine.subprocess.Popen",
+        lambda *args, **kwargs: FakeEngineProcess(424242),
+    )
+    monkeypatch.setattr(QQEngineManager, "_api_ready", lambda self, port: True)
+    monkeypatch.setattr(QQEngineManager, "_alive", staticmethod(lambda pid: True))
+
+    pid = manager.start(
+        api_port=31001,
+        webui_port=31002,
+        event_url="http://127.0.0.1:8000/ev",
+        access_token="tok",
+    )
+    assert pid == 424242
+    assert (manager._dir / "engine.pid").read_text().strip() == "424242"
+    assert "OneBot11" in (manager._dir / "appsettings.json").read_text()
+
+    def fake_get(url: str, timeout: float = 10.0) -> FakeGetResponse:
+        assert "31002" in url
+        response = FakeGetResponse(200)
+        response.content = b"PNGDATA"
+        response.headers = {"content-type": "image/png"}
+        return response
+
+    monkeypatch.setattr("hx_email.server.messaging.engine.requests.get", fake_get)
+    assert manager.qr_image(31002) == b"PNGDATA"
+
+    manager.stop()
+    assert not (manager._dir / "engine.pid").exists()
+
+
+def test_engine_start_stop_and_qr_routes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    from hx_email.server.messaging.engine import QQEngineManager
+
+    settings = make_settings(tmp_path)
+    migrate(settings)
+    client = TestClient(create_app(settings))
+    headers = login(client, settings)
+    instance = create_qq_instance(client, headers)
+
+    monkeypatch.setattr(QQEngineManager, "start", lambda self, *args, **kwargs: 12345)
+    monkeypatch.setattr(QQEngineManager, "stop", lambda self: None)
+    monkeypatch.setattr(QQEngineManager, "qr_image", lambda self, webui_port: b"PNGDATA")
+
+    started = client.post(
+        f"{API}/messaging/instances/{instance['id']}/engine/start", headers=headers
+    )
+    assert started.status_code == 200
+    assert started.json()["pid"] == 12345
+    assert started.json()["instance"]["config"]["api_base_url"].startswith("http://127.0.0.1:")
+
+    qr = client.get(f"{API}/messaging/instances/{instance['id']}/login/qr", headers=headers)
+    assert qr.status_code == 200
+    assert qr.headers["content-type"] == "image/png"
+    assert qr.content == b"PNGDATA"
+
+    stopped = client.post(
+        f"{API}/messaging/instances/{instance['id']}/engine/stop", headers=headers
+    )
+    assert stopped.status_code == 200

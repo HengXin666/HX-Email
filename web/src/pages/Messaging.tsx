@@ -48,6 +48,7 @@ export const Messaging: React.FC = () => {
   const [editWebuiUrl, setEditWebuiUrl] = useState("");
   const [editApiBaseUrl, setEditApiBaseUrl] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [qrUrl, setQrUrl] = useState<string | null>(null);
   const [conversations, setConversations] = useState<MessagingConversation[]>([]);
   const [groups, setGroups] = useState<MessagingGroup[]>([]);
   const [messages, setMessages] = useState<MessagingMessage[]>([]);
@@ -95,6 +96,50 @@ export const Messaging: React.FC = () => {
       void runProbe(loginInstance);
     }
   }, [loginInstance, runProbe]);
+
+  const refreshQr = useCallback(async (instance: MessagingInstance) => {
+    try {
+      const blob = await api.qrBlob(instance.id);
+      setQrUrl((current) => {
+        if (current) URL.revokeObjectURL(current);
+        return URL.createObjectURL(blob);
+      });
+    } catch {
+      // 二维码尚未就绪时保留上一帧
+    }
+  }, []);
+
+  useEffect(() => {
+    if (loginInstance?.config.embedded_engine === "true" && probe?.api_reachable) {
+      void refreshQr(loginInstance);
+      const timer = window.setInterval(() => {
+        void refreshQr(loginInstance);
+      }, 3000);
+      return () => {
+        window.clearInterval(timer);
+        setQrUrl((current) => {
+          if (current) URL.revokeObjectURL(current);
+          return null;
+        });
+      };
+    }
+    return undefined;
+  }, [loginInstance, probe?.api_reachable, refreshQr]);
+
+  const handleEngineStart = useCallback(async () => {
+    if (loginInstance === null) return;
+    setBusy("engine-start");
+    try {
+      const result = await api.engineStart(loginInstance.id);
+      setLoginInstance(result.instance);
+      toast("内置引擎已启动，正在获取二维码", "success");
+      await loadAll();
+    } catch (error: unknown) {
+      toast(error instanceof Error ? error.message : "启动内置引擎失败", "error");
+    } finally {
+      setBusy(null);
+    }
+  }, [loadAll, loginInstance, toast]);
 
   const handleSaveConfig = useCallback(async () => {
     if (loginInstance === null) return;
@@ -517,7 +562,39 @@ export const Messaging: React.FC = () => {
           size="md"
           onClose={() => setLoginInstance(null)}
           footer={
-            probe?.webui_reachable ? (
+            loginInstance.config.embedded_engine === "true" ? (
+              probe?.api_reachable ? (
+                <>
+                  <Button size="sm" variant="ghost" onClick={() => setLoginInstance(null)}>
+                    关闭
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    loading={busy === "login-status"}
+                    icon={<IconRefresh size={14} />}
+                    onClick={handleLoginStatus}
+                  >
+                    我已扫码，完成登录
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button size="sm" variant="ghost" onClick={() => setLoginInstance(null)}>
+                    关闭
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    loading={busy === "engine-start"}
+                    icon={<IconZap size={14} />}
+                    onClick={() => void handleEngineStart()}
+                  >
+                    启动内置引擎
+                  </Button>
+                </>
+              )
+            ) : probe?.webui_reachable ? (
               <>
                 <Button
                   size="sm"
@@ -557,7 +634,66 @@ export const Messaging: React.FC = () => {
           }
         >
           {probing ? (
-            <LoadingState message="正在检测 NapCat 服务..." />
+            <LoadingState message="正在检测服务..." />
+          ) : loginInstance.config.embedded_engine === "true" ? (
+            probe?.api_reachable ? (
+              <div className="flex flex-col items-center gap-3">
+                <p className="text-center text-xs text-gh-text-secondary">
+                  用手机 QQ 扫描下方二维码，登录后本实例即可开始收发消息
+                </p>
+                {qrUrl ? (
+                  <img
+                    src={qrUrl}
+                    alt="QQ 登录二维码"
+                    className="h-72 w-72 rounded-lg border border-gh-border bg-white object-contain p-2"
+                  />
+                ) : (
+                  <LoadingState message="正在获取二维码..." />
+                )}
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                <div className="rounded-lg border border-gh-danger/40 bg-gh-danger/10 px-3 py-2 text-xs text-gh-danger">
+                  {probe?.message ?? "内置引擎尚未启动"}
+                </div>
+                <ol className="list-decimal space-y-1 pl-4 text-xs text-gh-text-secondary">
+                  <li>点击「启动内置引擎」，后端会自动下载并运行 QQ 协议引擎</li>
+                  <li>首次使用需联网下载引擎（几十 MB），之后无需再安装任何东西</li>
+                  <li>启动完成后自动显示二维码，用手机 QQ 扫码即可</li>
+                </ol>
+                <button
+                  type="button"
+                  onClick={() => setShowAdvanced((value) => !value)}
+                  className="self-start text-xs text-gh-accent hover:underline"
+                >
+                  {showAdvanced ? "收起高级设置" : "高级设置（修改引擎端口/地址）"}
+                </button>
+                {showAdvanced && (
+                  <div className="grid grid-cols-1 gap-2">
+                    <Input
+                      label="OneBot API 地址"
+                      placeholder="http://127.0.0.1:3000"
+                      value={editApiBaseUrl}
+                      onChange={(event) => setEditApiBaseUrl(event.target.value)}
+                    />
+                    <Input
+                      label="事件回调地址（可选）"
+                      placeholder="http://127.0.0.1:8000/api/v1/messaging/events/qq"
+                      value={editWebuiUrl}
+                      onChange={(event) => setEditWebuiUrl(event.target.value)}
+                    />
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      loading={busy === "save-config"}
+                      onClick={() => void handleSaveConfig()}
+                    >
+                      保存并重新检测
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )
           ) : probe?.webui_reachable ? (
             <div className="flex flex-col items-center gap-3">
               <p className="text-center text-xs text-gh-text-secondary">

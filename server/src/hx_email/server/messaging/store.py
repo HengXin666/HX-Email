@@ -236,4 +236,6 @@ def with_qq_defaults(kind: str, config: dict[str, str]) -> dict[str, str]:
         defaults["webui_url"] = QQ_DEFAULT_WEBUI_URL
     if not defaults.get("event_token"):
         defaults["event_token"] = secrets.token_hex(16)
+    if not defaults.get("embedded_engine"):
+        defaults["embedded_engine"] = "true"
     return defaults
