@@ -55,7 +55,7 @@ def test_automatic_polling_skips_disabled_groups(tmp_path) -> None:
         "imap",
         "owner@example.com",
         "Owner",
-        "imap.example.com",
+        "8.8.8.8",
         993,
         "owner@example.com",
         "password",

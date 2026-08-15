@@ -41,7 +41,7 @@ def create_account(client: TestClient, headers: dict[str, str]) -> dict:
             "provider": "imap",
             "primary_address": "owner@example.com",
             "display_name": "Owner",
-            "imap_host": "imap.example.com",
+            "imap_host": "8.8.8.8",
             "imap_password": "secret",
             "alias_addresses": ["alias@example.com"],
         },

@@ -52,14 +52,16 @@ def merge_users(
         if existing is not None:
             if overwrite:
                 connection.execute(
-                    "UPDATE users SET password_hash = ?, is_admin = ? WHERE id = ?",
-                    (row["password_hash"], int(bool(row["is_admin"])), existing[0]),
+                    "UPDATE users SET password_hash = ? WHERE id = ?",
+                    (row["password_hash"], existing[0]),
                 )
             ids[int(row["id"])] = int(existing[0])
         else:
+            # 快照中的 is_admin 不可信: 新用户一律非管理员, 防止持 sync key
+            # 推送自造快照注入/提升管理员 (第五轮审计 #4)。
             cursor = connection.execute(
-                "INSERT INTO users (username, password_hash, is_admin) VALUES (?, ?, ?)",
-                (row["username"], row["password_hash"], int(bool(row["is_admin"]))),
+                "INSERT INTO users (username, password_hash, is_admin) VALUES (?, ?, 0)",
+                (row["username"], row["password_hash"]),
             )
             ids[int(row["id"])] = inserted_id(cursor)
     return ids
@@ -111,7 +113,12 @@ def merge_snapshot(
         user_ids: dict[int, int] = merge_users(
             connection, load_rows(source, "users"), overwrite=overwrite
         )
-        merge_system_settings(connection, load_rows(source, "system_settings"), overwrite=overwrite)
+        # push (overwrite=False) 不合并 system_settings: 快照可携带 external_api_key
+        # 等密钥类设置, 直接写入会植入凭证 (第五轮审计 #4)。pull 方向仍同步设置。
+        if overwrite:
+            merge_system_settings(
+                connection, load_rows(source, "system_settings"), overwrite=overwrite
+            )
         group_ids: dict[int, int] = merge_groups(
             connection, user_ids, load_rows(source, "groups"), overwrite=overwrite
         )
