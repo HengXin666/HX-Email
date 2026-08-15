@@ -31,6 +31,17 @@ export type {
   VerificationMatch,
   VerificationReading,
 } from "./message";
+export type {
+  MessagingCapabilities,
+  MessagingChatType,
+  MessagingConversation,
+  MessagingGroup,
+  MessagingInstance,
+  MessagingLoginState,
+  MessagingLoginTicket,
+  MessagingMessage,
+  MessagingPluginInfo,
+} from "./messaging";
 export type { ActivityStats, Overview, OverviewSummary, VerificationStats } from "./overview";
 export type { BindingStatus, Platform, PlatformBinding } from "./platform";
 export type { MailPoolEntry, MailPoolStatus, PoolAdminAccount, PoolStats } from "./pool";

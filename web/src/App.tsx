@@ -8,6 +8,7 @@ import { ApiAccess } from "./pages/ApiAccess";
 import { AuditLog } from "./pages/AuditLog";
 import { Home } from "./pages/Home";
 import { Login } from "./pages/Login";
+import { Messaging } from "./pages/Messaging";
 import { Overview } from "./pages/Overview";
 import { Platforms } from "./pages/Platforms";
 import { PoolAdmin } from "./pages/PoolAdmin";
@@ -112,6 +113,14 @@ const App: React.FC = () => {
         element={
           <RequireAuth>
             <TokenTool />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/messaging"
+        element={
+          <RequireAuth>
+            <Messaging />
           </RequireAuth>
         }
       />

@@ -24,6 +24,11 @@ from hx_email.api.impl.google_verification.serve_routes import (
 )
 from hx_email.api.impl.mail.pool import register_pool_admin_routes
 from hx_email.api.impl.mail_routes import register_mail_routes
+from hx_email.api.impl.messaging import (
+    register_messaging_action_routes,
+    register_messaging_event_routes,
+    register_messaging_routes,
+)
 from hx_email.api.impl.overview import (
     register_notification_routes,
     register_overview_refresh_routes,
@@ -97,6 +102,9 @@ def register_routes(
     register_audit_routes(api, settings)
     register_plugin_crud_routes(api, settings)
     register_plugin_config_routes(api, settings)
+    register_messaging_routes(api, settings)
+    register_messaging_action_routes(api, settings)
+    register_messaging_event_routes(api, settings)
 
     app.include_router(api)
 

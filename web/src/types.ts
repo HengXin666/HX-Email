@@ -34,6 +34,17 @@ export type {
   VerificationReading,
 } from "./types/message";
 export type {
+  MessagingCapabilities,
+  MessagingChatType,
+  MessagingConversation,
+  MessagingGroup,
+  MessagingInstance,
+  MessagingLoginState,
+  MessagingLoginTicket,
+  MessagingMessage,
+  MessagingPluginInfo,
+} from "./types/messaging";
+export type {
   ActivityStats,
   Overview,
   OverviewSummary,

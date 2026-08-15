@@ -6,6 +6,7 @@ from hx_email.config import Settings
 from hx_email.models import (
     migrate_account_timestamps_schema,
     migrate_message_delivery_schema,
+    migrate_messaging_schema,
     migrate_polling_schema,
 )
 from hx_email.security import hash_password, migrate_stored_secrets
@@ -71,16 +72,14 @@ def migrate(settings: Settings) -> Path:
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS system_settings (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL
+                key TEXT PRIMARY KEY, value TEXT NOT NULL
             )
             """
         )
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS sessions (
-                token TEXT PRIMARY KEY,
-                user_id INTEGER NOT NULL REFERENCES users(id),
+                token TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
                 expires_at TEXT NOT NULL DEFAULT ''
             )
             """
@@ -276,6 +275,7 @@ def migrate(settings: Settings) -> Path:
         migrate_polling_schema(connection)
         migrate_message_delivery_schema(connection)
         migrate_account_timestamps_schema(connection)
+        migrate_messaging_schema(connection)
         connection.execute(
             """
             CREATE UNIQUE INDEX IF NOT EXISTS idx_fetched_msg_dedup

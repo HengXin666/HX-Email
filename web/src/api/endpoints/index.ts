@@ -3,6 +3,7 @@ export { authApi } from "./auth";
 export { backupApi } from "./backup";
 export { emailsApi } from "./emails";
 export { groupsApi } from "./groups";
+export { messagingApi } from "./messaging";
 export { overviewApi } from "./overview";
 export { platformsApi } from "./platforms";
 export { poolApi } from "./pool";

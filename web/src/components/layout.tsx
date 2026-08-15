@@ -3,6 +3,7 @@ import React from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useApp } from "../store/AppContext";
 import {
+  IconBell,
   IconChevronRight,
   IconClock,
   IconCode,
@@ -24,6 +25,7 @@ const NAV = [
   { to: "/send-mail", label: "发送邮件", icon: IconMail },
   { to: "/platforms", label: "平台绑定", icon: IconServer },
   { to: "/temp-mail", label: "临时邮箱", icon: IconClock },
+  { to: "/messaging", label: "消息插件", icon: IconBell },
   { to: "/token-tool", label: "OAuth Token", icon: IconKey },
   { to: "/refresh-log", label: "刷新日志", icon: IconClock },
   { to: "/pool-admin", label: "邮箱池", icon: IconDatabase },

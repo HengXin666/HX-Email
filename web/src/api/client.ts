@@ -9,6 +9,7 @@ import { backupApi } from "./endpoints/backup";
 import { emailsApi } from "./endpoints/emails";
 import { googleVerificationApi } from "./endpoints/google-verification";
 import { groupsApi } from "./endpoints/groups";
+import { messagingApi } from "./endpoints/messaging";
 import { overviewApi } from "./endpoints/overview";
 import { platformsApi } from "./endpoints/platforms";
 import { poolApi } from "./endpoints/pool";
@@ -22,6 +23,7 @@ export const api = {
   ...backupApi,
   ...overviewApi,
   ...groupsApi,
+  ...messagingApi,
   ...emailsApi,
   ...platformsApi,
   ...poolApi,

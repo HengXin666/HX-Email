@@ -57,6 +57,16 @@ HX-Email 是一款面向「注册与验证」场景的现代化邮箱管理平�
 - 通知渠道：SMTP 转发、Telegram、Webhook 回调（可携带 Bearer Token）、浏览器通知、自定义 Shell 流水线
 - 投递失败进入 outbox，自动重试最多 3 次
 
+### 消息插件（QQ / 微信 / Telegram / Discord）
+
+- 以**插件模式**接入即时消息平台，像收邮件一样收发消息；非主功能，按需添加激活
+- 首个落地：**QQ（NapCatQQ + OneBot 11 协议）**，支持 WebUI 扫码登录、登录态长期维持、
+  私聊/群聊收发、历史消息与群管理（踢人/禁言/全体禁言/退群）
+- 统一抽象 `MessagingAdapter`：登录引导、会话、消息、发送、群组操作与能力位
+  （是否支持扫码/群组/历史/风险等级），为微信（企业微信）、Telegram、Discord 预留同一套 API
+- 平台事件回调 `POST /api/v1/messaging/events/{kind}` 以实例级 Token 鉴权，消息落库可查
+- 详细设计与平台风险矩阵见 [`docs/messaging-plugins.md`](docs/messaging-plugins.md)
+
 ### 发信与 OAuth 令牌工具
 
 - 使用账号关联的可用邮箱发送调试邮件（SMTP）

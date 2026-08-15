@@ -25,6 +25,7 @@
     "src/types.ts": ["types"],
     "src/types/email.ts": ["types"],
     "src/types/platform.ts": ["types"],
-    "src/types/pool.ts": ["types"]
+    "src/types/pool.ts": ["types"],
+    "src/types/messaging.ts": ["types"]
   }
 }
