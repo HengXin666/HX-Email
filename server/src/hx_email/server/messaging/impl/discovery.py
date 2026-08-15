@@ -1,7 +1,9 @@
 """Heuristic discovery of Lagrange.OneBot release URLs without GitHub API.
 
-解析 GitHub releases 页面获取最新版本与其资产, 不调用 api.github.com
-(未认证限流), 实现「默认自动选最新、最兼容」的引擎安装路径。
+多策略解析 GitHub releases 页面/订阅源, 不调用 api.github.com (未认证限流):
+A. releases/latest 页面内嵌 JSON (tag_name + browser_download_url)
+B. 拿到 tag 后经 releases/expanded_assets 拉资产列表
+C. 页面解析失败时退到 releases.atom 订阅源取最新 tag
 """
 
 from __future__ import annotations
@@ -9,6 +11,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import requests
@@ -18,12 +21,14 @@ LAGRANGE_RELEASE_BASE: str = f"https://github.com/{LAGRANGE_REPO}/releases/downl
 LAGRANGE_ASSET_PREFIX: str = "Lagrange.OneBot_"
 LATEST_RELEASE_URL: str = f"https://github.com/{LAGRANGE_REPO}/releases/latest"
 EXPANDED_ASSETS_URL: str = f"https://github.com/{LAGRANGE_REPO}/releases/expanded_assets/{{tag}}"
+RELEASES_ATOM_URL: str = f"https://github.com/{LAGRANGE_REPO}/releases.atom"
 LAGRANGE_PINNED_VERSION: str = "0.18.0"
 ENGINE_DOWNLOAD_URL_ENV: str = "HX_EMAIL_QQ_ENGINE_URL"
 LAGRANGE_VERSION_ENV: str = "HX_EMAIL_QQ_ENGINE_VERSION"
 GITHUB_USER_AGENT: str = "Mozilla/5.0 (compatible; HX-Email engine installer)"
 ENGINE_URL_CACHE_NAME: str = "engine-url.txt"
 _REQUEST_TIMEOUT: float = 30.0
+_ATOM_NS: str = "{http://www.w3.org/2005/Atom}"
 
 
 def default_asset_rid() -> str:
@@ -63,37 +68,101 @@ def write_cached_url(path: Path, url: str) -> None:
 
 
 def discover_latest_asset_url() -> str:
-    """启发式发现最新 Release 的平台资产 (解析页面, 不走 GitHub API)."""
+    """启发式发现最新 Release 的平台资产 (多策略, 不走 GitHub API)."""
     rid: str = default_asset_rid()
     headers: dict[str, str] = {"User-Agent": GITHUB_USER_AGENT}
-    latest: requests.Response = requests.get(
+    page: requests.Response = requests.get(
         LATEST_RELEASE_URL,
         headers=headers,
         allow_redirects=True,
         timeout=_REQUEST_TIMEOUT,
     )
-    latest.raise_for_status()
-    final_url: str = str(latest.url).rstrip("/")
-    tag: str = final_url.rsplit("/", 1)[-1]
-    if not tag or tag == "releases":
-        raise RuntimeError("无法解析 GitHub 最新版本号")
-    assets: requests.Response = requests.get(
+    page.raise_for_status()
+    page_html: str = page.text
+    tag: str = _extract_tag(page_html)
+    asset_url: str = _pick_asset_url_from_text(page_html, rid)
+    if asset_url:
+        return asset_url
+    if tag:
+        asset_url = _pick_asset_from_expanded(tag, headers, rid)
+        if asset_url:
+            return asset_url
+    tag = tag or _extract_tag_from_atom(headers)
+    if tag:
+        asset_url = _pick_asset_from_expanded(tag, headers, rid)
+        if asset_url:
+            return asset_url
+    raise RuntimeError(
+        "无法自动发现 QQ 引擎最新版本 (GitHub 页面解析失败)。"
+        f"可设置 {ENGINE_DOWNLOAD_URL_ENV} 指定下载地址"
+    )
+
+
+def _extract_tag(page_html: str) -> str:
+    """Extract the latest release tag from page embedded JSON or links."""
+    match = re.search(r'"tag_name"\s*:\s*"([^"]+)"', page_html)
+    if match:
+        return str(match.group(1))
+    match = re.search(r"/releases/tag/([^\"'/?]+)", page_html)
+    return str(match.group(1)) if match else ""
+
+
+def _pick_asset_url_from_text(text: str, rid: str) -> str:
+    """Pick the platform asset URL from embedded JSON or hrefs in HTML."""
+    for raw_url in re.findall(r'"browser_download_url"\s*:\s*"(https://[^"]+)"', text):
+        candidate: str = str(raw_url)
+        if _asset_matches(candidate, rid):
+            return candidate
+    for href in re.findall(r'href="([^"]+)"', text):
+        if href.startswith(f"/{LAGRANGE_REPO}/releases/download/"):
+            candidate = f"https://github.com{href}"
+            if _asset_matches(candidate, rid):
+                return candidate
+    return ""
+
+
+def _asset_matches(url: str, rid: str) -> bool:
+    filename: str = url.rsplit("/", 1)[-1]
+    return (
+        filename.startswith(LAGRANGE_ASSET_PREFIX) and rid in filename and filename.endswith(".zip")
+    )
+
+
+def _pick_asset_from_expanded(
+    tag: str,
+    headers: dict[str, str],
+    rid: str,
+) -> str:
+    response: requests.Response = requests.get(
         EXPANDED_ASSETS_URL.format(tag=tag),
         headers=headers,
         timeout=_REQUEST_TIMEOUT,
     )
-    assets.raise_for_status()
-    for href in re.findall(r'href="([^"]+)"', assets.text):
-        if not href.startswith(f"/{LAGRANGE_REPO}/releases/download/"):
+    response.raise_for_status()
+    return _pick_asset_url_from_text(response.text, rid)
+
+
+def _extract_tag_from_atom(headers: dict[str, str]) -> str:
+    """Extract the latest tag from the GitHub releases Atom feed."""
+    response: requests.Response = requests.get(
+        RELEASES_ATOM_URL,
+        headers=headers,
+        timeout=_REQUEST_TIMEOUT,
+    )
+    response.raise_for_status()
+    try:
+        root: ET.Element = ET.fromstring(response.text)
+    except ET.ParseError:
+        return ""
+    for entry in root.iter(f"{_ATOM_NS}entry"):
+        link = entry.find(f"{_ATOM_NS}link")
+        if link is None:
             continue
-        filename: str = href.rsplit("/", 1)[-1]
-        if (
-            filename.startswith(LAGRANGE_ASSET_PREFIX)
-            and rid in filename
-            and filename.endswith(".zip")
-        ):
-            return f"{LAGRANGE_RELEASE_BASE}/{tag}/{filename}"
-    raise RuntimeError(f"未在最新 Release ({tag}) 中找到适配平台 ({rid}) 的资产")
+        href: str = str(link.get("href", ""))
+        match = re.search(r"/releases/tag/([^/]+)/?$", href)
+        if match:
+            return match.group(1)
+    return ""
 
 
 def resolve_default_download_url() -> str:

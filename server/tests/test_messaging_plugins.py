@@ -537,10 +537,51 @@ def test_resolve_default_download_url_discovers_latest_release(
     monkeypatch.delenv("HX_EMAIL_QQ_ENGINE_URL", raising=False)
     monkeypatch.delenv("HX_EMAIL_QQ_ENGINE_VERSION", raising=False)
     rid = default_asset_rid()
+    expected = (
+        "https://github.com/LagrangeDev/Lagrange.Core/releases/download/0.25.0/"
+        f"Lagrange.OneBot_0.25.0_{rid}.zip"
+    )
 
     class FakePage:
-        def __init__(self, url: str = "", text: str = "") -> None:
-            self.url: str = url
+        def __init__(self, text: str) -> None:
+            self.text: str = text
+
+        def raise_for_status(self) -> None:
+            return None
+
+    calls: list[str] = []
+
+    def fake_get(url: str, **kwargs: object) -> FakePage:
+        calls.append(url)
+        return FakePage(text=(f'"tag_name":"0.25.0" "browser_download_url":"{expected}"'))
+
+    monkeypatch.setattr("hx_email.server.messaging.impl.discovery.requests.get", fake_get)
+
+    assert resolve_default_download_url() == expected
+    assert len(calls) == 1
+
+
+def test_resolve_default_download_url_falls_back_to_expanded_assets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hx_email.server.messaging.impl.discovery import (
+        default_asset_rid,
+        resolve_default_download_url,
+    )
+
+    monkeypatch.delenv("HX_EMAIL_QQ_ENGINE_URL", raising=False)
+    monkeypatch.delenv("HX_EMAIL_QQ_ENGINE_VERSION", raising=False)
+    rid = default_asset_rid()
+    expected = (
+        "https://github.com/LagrangeDev/Lagrange.Core/releases/download/0.25.0/"
+        f"Lagrange.OneBot_0.25.0_{rid}.zip"
+    )
+    asset_href = (
+        f"/LagrangeDev/Lagrange.Core/releases/download/0.25.0/Lagrange.OneBot_0.25.0_{rid}.zip"
+    )
+
+    class FakePage:
+        def __init__(self, text: str) -> None:
             self.text: str = text
 
         def raise_for_status(self) -> None:
@@ -548,21 +589,57 @@ def test_resolve_default_download_url_discovers_latest_release(
 
     def fake_get(url: str, **kwargs: object) -> FakePage:
         if "expanded_assets" in url:
-            return FakePage(
-                text=(
-                    '<a href="/LagrangeDev/Lagrange.Core/releases/download/0.25.0/'
-                    f'Lagrange.OneBot_0.25.0_{rid}.zip">x</a>'
-                )
-            )
-        return FakePage(url="https://github.com/LagrangeDev/Lagrange.Core/releases/tag/0.25.0")
+            return FakePage(text=f'<a href="{asset_href}">x</a>')
+        return FakePage(text='"tag_name":"0.25.0"')
 
     monkeypatch.setattr("hx_email.server.messaging.impl.discovery.requests.get", fake_get)
 
-    url = resolve_default_download_url()
-    assert url == (
+    assert resolve_default_download_url() == expected
+
+
+def test_resolve_default_download_url_falls_back_to_atom_feed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hx_email.server.messaging.impl.discovery import (
+        default_asset_rid,
+        resolve_default_download_url,
+    )
+
+    monkeypatch.delenv("HX_EMAIL_QQ_ENGINE_URL", raising=False)
+    monkeypatch.delenv("HX_EMAIL_QQ_ENGINE_VERSION", raising=False)
+    rid = default_asset_rid()
+    expected = (
         "https://github.com/LagrangeDev/Lagrange.Core/releases/download/0.25.0/"
         f"Lagrange.OneBot_0.25.0_{rid}.zip"
     )
+    asset_href = (
+        f"/LagrangeDev/Lagrange.Core/releases/download/0.25.0/Lagrange.OneBot_0.25.0_{rid}.zip"
+    )
+    atom_xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<feed xmlns="http://www.w3.org/2005/Atom">'
+        '<entry><link rel="alternate" '
+        'href="https://github.com/LagrangeDev/Lagrange.Core/releases/tag/0.25.0"/>'
+        "</entry></feed>"
+    )
+
+    class FakePage:
+        def __init__(self, text: str) -> None:
+            self.text: str = text
+
+        def raise_for_status(self) -> None:
+            return None
+
+    def fake_get(url: str, **kwargs: object) -> FakePage:
+        if "expanded_assets" in url:
+            return FakePage(text=f'<a href="{asset_href}">x</a>')
+        if "releases.atom" in url:
+            return FakePage(text=atom_xml)
+        return FakePage(text="no release data here")
+
+    monkeypatch.setattr("hx_email.server.messaging.impl.discovery.requests.get", fake_get)
+
+    assert resolve_default_download_url() == expected
 
 
 def test_resolve_default_download_url_honors_version_override(
