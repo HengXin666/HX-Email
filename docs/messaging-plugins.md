@@ -109,9 +109,9 @@ class MessagingAdapter(ABC):
 
 用户无需安装 NapCat / Lagrange.OneBot。后端在首次使用时：
 
-1. 默认**启发式发现最新 Release**：解析 GitHub releases 页面拿到最新 tag，
-   再列出该版本资产并按当前平台（linux/win/osx × x64/arm64）选包下载，
-   全程不调用 GitHub API（规避未认证限流），「最新即最兼容」；
+1. 默认**启发式发现最新 Release**：优先走 GitHub 官方 API（经代理，返回 JSON 最可靠），
+   失败时再解析 releases 页面/Atom 订阅源兜底，按当前平台
+   （linux/win/osx × x64/arm64）选包下载，「最新即最兼容」；
    首次成功后会缓存下载地址，之后直接复用；
    下载/发现请求自动复用应用内已配置的代理（邮箱分组默认代理或 Telegram 代理），
    也可在实例「高级设置」的代理地址单独覆盖，全程无需环境变量；

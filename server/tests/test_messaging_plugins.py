@@ -346,6 +346,26 @@ class FakeGetResponse:
         self.status_code: int = status_code
 
 
+class FakeDiscoveryPage:
+    def __init__(
+        self,
+        text: str = "",
+        status_code: int = 200,
+        json_payload: object = None,
+    ) -> None:
+        self.text: str = text
+        self.status_code: int = status_code
+        self._json_payload: object = json_payload
+
+    def raise_for_status(self) -> None:
+        return None
+
+    def json(self) -> Any:
+        if self._json_payload is None:
+            raise ValueError("no json payload")
+        return self._json_payload
+
+
 def test_login_probe_reports_unreachable_napcat(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Any,
@@ -533,23 +553,18 @@ def test_resolve_default_download_url_discovers_latest_release(
         f"Lagrange.OneBot_0.25.0_{rid}.zip"
     )
 
-    class FakePage:
-        def __init__(self, text: str) -> None:
-            self.text: str = text
-
-        def raise_for_status(self) -> None:
-            return None
-
     calls: list[str] = []
 
-    def fake_get(url: str, **kwargs: object) -> FakePage:
+    def fake_get(url: str, **kwargs: object) -> FakeDiscoveryPage:
         calls.append(url)
-        return FakePage(text=(f'"tag_name":"0.25.0" "browser_download_url":"{expected}"'))
+        if "api.github.com" in url:
+            return FakeDiscoveryPage(status_code=403)
+        return FakeDiscoveryPage(text=f'"tag_name":"0.25.0" "browser_download_url":"{expected}"')
 
     monkeypatch.setattr("hx_email.server.messaging.impl.discovery.requests.get", fake_get)
 
     assert resolve_default_download_url() == expected
-    assert len(calls) == 1
+    assert len(calls) == 2
 
 
 def test_resolve_default_download_url_falls_back_to_expanded_assets(
@@ -571,17 +586,12 @@ def test_resolve_default_download_url_falls_back_to_expanded_assets(
         f"/LagrangeDev/Lagrange.Core/releases/download/0.25.0/Lagrange.OneBot_0.25.0_{rid}.zip"
     )
 
-    class FakePage:
-        def __init__(self, text: str) -> None:
-            self.text: str = text
-
-        def raise_for_status(self) -> None:
-            return None
-
-    def fake_get(url: str, **kwargs: object) -> FakePage:
+    def fake_get(url: str, **kwargs: object) -> FakeDiscoveryPage:
+        if "api.github.com" in url:
+            return FakeDiscoveryPage(status_code=403)
         if "expanded_assets" in url:
-            return FakePage(text=f'<a href="{asset_href}">x</a>')
-        return FakePage(text='"tag_name":"0.25.0"')
+            return FakeDiscoveryPage(text=f'<a href="{asset_href}">x</a>')
+        return FakeDiscoveryPage(text='"tag_name":"0.25.0"')
 
     monkeypatch.setattr("hx_email.server.messaging.impl.discovery.requests.get", fake_get)
 
@@ -614,19 +624,14 @@ def test_resolve_default_download_url_falls_back_to_atom_feed(
         "</entry></feed>"
     )
 
-    class FakePage:
-        def __init__(self, text: str) -> None:
-            self.text: str = text
-
-        def raise_for_status(self) -> None:
-            return None
-
-    def fake_get(url: str, **kwargs: object) -> FakePage:
+    def fake_get(url: str, **kwargs: object) -> FakeDiscoveryPage:
+        if "api.github.com" in url:
+            return FakeDiscoveryPage(status_code=403)
         if "expanded_assets" in url:
-            return FakePage(text=f'<a href="{asset_href}">x</a>')
+            return FakeDiscoveryPage(text=f'<a href="{asset_href}">x</a>')
         if "releases.atom" in url:
-            return FakePage(text=atom_xml)
-        return FakePage(text="no release data here")
+            return FakeDiscoveryPage(text=atom_xml)
+        return FakeDiscoveryPage(text="no release data here")
 
     monkeypatch.setattr("hx_email.server.messaging.impl.discovery.requests.get", fake_get)
 
@@ -720,16 +725,11 @@ def test_resolve_default_download_url_passes_proxy_to_requests(
     )
     captured: list[dict[str, object]] = []
 
-    class FakePage:
-        def __init__(self, text: str) -> None:
-            self.text: str = text
-
-        def raise_for_status(self) -> None:
-            return None
-
-    def fake_get(url: str, **kwargs: object) -> FakePage:
+    def fake_get(url: str, **kwargs: object) -> FakeDiscoveryPage:
         captured.append({"url": url, **kwargs})
-        return FakePage(text=f'"tag_name":"0.25.0" "browser_download_url":"{expected}"')
+        if "api.github.com" in url:
+            return FakeDiscoveryPage(status_code=403)
+        return FakeDiscoveryPage(text=f'"tag_name":"0.25.0" "browser_download_url":"{expected}"')
 
     monkeypatch.setattr("hx_email.server.messaging.impl.discovery.requests.get", fake_get)
 
@@ -786,3 +786,58 @@ def test_settings_proxy_reuses_app_proxy(
 
     monkeypatch.setattr("hx_email.server.messaging.engine.get_setting", fake_get_setting)
     assert settings_proxy(settings) == "http://127.0.0.1:7890"
+
+
+def test_resolve_default_download_url_discovers_via_api(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hx_email.server.messaging.impl.discovery import (
+        default_asset_rid,
+        resolve_default_download_url,
+    )
+
+    rid = default_asset_rid()
+    expected = (
+        "https://github.com/LagrangeDev/Lagrange.Core/releases/download/0.25.0/"
+        f"Lagrange.OneBot_0.25.0_{rid}.zip"
+    )
+    payload: dict[str, object] = {
+        "tag_name": "0.25.0",
+        "assets": [
+            {
+                "name": f"Lagrange.OneBot_0.25.0_{rid}.zip",
+                "browser_download_url": expected,
+            }
+        ],
+    }
+
+    def fake_get(url: str, **kwargs: object) -> FakeDiscoveryPage:
+        return FakeDiscoveryPage(json_payload=payload)
+
+    monkeypatch.setattr("hx_email.server.messaging.impl.discovery.requests.get", fake_get)
+
+    assert resolve_default_download_url() == expected
+
+
+def test_resolve_default_download_url_api_rate_limited_falls_back_to_html(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hx_email.server.messaging.impl.discovery import (
+        default_asset_rid,
+        resolve_default_download_url,
+    )
+
+    rid = default_asset_rid()
+    expected = (
+        "https://github.com/LagrangeDev/Lagrange.Core/releases/download/0.25.0/"
+        f"Lagrange.OneBot_0.25.0_{rid}.zip"
+    )
+
+    def fake_get(url: str, **kwargs: object) -> FakeDiscoveryPage:
+        if "api.github.com" in url:
+            return FakeDiscoveryPage(status_code=403)
+        return FakeDiscoveryPage(text=f'"tag_name":"0.25.0" "browser_download_url":"{expected}"')
+
+    monkeypatch.setattr("hx_email.server.messaging.impl.discovery.requests.get", fake_get)
+
+    assert resolve_default_download_url() == expected

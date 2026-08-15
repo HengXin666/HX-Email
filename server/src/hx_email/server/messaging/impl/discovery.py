@@ -1,10 +1,10 @@
-"""Heuristic discovery of Lagrange.OneBot release URLs (no GitHub API, no env vars).
+"""Heuristic discovery of Lagrange.OneBot release URLs (proxy-aware).
 
-多策略解析 GitHub releases 页面/订阅源, 不调用 api.github.com (未认证限流):
-A. releases/latest 页面内嵌 JSON (tag_name + browser_download_url)
-B. 拿到 tag 后经 releases/expanded_assets 拉资产列表
-C. 页面解析失败时退到 releases.atom 订阅源取最新 tag
-代理由调用方传入 (自动复用应用内已配置的代理), 不读环境变量。
+发现顺序 (全程可走调用方传入的代理, 不读环境变量):
+A. GitHub 官方 API (JSON, 最可靠; 代理出口一般不限流)
+B. releases/latest 页面内嵌 JSON (tag_name + browser_download_url)
+C. 拿到 tag 后经 releases/expanded_assets 拉资产列表
+D. 页面解析失败时退到 releases.atom 订阅源取最新 tag
 """
 
 from __future__ import annotations
@@ -13,12 +13,14 @@ import re
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import Any
 
 import requests
 
 LAGRANGE_REPO: str = "LagrangeDev/Lagrange.Core"
 LAGRANGE_RELEASE_BASE: str = f"https://github.com/{LAGRANGE_REPO}/releases/download"
 LAGRANGE_ASSET_PREFIX: str = "Lagrange.OneBot_"
+LAGRANGE_API_URL: str = f"https://api.github.com/repos/{LAGRANGE_REPO}/releases/latest"
 LATEST_RELEASE_URL: str = f"https://github.com/{LAGRANGE_REPO}/releases/latest"
 EXPANDED_ASSETS_URL: str = f"https://github.com/{LAGRANGE_REPO}/releases/expanded_assets/{{tag}}"
 RELEASES_ATOM_URL: str = f"https://github.com/{LAGRANGE_REPO}/releases.atom"
@@ -67,16 +69,20 @@ def proxies_for(proxy_url: str) -> dict[str, str] | None:
 
 
 def discover_latest_asset_url(proxy_url: str = "") -> str:
-    """启发式发现最新 Release 的平台资产 (多策略, 不走 GitHub API)."""
+    """发现最新 Release 的平台资产: API > 页面内嵌 JSON > expanded_assets > Atom."""
     rid: str = default_asset_rid()
     headers: dict[str, str] = {"User-Agent": GITHUB_USER_AGENT}
-    proxies: dict[str, str] | None = proxies_for(proxy_url)
+    api_diag: str
+    api_diag, api_url = _api_asset_url(headers, rid, proxy_url)
+    if api_url:
+        return api_url
+    page_diag: str = ""
     page: requests.Response = requests.get(
         LATEST_RELEASE_URL,
         headers=headers,
         allow_redirects=True,
         timeout=_REQUEST_TIMEOUT,
-        proxies=proxies,
+        proxies=proxies_for(proxy_url),
     )
     page.raise_for_status()
     page_html: str = page.text
@@ -93,7 +99,44 @@ def discover_latest_asset_url(proxy_url: str = "") -> str:
         asset_url = _pick_asset_from_expanded(tag, headers, rid, proxy_url)
         if asset_url:
             return asset_url
-    raise RuntimeError("GitHub 页面解析失败")
+    page_diag = "页面/订阅源均无匹配资产"
+    raise RuntimeError(f"GitHub 接口与页面均不可用({api_diag}; {page_diag})")
+
+
+def _api_asset_url(
+    headers: dict[str, str],
+    rid: str,
+    proxy_url: str,
+) -> tuple[str, str]:
+    """Try the GitHub API (most reliable); returns (diagnostic, url)."""
+    try:
+        response: requests.Response = requests.get(
+            LAGRANGE_API_URL,
+            headers={**headers, "Accept": "application/vnd.github+json"},
+            timeout=_REQUEST_TIMEOUT,
+            proxies=proxies_for(proxy_url),
+        )
+    except requests.RequestException as error:
+        return f"API 请求失败({error})", ""
+    if response.status_code == 403:
+        return "API 限流(403)", ""
+    if response.status_code != 200:
+        return f"API HTTP {response.status_code}", ""
+    try:
+        payload: Any = response.json()
+    except ValueError:
+        return "API 响应非 JSON", ""
+    if not isinstance(payload, dict):
+        return "API 响应格式无效", ""
+    assets: Any = payload.get("assets", [])
+    if isinstance(assets, list):
+        for asset in assets:
+            if not isinstance(asset, dict):
+                continue
+            url: str = str(asset.get("browser_download_url", ""))
+            if url and _asset_matches(url, rid):
+                return "ok", url
+    return "API 无匹配资产", ""
 
 
 def _extract_tag(page_html: str) -> str:
@@ -167,11 +210,11 @@ def _extract_tag_from_atom(headers: dict[str, str], proxy_url: str = "") -> str:
 
 
 def resolve_default_download_url(proxy_url: str = "") -> str:
-    """Resolve engine URL: 页面内嵌资产 > expanded_assets > Atom, 全程可走代理."""
+    """Resolve engine URL; API 优先, 页面/订阅源兜底, 全程可走代理."""
     proxy_hint: str = "已配置代理" if proxy_url.strip() else "未配置代理(直连)"
     try:
         return discover_latest_asset_url(proxy_url)
     except (requests.RequestException, RuntimeError) as error:
         raise RuntimeError(
-            f"无法获取 QQ 引擎最新版本({proxy_hint}): {error}. 请配置代理后重试"
+            f"无法获取 QQ 引擎最新版本({proxy_hint}): {error}. 请检查网络/代理后重试"
         ) from error
