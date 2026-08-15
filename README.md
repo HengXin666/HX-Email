@@ -86,7 +86,7 @@ HX-Email 是一款面向「注册与验证」场景的现代化邮箱管理平�
 
 ### 数据安全与运维
 
-- 实例级备份 / 恢复（ZIP，含数据库、密钥与静态文件），兼容旧版的核心数据 JSON 导入导出
+- 实例级备份 / 恢复（ZIP，含数据库、密钥与静态文件），兼容旧版数据格式的核心数据 JSON 导入导出
 - 凭据字段加密存储，管理员审计日志，Token 刷新日志（含疑似失效 Token 账户提示）
 - 多用户数据隔离，注册开关可配，管理员用户管理
 
@@ -267,4 +267,4 @@ bash scripts/verify.sh
 - [API 文档](docs/api.md) —— 全部 REST 接口与鉴权说明
 - [邮件轮询与转发](docs/mail-automation.md) —— 自动化触发规则、Webhook 事件结构、Shell 流水线与外部邮箱池 API
 - [Google OAuth 品牌验证](docs/google-oauth-verification.md) —— 面向 Google 审核的部署自检与配置步骤
-- [重写设计说明](docs/重写设计说明.md) —— 领域模型与设计原则
+- [设计说明](docs/rewrite-design.md) —— 领域模型与设计原则
