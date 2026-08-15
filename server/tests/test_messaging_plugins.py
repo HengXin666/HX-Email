@@ -686,7 +686,7 @@ def test_ensure_installed_download_failure_raises_runtime_error(
     manager = QQEngineManager(settings, instance_id=11)
     manager._dir.mkdir(parents=True)
 
-    def fake_get(url: str, stream: bool = False, timeout: float = 10.0) -> FakeGetResponse:
+    def fake_get(url: str, **kwargs: object) -> FakeGetResponse:
         raise requests.ConnectionError("network down")
 
     monkeypatch.setattr("hx_email.server.messaging.engine.requests.get", fake_get)
@@ -714,3 +714,80 @@ def test_engine_qr_image_falls_back_to_qr_file(
 
     monkeypatch.setattr("hx_email.server.messaging.engine.requests.get", fake_get)
     assert manager.qr_image(22000) == b"PNGFILE"
+
+
+def test_proxies_for_helper() -> None:
+    from hx_email.server.messaging.impl.discovery import proxies_for
+
+    assert proxies_for("") is None
+    assert proxies_for("  ") is None
+    assert proxies_for("http://127.0.0.1:7890") == {
+        "http": "http://127.0.0.1:7890",
+        "https": "http://127.0.0.1:7890",
+    }
+
+
+def test_resolve_default_download_url_passes_proxy_to_requests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hx_email.server.messaging.impl.discovery import (
+        default_asset_rid,
+        resolve_default_download_url,
+    )
+
+    monkeypatch.delenv("HX_EMAIL_QQ_ENGINE_URL", raising=False)
+    monkeypatch.delenv("HX_EMAIL_QQ_ENGINE_VERSION", raising=False)
+    rid = default_asset_rid()
+    expected = (
+        "https://github.com/LagrangeDev/Lagrange.Core/releases/download/0.25.0/"
+        f"Lagrange.OneBot_0.25.0_{rid}.zip"
+    )
+    captured: list[dict[str, object]] = []
+
+    class FakePage:
+        def __init__(self, text: str) -> None:
+            self.text: str = text
+
+        def raise_for_status(self) -> None:
+            return None
+
+    def fake_get(url: str, **kwargs: object) -> FakePage:
+        captured.append({"url": url, **kwargs})
+        return FakePage(text=f'"tag_name":"0.25.0" "browser_download_url":"{expected}"')
+
+    monkeypatch.setattr("hx_email.server.messaging.impl.discovery.requests.get", fake_get)
+
+    assert resolve_default_download_url(proxy_url="http://127.0.0.1:7890") == expected
+    assert captured[0]["proxies"] == {
+        "http": "http://127.0.0.1:7890",
+        "https": "http://127.0.0.1:7890",
+    }
+
+
+def test_ensure_installed_download_reports_proxy_state(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    import requests
+    from hx_email.server.messaging.engine import QQEngineManager
+
+    settings = make_settings(tmp_path)
+    manager = QQEngineManager(settings, instance_id=12)
+    manager._dir.mkdir(parents=True)
+    captured: list[dict[str, object]] = []
+
+    def fake_get(url: str, **kwargs: object) -> FakeGetResponse:
+        captured.append({"url": url, **kwargs})
+        raise requests.ConnectionError("network down")
+
+    monkeypatch.setattr("hx_email.server.messaging.engine.requests.get", fake_get)
+
+    with pytest.raises(RuntimeError, match="已配置代理"):
+        manager.ensure_installed(
+            download_url="http://127.0.0.1:1/engine.zip",
+            proxy_url="http://127.0.0.1:7890",
+        )
+    assert captured[0]["proxies"] == {
+        "http": "http://127.0.0.1:7890",
+        "https": "http://127.0.0.1:7890",
+    }

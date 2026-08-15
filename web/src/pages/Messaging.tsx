@@ -47,6 +47,7 @@ export const Messaging: React.FC = () => {
   const [probing, setProbing] = useState(false);
   const [editWebuiUrl, setEditWebuiUrl] = useState("");
   const [editApiBaseUrl, setEditApiBaseUrl] = useState("");
+  const [editProxyUrl, setEditProxyUrl] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [qrUrl, setQrUrl] = useState<string | null>(null);
   const [autoStarted, setAutoStarted] = useState(false);
@@ -83,6 +84,7 @@ export const Messaging: React.FC = () => {
         setProbe(result);
         setEditWebuiUrl(result.webui_url);
         setEditApiBaseUrl(result.api_base_url);
+        setEditProxyUrl(instance.config.proxy_url ?? "");
       } catch (error: unknown) {
         toast(error instanceof Error ? error.message : "检测 NapCat 失败", "error");
       } finally {
@@ -167,6 +169,7 @@ export const Messaging: React.FC = () => {
       const updated = await api.updateConfig(loginInstance.id, {
         webui_url: editWebuiUrl.trim(),
         api_base_url: editApiBaseUrl.trim(),
+        proxy_url: editProxyUrl.trim(),
       });
       setLoginInstance(updated);
       setShowAdvanced(false);
@@ -177,7 +180,7 @@ export const Messaging: React.FC = () => {
     } finally {
       setBusy(null);
     }
-  }, [editApiBaseUrl, editWebuiUrl, loadAll, loginInstance, toast]);
+  }, [editApiBaseUrl, editProxyUrl, editWebuiUrl, loadAll, loginInstance, toast]);
 
   const handleAddQQ = useCallback(async () => {
     setBusy("add");
@@ -702,6 +705,12 @@ export const Messaging: React.FC = () => {
                       placeholder="http://127.0.0.1:8000/api/v1/messaging/events/qq"
                       value={editWebuiUrl}
                       onChange={(event) => setEditWebuiUrl(event.target.value)}
+                    />
+                    <Input
+                      label="代理地址（可选，下载引擎走此代理）"
+                      placeholder="http://127.0.0.1:7890"
+                      value={editProxyUrl}
+                      onChange={(event) => setEditProxyUrl(event.target.value)}
                     />
                     <Button
                       size="sm"

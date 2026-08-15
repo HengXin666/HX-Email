@@ -24,6 +24,7 @@ EXPANDED_ASSETS_URL: str = f"https://github.com/{LAGRANGE_REPO}/releases/expande
 RELEASES_ATOM_URL: str = f"https://github.com/{LAGRANGE_REPO}/releases.atom"
 LAGRANGE_PINNED_VERSION: str = "0.18.0"
 ENGINE_DOWNLOAD_URL_ENV: str = "HX_EMAIL_QQ_ENGINE_URL"
+ENGINE_PROXY_ENV: str = "HX_EMAIL_QQ_ENGINE_PROXY"
 LAGRANGE_VERSION_ENV: str = "HX_EMAIL_QQ_ENGINE_VERSION"
 GITHUB_USER_AGENT: str = "Mozilla/5.0 (compatible; HX-Email engine installer)"
 ENGINE_URL_CACHE_NAME: str = "engine-url.txt"
@@ -67,15 +68,33 @@ def write_cached_url(path: Path, url: str) -> None:
         pass
 
 
-def discover_latest_asset_url() -> str:
+def proxies_for(proxy_url: str) -> dict[str, str] | None:
+    """Build a requests proxies dict from a proxy URL (or None when empty)."""
+    value: str = proxy_url.strip()
+    if not value:
+        return None
+    return {"http": value, "https": value}
+
+
+def _effective_proxy(proxy_url: str) -> str:
+    """Instance-level proxy wins; otherwise fall back to the environment."""
+    value: str = proxy_url.strip()
+    if value:
+        return value
+    return os.environ.get(ENGINE_PROXY_ENV, "").strip()
+
+
+def discover_latest_asset_url(proxy_url: str = "") -> str:
     """启发式发现最新 Release 的平台资产 (多策略, 不走 GitHub API)."""
     rid: str = default_asset_rid()
     headers: dict[str, str] = {"User-Agent": GITHUB_USER_AGENT}
+    proxies: dict[str, str] | None = proxies_for(_effective_proxy(proxy_url))
     page: requests.Response = requests.get(
         LATEST_RELEASE_URL,
         headers=headers,
         allow_redirects=True,
         timeout=_REQUEST_TIMEOUT,
+        proxies=proxies,
     )
     page.raise_for_status()
     page_html: str = page.text
@@ -84,12 +103,12 @@ def discover_latest_asset_url() -> str:
     if asset_url:
         return asset_url
     if tag:
-        asset_url = _pick_asset_from_expanded(tag, headers, rid)
+        asset_url = _pick_asset_from_expanded(tag, headers, rid, proxy_url)
         if asset_url:
             return asset_url
-    tag = tag or _extract_tag_from_atom(headers)
+    tag = tag or _extract_tag_from_atom(headers, proxy_url)
     if tag:
-        asset_url = _pick_asset_from_expanded(tag, headers, rid)
+        asset_url = _pick_asset_from_expanded(tag, headers, rid, proxy_url)
         if asset_url:
             return asset_url
     raise RuntimeError(
@@ -132,22 +151,25 @@ def _pick_asset_from_expanded(
     tag: str,
     headers: dict[str, str],
     rid: str,
+    proxy_url: str = "",
 ) -> str:
     response: requests.Response = requests.get(
         EXPANDED_ASSETS_URL.format(tag=tag),
         headers=headers,
         timeout=_REQUEST_TIMEOUT,
+        proxies=proxies_for(_effective_proxy(proxy_url)),
     )
     response.raise_for_status()
     return _pick_asset_url_from_text(response.text, rid)
 
 
-def _extract_tag_from_atom(headers: dict[str, str]) -> str:
+def _extract_tag_from_atom(headers: dict[str, str], proxy_url: str = "") -> str:
     """Extract the latest tag from the GitHub releases Atom feed."""
     response: requests.Response = requests.get(
         RELEASES_ATOM_URL,
         headers=headers,
         timeout=_REQUEST_TIMEOUT,
+        proxies=proxies_for(_effective_proxy(proxy_url)),
     )
     response.raise_for_status()
     try:
@@ -165,7 +187,7 @@ def _extract_tag_from_atom(headers: dict[str, str]) -> str:
     return ""
 
 
-def resolve_default_download_url() -> str:
+def resolve_default_download_url(proxy_url: str = "") -> str:
     """Resolve engine URL: 环境变量 URL > 环境变量版本 > 最新启发式发现."""
     configured: str = os.environ.get(ENGINE_DOWNLOAD_URL_ENV, "").strip()
     if configured:
@@ -174,8 +196,11 @@ def resolve_default_download_url() -> str:
     if version:
         return pinned_url_for(version)
     try:
-        return discover_latest_asset_url()
+        return discover_latest_asset_url(proxy_url)
     except (requests.RequestException, RuntimeError) as error:
+        proxy_hint: str = "已配置代理" if _effective_proxy(proxy_url) else "未配置代理(直连)"
         raise RuntimeError(
-            f"自动发现 QQ 引擎最新版本失败: {error}. 可设置 {ENGINE_DOWNLOAD_URL_ENV} 指定下载地址"
+            f"自动发现 QQ 引擎最新版本失败 ({proxy_hint}): {error}. "
+            f"可设置 {ENGINE_DOWNLOAD_URL_ENV} 指定下载地址, "
+            f"或设置 {ENGINE_PROXY_ENV} 指定代理"
         ) from error

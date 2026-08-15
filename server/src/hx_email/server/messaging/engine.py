@@ -24,6 +24,7 @@ from hx_email.config import Settings
 from hx_email.server.messaging.impl.discovery import (
     ENGINE_DOWNLOAD_URL_ENV,
     ENGINE_URL_CACHE_NAME,
+    proxies_for,
     read_cached_url,
     resolve_default_download_url,
     write_cached_url,
@@ -95,25 +96,42 @@ class QQEngineManager:
         self._settings: Settings = settings
         self._dir: Path = settings.data_dir.resolve() / ENGINE_DIR_NAME / str(instance_id)
         self._process: subprocess.Popen[bytes] | None = None
+        self._proxy_url: str = ""
 
-    def ensure_installed(self, download_url: str = "", sha256: str = "") -> Path:
+    def ensure_installed(
+        self,
+        download_url: str = "",
+        sha256: str = "",
+        proxy_url: str = "",
+    ) -> Path:
         """Download and extract the engine once; returns the executable path."""
         self._dir.mkdir(parents=True, exist_ok=True)
         executable: Path = self._dir / DEFAULT_EXECUTABLE_NAME
         if executable.exists():
             return executable
+        effective_proxy: str = proxy_url or self._proxy_url
         cache_file: Path = self._dir.parent / ENGINE_URL_CACHE_NAME
-        url: str = download_url or read_cached_url(cache_file) or resolve_default_download_url()
+        url: str = (
+            download_url
+            or read_cached_url(cache_file)
+            or resolve_default_download_url(effective_proxy)
+        )
         archive: Path = self._dir / "engine.zip"
         try:
-            with requests.get(url, stream=True, timeout=120) as response:
+            with requests.get(
+                url,
+                stream=True,
+                timeout=120,
+                proxies=proxies_for(effective_proxy),
+            ) as response:
                 response.raise_for_status()
                 with archive.open("wb") as handle:
                     shutil.copyfileobj(response.raw, handle)
         except (requests.RequestException, OSError) as error:
+            proxy_hint: str = "已配置代理" if effective_proxy else "未配置代理(直连)"
             raise RuntimeError(
-                f"QQ 引擎下载失败: {error}. 请检查网络, 或设置 "
-                f"{ENGINE_DOWNLOAD_URL_ENV} 指定下载地址"
+                f"QQ 引擎下载失败 ({proxy_hint}): {error}. 请检查网络与代理, "
+                f"或设置 {ENGINE_DOWNLOAD_URL_ENV} 指定下载地址"
             ) from error
         expected: str = sha256 or os.environ.get(ENGINE_SHA256_ENV, "")
         if expected:
@@ -138,9 +156,10 @@ class QQEngineManager:
         access_token: str,
         download_url: str = "",
         sha256: str = "",
+        proxy_url: str = "",
     ) -> int:
         """Start the engine and wait until its OneBot HTTP API is ready."""
-        executable: Path = self.ensure_installed(download_url, sha256)
+        executable: Path = self.ensure_installed(download_url, sha256, proxy_url)
         config: dict[str, Any] = generate_lagrange_config(
             api_port, webui_port, event_url, access_token
         )

@@ -208,7 +208,13 @@ def register_messaging_routes(router: APIRouter, settings: Settings) -> None:
         token: str = config.get("event_token", "")
         manager: QQEngineManager = QQEngineManager(settings, instance.id)
         try:
-            pid: int = manager.start(api_port, webui_port, event_url, token)
+            pid: int = manager.start(
+                api_port,
+                webui_port,
+                event_url,
+                token,
+                proxy_url=config.get("proxy_url", ""),
+            )
         except RuntimeError as error:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
