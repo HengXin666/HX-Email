@@ -97,31 +97,34 @@ class MessagingAdapter(ABC):
 用户视角只有四步：**添加 → 启动 → 扫码 → 使用**，不暴露任何协议细节：
 
 1. 点击「添加 QQ」，后端自动创建实例（默认启用内置引擎、自动生成事件 Token）；
-2. 打开登录窗即自动触发「启动内置引擎」：后端自动下载并拉起受管 QQ 协议引擎
-   （见 2.6），页面直接显示二维码（由后端代理成图片，不依赖用户浏览器访问本机端口）；
+2. 打开登录窗即自动触发「启动内置引擎」：后端自动拉起内置 QQ 引擎（见 2.6），
+   页面直接显示二维码（由后端代理成图片，不依赖用户浏览器访问本机端口）；
 3. 手机 QQ 扫码即完成登录，随后即可查看会话、收发消息、管理群组。
 
 - 前端不再要求填写 api_base_url / webui_url / event_token 等字段；
 - `event_token` 等敏感配置在 API 返回中脱敏（`***`），仅服务端持有；
-- 若需要对接外部已部署的 NapCat/Lagrange，可通过「高级设置」改为外部地址。
+- 内置引擎为 NapCat（真实 QQ 客户端），需要 Docker；无需安装任何外部协议端。
 
 ### 2.6 内置受管引擎（Embedded Engine）
 
-用户无需安装 NapCat / Lagrange.OneBot。后端在首次使用时：
+用户无需手动安装 NapCat。后端以官方 **NapCat** Docker 镜像按实例拉起 QQ 协议
+容器（真实 NTQQ 客户端：签名在客户端内部完成，不依赖外部签名服务器，
+协议版本自动跟随 QQ）：
 
-1. 默认**启发式发现最新 Release**：优先走 GitHub 官方 API（经代理，返回 JSON 最可靠），
-   失败时再解析 releases 页面/Atom 订阅源兜底，按当前平台
-   （linux/win/osx × x64/arm64）选包下载，「最新即最兼容」；
-   首次成功后会缓存下载地址，之后直接复用；
-   下载/发现请求自动复用应用内已配置的代理（邮箱分组默认代理或 Telegram 代理），
-   也可在实例「高级设置」的代理地址单独覆盖，全程无需环境变量；
-2. 自动生成 Lagrange.OneBot 配置（OneBot HTTP 起在随机本机端口，
-   HttpPost 事件转发回本服务 `/api/v1/messaging/events/qq`）；
-3. 以子进程方式拉起并守护，登录态持久化在引擎目录，服务重启后复用；
-4. 二维码通过 `GET /api/v1/messaging/instances/{id}/login/qr` 代理为图片，
-   前端轮询刷新，扫完即完成登录。
+1. `engine/start` 启动一个 NapCat 容器（bridge 网络，OneBot HTTP 发布到本机
+   随机端口）：
+   - 二维码由容器写入实例目录，`GET .../login/qr` 直接代理为图片；
+   - QQ 登录态数据持久化在实例目录，重启后复用；
+2. 扫码登录后：
+   - 私聊/群聊消息经 OneBot HTTP 事件回传自动入库；
+   - 会话列表/历史消息/发送/群管理通过同一实例的 OneBot HTTP API 完成；
+3. 二维码过期时引擎会自动刷新，也可调用 `POST .../engine/refresh-qr` 手动刷新。
 
-相关接口：`POST .../engine/start`、`POST .../engine/stop`、`GET .../login/qr`。
+**部署前置**：运行环境需可用 Docker（引擎通过 `docker` CLI 管理容器）；
+真实 QQ 客户端内存占用较高（数百 MB），请为实例预留足够资源。
+
+相关接口：`POST .../engine/start`、`POST .../engine/stop`、`POST .../engine/refresh-qr`、
+`GET .../login/qr`。
 
 ## 3. 数据模型
 

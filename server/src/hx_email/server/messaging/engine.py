@@ -1,268 +1,232 @@
-"""Embedded QQ protocol engine: downloads and manages a Lagrange.OneBot subprocess.
+"""Embedded QQ engine: manages a NapCat Docker container (OneBot 11, real NTQQ).
 
-用户无需安装 NapCat/Lagrange;后端首次使用时自动下载引擎,生成配置,
-拉起子进程,并把二维码通过后端接口代理给前端。
+NapCat 直接运行腾讯官方 QQ 客户端, 签名在客户端内部完成, 不依赖外部签名
+服务器, 协议版本自动跟随 QQ。本模块负责按实例拉起/停止容器, 生成 OneBot
+HTTP 配置, 并代理登录二维码。
 """
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
-import shutil
-import signal
-import socket
-import sqlite3
 import subprocess
 import time
-import zipfile
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
-import requests
 from hx_email.config import Settings
-from hx_email.server.messaging.impl.discovery import (
-    ENGINE_URL_CACHE_NAME,
-    proxies_for,
-    read_cached_url,
-    resolve_default_download_url,
-    write_cached_url,
-)
-from hx_email.server.settings_service import get_setting
 
 ENGINE_DIR_NAME: str = "qq-engines"
-DEFAULT_EXECUTABLE_NAME: str = "Lagrange.OneBot"
-DEFAULT_ONEBOT_PORT: int = 3000
-DEFAULT_WEBUI_PORT: int = 22000
-START_TIMEOUT_SECONDS: float = 30.0
-PROBE_TIMEOUT: float = 2.0
-QR_PATH_CANDIDATES: tuple[str, ...] = (
-    "/api/QRCode",
-    "/api/qrcode",
-    "/qrcode",
-    "/qrcode.png",
-    "/api/login/qrcode",
+NAPCAT_IMAGE: str = "mlikiowa/napcat-docker:latest"
+CONTAINER_PREFIX: str = "hx-messaging-"
+QR_FILE_NAME: str = "qrcode.png"
+_START_TIMEOUT_SECONDS: float = 90.0
+_SUBDIRS: tuple[str, ...] = ("config", "data", "cache", "plugins")
+# NapCat 的 stock entrypoint 启动 Xvfb 后只 sleep 2 秒就拉起 QQ, 存在竞态;
+# 我们先用 -ac 起 Xvfb 并等 socket 就绪, 再 exec 官方 entrypoint。
+_XVFB_WRAPPER: str = (
+    "rm -f /tmp/.X1-lock; mkdir -p /tmp/.X11-unix; "
+    "chown napcat:napcat /tmp/.X11-unix 2>/dev/null || true; "
+    "(gosu napcat Xvfb :1 -screen 0 1080x760x16 -ac +extension GLX +render >/tmp/xvfb.log 2>&1 &); "
+    "i=0; until [ -S /tmp/.X11-unix/X1 ] || [ $i -ge 60 ]; do sleep 1; i=$((i+1)); done; "
+    "exec /app/entrypoint.sh"
 )
-QR_FILE_NAME: str = "qr-0.png"
-_PID_FILE_NAME: str = "engine.pid"
+
+_ENGINES: dict[int, QQEngineManager] = {}
 
 
-def pick_free_port() -> int:
-    """Bind an ephemeral port and return its number (for engine endpoints)."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind(("127.0.0.1", 0))
-        return int(sock.getsockname()[1])
+def get_engine(instance_id: int) -> QQEngineManager | None:
+    """Return the running embedded engine for an instance, if any."""
+    return _ENGINES.get(instance_id)
 
 
-def generate_lagrange_config(
-    api_port: int,
-    webui_port: int,
-    event_url: str,
-    access_token: str,
-) -> dict[str, Any]:
-    """Build a Lagrange.OneBot appsettings.json dict for headless operation."""
-    return {
-        "Logging": {"LogLevel": {"Default": "Information"}},
-        "SignServerUrl": "https://sign.lagrangecore.org/api/sign",
-        "Account": {"Uin": 0, "Password": ""},
-        "Message": {"IgnoreSelf": True},
-        "WebUi": {"Enable": True, "Port": webui_port, "UseHttps": False},
-        "OneBot11": {
-            "AccessToken": access_token,
-            "Implementations": [
-                {
-                    "Type": "Http",
-                    "Host": "127.0.0.1",
-                    "Port": api_port,
-                    "AccessToken": access_token,
-                },
-                {
-                    "Type": "HttpPost",
-                    "Host": "127.0.0.1",
-                    "Port": pick_free_port(),
-                    "PostUrls": [event_url],
-                    "AccessToken": access_token,
-                },
-            ],
-        },
-    }
-
-
-def settings_proxy(settings: Settings) -> str:
-    """Reuse the proxy the user already configured in the app.
-
-    优先取邮箱分组默认代理, 其次取 Telegram 代理; 两者都没有则直连。
-    设置库不可读时按未配置处理, 不影响引擎安装。
-    """
-    for key in ("group_default_proxy_url", "telegram_proxy_url"):
-        try:
-            value: str = get_setting(settings, key, "").strip()
-        except sqlite3.Error:
-            continue
-        if value:
-            return value
-    return ""
+def container_name(instance_id: int) -> str:
+    return f"{CONTAINER_PREFIX}{instance_id}"
 
 
 class QQEngineManager:
-    """Per-instance lifecycle for the embedded Lagrange.OneBot engine."""
+    """Per-instance lifecycle for the embedded NapCat (OneBot 11) engine."""
 
     def __init__(self, settings: Settings, instance_id: int) -> None:
         self._settings: Settings = settings
+        self._instance_id: int = instance_id
         self._dir: Path = settings.data_dir.resolve() / ENGINE_DIR_NAME / str(instance_id)
-        self._process: subprocess.Popen[bytes] | None = None
-        self._proxy_url: str = ""
+        self._error: str = ""
 
-    def ensure_installed(
-        self,
-        download_url: str = "",
-        sha256: str = "",
-        proxy_url: str = "",
-    ) -> Path:
-        """Download and extract the engine once; returns the executable path."""
-        self._dir.mkdir(parents=True, exist_ok=True)
-        executable: Path = self._dir / DEFAULT_EXECUTABLE_NAME
-        if executable.exists():
-            return executable
-        effective_proxy: str = proxy_url or self._proxy_url or settings_proxy(self._settings)
-        cache_file: Path = self._dir.parent / ENGINE_URL_CACHE_NAME
-        url: str = (
-            download_url
-            or read_cached_url(cache_file)
-            or resolve_default_download_url(effective_proxy)
+    def _ensure_dirs(self) -> None:
+        for name in _SUBDIRS:
+            (self._dir / name).mkdir(parents=True, exist_ok=True)
+
+    def _docker(self, *args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(["docker", *args], capture_output=True, text=True, timeout=120)
+
+    def _container_running(self, name: str) -> bool:
+        result: subprocess.CompletedProcess[str] = self._docker(
+            "inspect", "-f", "{{.State.Running}}", name
         )
-        archive: Path = self._dir / "engine.zip"
-        try:
-            with requests.get(
-                url,
-                stream=True,
-                timeout=120,
-                proxies=proxies_for(effective_proxy),
-            ) as response:
-                response.raise_for_status()
-                with archive.open("wb") as handle:
-                    shutil.copyfileobj(response.raw, handle)
-        except (requests.RequestException, OSError) as error:
-            proxy_hint: str = "已配置代理" if effective_proxy else "未配置代理(直连)"
-            raise RuntimeError(
-                f"QQ 引擎下载失败 ({proxy_hint}): {error}. 请检查网络与代理配置后重试"
-            ) from error
-        expected: str = sha256
-        if expected:
-            digest: str = hashlib.sha256(archive.read_bytes()).hexdigest()
-            if digest.lower() != expected.lower():
-                raise RuntimeError("QQ 引擎下载校验失败, 请检查下载地址")
-        try:
-            with zipfile.ZipFile(archive) as zf:
-                zf.extractall(self._dir)
-        except (zipfile.BadZipFile, OSError) as error:
-            raise RuntimeError(f"QQ 引擎压缩包解析失败: {error}") from error
-        archive.unlink(missing_ok=True)
-        executable.chmod(0o755)
-        write_cached_url(cache_file, url)
-        return executable
+        return result.returncode == 0 and result.stdout.strip() == "true"
 
     def start(
         self,
-        api_port: int,
-        webui_port: int,
-        event_url: str,
-        access_token: str,
+        api_port: int = 3000,
+        webui_port: int = 6099,
+        event_url: str = "",
+        access_token: str = "",
         download_url: str = "",
         sha256: str = "",
         proxy_url: str = "",
+        sign_url: str = "",
     ) -> int:
-        """Start the engine and wait until its OneBot HTTP API is ready."""
-        executable: Path = self.ensure_installed(download_url, sha256, proxy_url)
-        config: dict[str, Any] = generate_lagrange_config(
-            api_port, webui_port, event_url, access_token
+        """Boot the NapCat container and wait until the login QR is ready."""
+        self.stop()
+        self._ensure_dirs()
+        self._error = ""
+        name: str = container_name(self._instance_id)
+
+        # 拉取镜像(幂等)
+        if not self._image_exists():
+            pull: subprocess.CompletedProcess[str] = self._docker("pull", NAPCAT_IMAGE)
+            if pull.returncode != 0:
+                raise RuntimeError(
+                    f"拉取 NapCat 镜像失败: {pull.stderr.strip() or pull.stdout.strip()}"
+                )
+
+        # 预写 OneBot HTTP 配置: HTTP 服务(容器内 3000, 发布到宿主随机端口)
+        # + 事件回传(容器经 Docker 网桥网关访问宿主后端)
+        gateway: str = self._bridge_gateway()
+        if not event_url or event_url.startswith(("http://127.0.0.1", "http://localhost")):
+            event_url = f"http://{gateway}:8000/api/v1/messaging/events/qq"
+        onebot: dict[str, Any] = {
+            "network": {
+                "httpServers": [
+                    {
+                        "name": "hx-email",
+                        "enable": True,
+                        "host": "0.0.0.0",
+                        "port": 3000,
+                        "token": access_token,
+                        "messagePostFormat": "array",
+                        "debug": False,
+                    }
+                ],
+                "httpClients": [
+                    {
+                        "name": "hx-email-events",
+                        "enable": True,
+                        "url": event_url,
+                        "token": access_token,
+                        "messagePostFormat": "array",
+                        "debug": False,
+                    }
+                ],
+                "httpSseServers": [],
+                "websocketServers": [],
+                "websocketClients": [],
+                "plugins": [],
+            }
+        }
+        (self._dir / "config" / "onebot11.json").write_text(
+            json.dumps(onebot, ensure_ascii=False, indent=2), encoding="utf-8"
         )
-        (self._dir / "appsettings.json").write_text(
-            json.dumps(config, ensure_ascii=False, indent=2)
+        # WebUI 端口按实例随机(容器内, 不发布到宿主; 二维码走 cache 文件, 不需要 WebUI)
+        (self._dir / "config" / "webui.json").write_text(
+            json.dumps(
+                {"host": "127.0.0.1", "port": webui_port, "token": access_token},
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
         )
-        existing_pid: int | None = self._read_pid()
-        if existing_pid is not None and self._alive(existing_pid):
-            return existing_pid
-        try:
-            process: subprocess.Popen[bytes] = subprocess.Popen(
-                [str(executable)],
-                cwd=str(self._dir),
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+
+        env: list[str] = [f"NAPCAT_UID={os.getuid()}", f"NAPCAT_GID={os.getgid()}"]
+        env_args: list[str] = []
+        for item in env:
+            env_args += ["-e", item]
+        volumes: list[str] = []
+        for sub in _SUBDIRS:
+            target: str = "/app/.config/QQ" if sub == "data" else f"/app/napcat/{sub}"
+            volumes += ["-v", f"{self._dir / sub}:{target}"]
+
+        self._docker("rm", "-f", name)
+        result: subprocess.CompletedProcess[str] = self._docker(
+            "run",
+            "-d",
+            "--name",
+            name,
+            "-p",
+            f"{api_port}:3000",
+            *env_args,
+            *volumes,
+            "--entrypoint",
+            "sh",
+            NAPCAT_IMAGE,
+            "-c",
+            _XVFB_WRAPPER,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"NapCat 容器启动失败: {result.stderr.strip() or result.stdout.strip()}"
             )
-        except OSError as error:
-            raise RuntimeError(f"QQ 引擎进程启动失败: {error}") from error
-        self._process = process
-        self._write_pid(process.pid)
-        deadline: float = time.monotonic() + START_TIMEOUT_SECONDS
+
+        # 等二维码出现
+        deadline: float = time.monotonic() + _START_TIMEOUT_SECONDS
+        qr: Path = self._dir / "cache" / QR_FILE_NAME
         while time.monotonic() < deadline:
-            if self._api_ready(api_port):
-                return process.pid
-            if process.poll() is not None:
-                raise RuntimeError("QQ 引擎进程异常退出, 请检查引擎日志")
-            time.sleep(0.5)
-        raise RuntimeError("QQ 引擎启动超时, 请检查网络与下载地址")
+            if qr.is_file():
+                break
+            if not self._container_running(name):
+                raise RuntimeError(f"NapCat 容器退出: {self._error or '请查看容器日志'}")
+            time.sleep(1)
+        else:
+            raise RuntimeError("NapCat 启动超时(二维码未生成), 请检查容器日志")
+        _ENGINES[self._instance_id] = self
+        return self._instance_id + 10000
+
+    def _bridge_gateway(self) -> str:
+        """Return the Docker bridge gateway IP so the container can reach the backend."""
+        result: subprocess.CompletedProcess[str] = self._docker(
+            "network", "inspect", "bridge", "--format", "{{(index .IPAM.Config 0).Gateway}}"
+        )
+        gateway: str = result.stdout.strip()
+        return gateway if gateway else "172.17.0.1"
+
+    def _image_exists(self) -> bool:
+        return self._docker("image", "inspect", NAPCAT_IMAGE).returncode == 0
+
+    def qr_image(self, webui_port: int = 0) -> bytes | None:
+        qr: Path = self._dir / "cache" / QR_FILE_NAME
+        try:
+            return qr.read_bytes() if qr.is_file() else None
+        except OSError:
+            return None
+
+    def refresh_qr(self) -> None:
+        """Restart the container to force a fresh login QR (manual refresh)."""
+        name: str = container_name(self._instance_id)
+        if not self._container_running(name):
+            raise RuntimeError("QQ 引擎未运行, 请先启动内置引擎")
+        result: subprocess.CompletedProcess[str] = self._docker("restart", name)
+        if result.returncode != 0:
+            raise RuntimeError(f"刷新二维码失败: {result.stderr.strip() or result.stdout.strip()}")
+        deadline: float = time.monotonic() + _START_TIMEOUT_SECONDS
+        qr: Path = self._dir / "cache" / QR_FILE_NAME
+        while time.monotonic() < deadline:
+            if qr.is_file():
+                return
+            time.sleep(1)
+        raise RuntimeError("刷新二维码超时")
 
     def stop(self) -> None:
-        pid: int | None = self._read_pid()
-        if pid is not None and self._alive(pid):
-            with suppress(OSError):
-                os.kill(pid, signal.SIGTERM)
-            time.sleep(0.5)
-        self._pid_file().unlink(missing_ok=True)
-        self._process = None
+        _ENGINES.pop(self._instance_id, None)
+        with suppress(Exception):
+            self._docker("rm", "-f", container_name(self._instance_id))
 
     def is_running(self) -> bool:
-        pid: int | None = self._read_pid()
-        return pid is not None and self._alive(pid)
+        return self._container_running(container_name(self._instance_id))
 
-    def qr_image(self, webui_port: int) -> bytes | None:
-        """Fetch the QR image from the engine WebConsole via candidate endpoints."""
-        if not self.is_running():
-            return None
-        base: str = f"http://127.0.0.1:{webui_port}"
-        for path in QR_PATH_CANDIDATES:
-            try:
-                response: requests.Response = requests.get(base + path, timeout=PROBE_TIMEOUT)
-            except requests.RequestException:
-                continue
-            if response.status_code == 200 and response.headers.get("content-type", "").startswith(
-                "image/"
-            ):
-                return response.content
-        qr_file: Path = self._dir / QR_FILE_NAME
-        if qr_file.is_file():
-            return qr_file.read_bytes()
-        return None
-
-    def _api_ready(self, api_port: int) -> bool:
-        try:
-            requests.post(
-                f"http://127.0.0.1:{api_port}/get_status",
-                json={},
-                timeout=PROBE_TIMEOUT,
-            )
-            return True
-        except requests.RequestException:
-            return False
-
-    def _pid_file(self) -> Path:
-        return self._dir / _PID_FILE_NAME
-
-    def _read_pid(self) -> int | None:
-        try:
-            return int(self._pid_file().read_text().strip())
-        except (OSError, ValueError):
-            return None
-
-    def _write_pid(self, pid: int) -> None:
-        self._pid_file().write_text(str(pid))
-
-    @staticmethod
-    def _alive(pid: int) -> bool:
-        try:
-            os.kill(pid, 0)
-            return True
-        except OSError:
-            return False
+    def logs(self, lines: int = 20) -> str:
+        """Return the tail of the NapCat container log for diagnostics."""
+        result: subprocess.CompletedProcess[str] = self._docker(
+            "logs", "--tail", str(lines), container_name(self._instance_id)
+        )
+        return result.stdout.strip() or result.stderr.strip() or "(no logs)"

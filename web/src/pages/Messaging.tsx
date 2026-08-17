@@ -48,6 +48,7 @@ export const Messaging: React.FC = () => {
   const [editWebuiUrl, setEditWebuiUrl] = useState("");
   const [editApiBaseUrl, setEditApiBaseUrl] = useState("");
   const [editProxyUrl, setEditProxyUrl] = useState("");
+  const [editSignUrl, setEditSignUrl] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [qrUrl, setQrUrl] = useState<string | null>(null);
   const [autoStarted, setAutoStarted] = useState(false);
@@ -112,6 +113,17 @@ export const Messaging: React.FC = () => {
     }
   }, []);
 
+  const handleRefreshQr = useCallback(async () => {
+    if (loginInstance === null) return;
+    try {
+      await api.engineRefreshQr(loginInstance.id);
+      await refreshQr(loginInstance);
+      toast("二维码已刷新", "success");
+    } catch (error: unknown) {
+      toast(error instanceof Error ? error.message : "刷新二维码失败", "error");
+    }
+  }, [loginInstance, refreshQr, toast]);
+
   useEffect(() => {
     if (loginInstance?.config.embedded_engine === "true" && probe?.api_reachable) {
       void refreshQr(loginInstance);
@@ -170,6 +182,7 @@ export const Messaging: React.FC = () => {
         webui_url: editWebuiUrl.trim(),
         api_base_url: editApiBaseUrl.trim(),
         proxy_url: editProxyUrl.trim(),
+        sign_url: editSignUrl.trim(),
       });
       setLoginInstance(updated);
       setShowAdvanced(false);
@@ -180,7 +193,7 @@ export const Messaging: React.FC = () => {
     } finally {
       setBusy(null);
     }
-  }, [editApiBaseUrl, editProxyUrl, editWebuiUrl, loadAll, loginInstance, toast]);
+  }, [editApiBaseUrl, editProxyUrl, editSignUrl, editWebuiUrl, loadAll, loginInstance, toast]);
 
   const handleAddQQ = useCallback(async () => {
     setBusy("add");
@@ -664,11 +677,25 @@ export const Messaging: React.FC = () => {
                   用手机 QQ 扫描下方二维码，登录后本实例即可开始收发消息
                 </p>
                 {qrUrl ? (
-                  <img
-                    src={qrUrl}
-                    alt="QQ 登录二维码"
-                    className="h-72 w-72 rounded-lg border border-gh-border bg-white object-contain p-2"
-                  />
+                  <div className="flex flex-col items-center gap-2">
+                    <img
+                      src={qrUrl}
+                      alt="QQ 登录二维码"
+                      className="h-72 w-72 rounded-lg border border-gh-border bg-white object-contain p-2"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => void handleRefreshQr()}
+                    >
+                      <IconRefresh className="h-3.5 w-3.5" />
+                      刷新二维码
+                    </Button>
+                    <p className="text-center text-xs text-gh-text-secondary">
+                      二维码失效或无法扫码时，点击上方按钮刷新
+                    </p>
+                  </div>
                 ) : (
                   <LoadingState message="正在获取二维码..." />
                 )}
@@ -711,6 +738,12 @@ export const Messaging: React.FC = () => {
                       placeholder="http://127.0.0.1:7890"
                       value={editProxyUrl}
                       onChange={(event) => setEditProxyUrl(event.target.value)}
+                    />
+                    <Input
+                      label="签名服务器 sign_url（留空自动使用官方）"
+                      placeholder="https://sign.lagrangecore.org/api/sign/46494"
+                      value={editSignUrl}
+                      onChange={(event) => setEditSignUrl(event.target.value)}
                     />
                     <Button
                       size="sm"
@@ -765,6 +798,12 @@ export const Messaging: React.FC = () => {
                     placeholder="http://127.0.0.1:3000"
                     value={editApiBaseUrl}
                     onChange={(event) => setEditApiBaseUrl(event.target.value)}
+                  />
+                  <Input
+                    label="签名服务器 sign_url（留空自动使用官方）"
+                    placeholder="https://sign.lagrangecore.org/api/sign/46494"
+                    value={editSignUrl}
+                    onChange={(event) => setEditSignUrl(event.target.value)}
                   />
                   <Button
                     size="sm"

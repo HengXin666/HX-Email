@@ -21,10 +21,8 @@ from hx_email.api.impl.messaging.serializers import (
     status_dict,
 )
 from hx_email.config import Settings
-from hx_email.server.messaging.engine import (
-    QQEngineManager,
-    pick_free_port,
-)
+from hx_email.server.messaging.engine import QQEngineManager
+from hx_email.server.messaging.impl.config import pick_free_port
 from hx_email.server.messaging.impl.probe import probe_qq_login
 from hx_email.server.messaging.registry import catalog, drop_adapter, get_kind
 from hx_email.server.messaging.store import (
@@ -214,6 +212,7 @@ def register_messaging_routes(router: APIRouter, settings: Settings) -> None:
                 event_url,
                 token,
                 proxy_url=config.get("proxy_url", ""),
+                sign_url=config.get("sign_url", ""),
             )
         except RuntimeError as error:
             raise HTTPException(
@@ -251,6 +250,27 @@ def register_messaging_routes(router: APIRouter, settings: Settings) -> None:
         QQEngineManager(settings, instance.id).stop()
         update_instance_status(settings, instance.id, "stopped")
         drop_adapter(instance.id)
+        return {"success": True}
+
+    @router.post("/messaging/instances/{instance_id}/engine/refresh-qr")
+    def engine_refresh_qr(
+        instance_id: int,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        user = require_user(settings, authorization)
+        instance, _adapter = require_instance(settings, user.id, instance_id)
+        if instance.kind != "qq":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Only QQ instances support the embedded engine",
+            )
+        try:
+            QQEngineManager(settings, instance.id).refresh_qr()
+        except RuntimeError as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(error),
+            ) from error
         return {"success": True}
 
     @router.get("/messaging/instances/{instance_id}/login/qr")

@@ -411,6 +411,7 @@ source = { editable = "." }
 dependencies = [
     { name = "cryptography" },
     { name = "fastapi" },
+    { name = "lagrange-python" },
     { name = "pydantic-settings" },
     { name = "requests" },
     { name = "uvicorn", extra = ["standard"] },
@@ -428,6 +429,7 @@ dev = [
 requires-dist = [
     { name = "cryptography", specifier = ">=46.0.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
+    { name = "lagrange-python", specifier = ">=0.1.8" },
     { name = "pydantic-settings", specifier = ">=2.6.0" },
     { name = "requests", specifier = ">=2.34.2" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30.0" },
@@ -457,6 +459,20 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/72/34/14ca021ce8e5dfedc35312d08ba8bf51fdd999c576889fc2c24cb97f4f10/iniconfig-2.3.0.tar.gz", hash = "sha256:c76315c77db068650d49c5b56314774a7804df16fee4402c1f19d6d15d8c4730", size = 20503, upload-time = "2025-10-18T21:55:43.219Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/cb/b1/3846dd7f199d53cb17f49cba7e651e9ce294d8497c8c150530ed11865bb8/iniconfig-2.3.0-py3-none-any.whl", hash = "sha256:f631c04d2c48c52b84d0d0549c99ff3859c98df65b3101406327ecc7d53fbf12", size = 7484, upload-time = "2025-10-18T21:55:41.639Z" },
+]
+
+[[package]]
+name = "lagrange-python"
+version = "0.1.8"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cryptography" },
+    { name = "qrcode" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/94/c9/61ba158974c280aee85cab32cdc6fb40d6579da8d597eb0e6618894d62cb/lagrange_python-0.1.8.tar.gz", hash = "sha256:ddc8213f26c35d3c4dbe5c58dc413b25635766480d18762974c52e59a47ee69e", size = 78340, upload-time = "2026-06-05T18:50:04.119Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/20/57/03e6dbe22276b9360caa1023523cff3bf079a4c274bb485fcfccc3532945/lagrange_python-0.1.8-py3-none-any.whl", hash = "sha256:07d0e8896eebd7af20f9f87560d95cef04b78e09ee762d317babd3e783a52afd", size = 105515, upload-time = "2026-06-05T18:50:03.128Z" },
 ]
 
 [[package]]
@@ -790,6 +806,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/da/92/1446574745d74df0c92e6aa4a7b0b3130706a4142b2d1a5869f2eaa423c6/pyyaml-6.0.3-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:16249ee61e95f858e83976573de0f5b2893b3677ba71c9dd36b9cf8be9ac6d65", size = 829923, upload-time = "2025-09-25T21:32:54.537Z" },
     { url = "https://files.pythonhosted.org/packages/f0/7a/1c7270340330e575b92f397352af856a8c06f230aa3e76f86b39d01b416a/pyyaml-6.0.3-cp314-cp314t-win_amd64.whl", hash = "sha256:4ad1906908f2f5ae4e5a8ddfce73c320c2a1429ec52eafd27138b7f1cbe341c9", size = 174062, upload-time = "2025-09-25T21:32:55.767Z" },
     { url = "https://files.pythonhosted.org/packages/f1/12/de94a39c2ef588c7e6455cfbe7343d3b2dc9d6b6b2f40c4c6565744c873d/pyyaml-6.0.3-cp314-cp314t-win_arm64.whl", hash = "sha256:ebc55a14a21cb14062aa4162f906cd962b28e2e9ea38f9b4391244cd8de4ae0b", size = 149341, upload-time = "2025-09-25T21:32:56.828Z" },
+]
+
+[[package]]
+name = "qrcode"
+version = "8.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/8f/b2/7fc2931bfae0af02d5f53b174e9cf701adbb35f39d69c2af63d4a39f81a9/qrcode-8.2.tar.gz", hash = "sha256:35c3f2a4172b33136ab9f6b3ef1c00260dd2f66f858f24d88418a015f446506c", size = 43317, upload-time = "2025-05-01T15:44:24.726Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/dd/b8/d2d6d731733f51684bbf76bf34dab3b70a9148e8f2cef2bb544fccec681a/qrcode-8.2-py3-none-any.whl", hash = "sha256:16e64e0716c14960108e85d853062c9e8bba5ca8252c0b4d0231b9df4060ff4f", size = 45986, upload-time = "2025-05-01T15:44:22.781Z" },
 ]
 
 [[package]]

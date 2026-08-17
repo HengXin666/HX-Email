@@ -101,5 +101,10 @@ export const messagingApi = {
       method: "POST",
     }),
 
+  engineRefreshQr: (id: number) =>
+    request<{ success: boolean }>(`/messaging/instances/${id}/engine/refresh-qr`, {
+      method: "POST",
+    }),
+
   qrBlob: (id: number) => requestBlob(`/messaging/instances/${id}/login/qr`).then((blob) => blob),
 };

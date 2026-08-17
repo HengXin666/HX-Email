@@ -21,7 +21,7 @@ QQ_CAPABILITIES: Capabilities = Capabilities(
     risk_level="third_party",
     risk_notice=(
         "QQ 个人号第三方协议存在封号/风控风险,请使用专用小号并控制消息频率;"
-        "登录态由 NapCat/NTQQ 本地持久化。"
+        "登录态由 lagrange-python 本地持久化。"
     ),
 )
 
@@ -47,7 +47,9 @@ PLUGIN_KINDS: tuple[PluginKind, ...] = (
         available=True,
         capabilities=QQ_CAPABILITIES,
         adapter_factory=create_qq_adapter,
-        description="基于 NapCatQQ + OneBot 11 协议,支持扫码登录、私聊/群聊收发与群管理。",
+        description=(
+            "基于官方 lagrange-python (NTQQ 协议),进程内运行,支持扫码登录、私聊/群聊收发与群管理。"
+        ),
     ),
     PluginKind(
         key="wechat",

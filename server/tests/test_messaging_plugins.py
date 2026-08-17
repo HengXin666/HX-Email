@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import types
 from typing import Any
 
 import pytest
@@ -23,6 +25,60 @@ class FakeOneBotResponse:
 
     def json(self) -> dict[str, Any]:
         return self._payload
+
+
+class FakeLagrangeClient:
+    def __init__(self) -> None:
+        self.online: asyncio.Event = asyncio.Event()
+        self.uin: int = 123456
+        self.sent: list[tuple[object, ...]] = []
+
+    async def stop(self) -> None:
+        return None
+
+    async def send_grp_msg(self, msg_chain: list[object], grp_id: int) -> int:
+        self.sent.append(("group", grp_id))
+        return 42
+
+    async def send_friend_msg(self, msg_chain: list[object], uid: str) -> int:
+        self.sent.append(("friend", uid))
+        return 43
+
+    async def get_friend_list(self) -> list[object]:
+        return [types.SimpleNamespace(uin=30001, uid="u_30001", nickname="alice", remark="Alice")]
+
+    async def get_grp_list(self) -> object:
+        return types.SimpleNamespace(
+            groups=[types.SimpleNamespace(group_id=777, group_name="dev", member_count=12)]
+        )
+
+    async def get_grp_msg(self, grp_id: int, start: int, end: int = 0) -> list[object]:
+        return [
+            types.SimpleNamespace(
+                grp_id=grp_id, uin=200, nickname="bob", msg="hi", seq=5, time=1700000000
+            )
+        ]
+
+    async def kick_grp_member(self, grp_id: int, uin: int, permanent: bool = False) -> None:
+        self.sent.append(("kick", grp_id, uin))
+
+    async def set_mute_member(self, grp_id: int, uin: int, duration: int) -> None:
+        self.sent.append(("mute", grp_id, uin, duration))
+
+    async def set_mute_grp(self, grp_id: int, enable: bool) -> None:
+        self.sent.append(("mute_all", grp_id, enable))
+
+    async def leave_grp(self, grp_id: int) -> None:
+        self.sent.append(("leave", grp_id))
+
+
+class FakeLagrangeEngine:
+    def __init__(self, client: FakeLagrangeClient) -> None:
+        self._client: FakeLagrangeClient = client
+        self._error: str = ""
+
+    def is_running(self) -> bool:
+        return True
 
 
 @pytest.fixture(autouse=True)
@@ -188,7 +244,10 @@ def test_event_ingest_stores_inbound_message(tmp_path: Any) -> None:
     assert messages[0]["chat_type"] == "group"
 
 
-def test_send_message_via_onebot(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+def test_send_message_via_onebot_http(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
     settings = make_settings(tmp_path)
     migrate(settings)
     client = TestClient(create_app(settings))
@@ -221,7 +280,10 @@ def test_send_message_via_onebot(monkeypatch: pytest.MonkeyPatch, tmp_path: Any)
     assert calls[0][1]["message"] == "hi"
 
 
-def test_login_ticket_and_status(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+def test_login_ticket_and_status(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
     settings = make_settings(tmp_path)
     migrate(settings)
     client = TestClient(create_app(settings))
@@ -232,8 +294,8 @@ def test_login_ticket_and_status(monkeypatch: pytest.MonkeyPatch, tmp_path: Any)
         f"{API}/messaging/instances/{instance['id']}/login", headers=headers
     )
     assert login_response.status_code == 200
-    assert login_response.json()["login"]["mode"] == "redirect"
-    assert "6099/webui" in login_response.json()["login"]["url"]
+    assert login_response.json()["login"]["mode"] == "qr"
+    assert "/login/qr" in login_response.json()["login"]["qr_image_url"]
 
     def fake_post(
         self: Any,
@@ -256,7 +318,10 @@ def test_login_ticket_and_status(monkeypatch: pytest.MonkeyPatch, tmp_path: Any)
     assert status_response.json()["login"]["account_id"] == "123456"
 
 
-def test_group_list_and_action(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+def test_group_list_and_action(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
     settings = make_settings(tmp_path)
     migrate(settings)
     client = TestClient(create_app(settings))
@@ -295,7 +360,7 @@ def test_group_list_and_action(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -
     assert kick.json()["applied"] is True
 
 
-def test_connect_with_unreachable_onebot_reports_error(
+def test_connect_without_engine_reports_error(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Any,
 ) -> None:
@@ -366,7 +431,7 @@ class FakeDiscoveryPage:
         return self._json_payload
 
 
-def test_login_probe_reports_unreachable_napcat(
+def test_login_probe_reports_unreachable_engine(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Any,
 ) -> None:
@@ -376,24 +441,18 @@ def test_login_probe_reports_unreachable_napcat(
     headers = login(client, settings)
     instance = create_qq_instance(client, headers)
 
-    import requests
-
-    def fake_get(url: str, timeout: float = 10.0) -> FakeGetResponse:
-        raise requests.ConnectionError("refused")
-
-    monkeypatch.setattr("hx_email.server.messaging.impl.probe.requests.get", fake_get)
+    monkeypatch.setattr("hx_email.server.messaging.impl.probe.get_engine", lambda instance_id: None)
 
     response = client.post(
         f"{API}/messaging/instances/{instance['id']}/login/probe", headers=headers
     )
     assert response.status_code == 200
     probe = response.json()["probe"]
-    assert probe["webui_reachable"] is False
     assert probe["api_reachable"] is False
-    assert "NapCat 未启动" in probe["message"]
+    assert "引擎未启动" in probe["message"]
 
 
-def test_login_probe_reports_online_when_endpoints_respond(
+def test_login_probe_reports_engine_ready(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Any,
 ) -> None:
@@ -403,19 +462,24 @@ def test_login_probe_reports_online_when_endpoints_respond(
     headers = login(client, settings)
     instance = create_qq_instance(client, headers)
 
-    def fake_get(url: str, timeout: float = 10.0) -> FakeGetResponse:
-        return FakeGetResponse(200)
+    class ReadyEngine:
+        def is_running(self) -> bool:
+            return True
 
-    monkeypatch.setattr("hx_email.server.messaging.impl.probe.requests.get", fake_get)
+        def qr_image(self, webui_port: int = 0) -> bytes | None:
+            return b"PNG"
+
+    monkeypatch.setattr(
+        "hx_email.server.messaging.impl.probe.get_engine", lambda instance_id: ReadyEngine()
+    )
 
     response = client.post(
         f"{API}/messaging/instances/{instance['id']}/login/probe", headers=headers
     )
     assert response.status_code == 200
     probe = response.json()["probe"]
-    assert probe["webui_reachable"] is True
     assert probe["api_reachable"] is True
-    assert "NapCat 在线" in probe["message"]
+    assert "可以扫码登录" in probe["message"]
 
 
 def test_update_instance_config_merges_and_masks_token(tmp_path: Any) -> None:
@@ -445,39 +509,68 @@ class FakeEngineProcess:
         return None
 
 
-def test_generate_lagrange_config_shape() -> None:
-    from hx_email.server.messaging.engine import generate_lagrange_config
-
-    config = generate_lagrange_config(
-        api_port=31001, webui_port=31002, event_url="http://x/ev", access_token="tok"
-    )
-    implementations = config["OneBot11"]["Implementations"]
-    assert implementations[0]["Type"] == "Http"
-    assert implementations[0]["Port"] == 31001
-    assert implementations[1]["Type"] == "HttpPost"
-    assert implementations[1]["PostUrls"] == ["http://x/ev"]
-    assert config["WebUi"]["Port"] == 31002
-
-
-def test_engine_manager_start_qr_and_stop(
+def test_engine_start_raises_when_container_fails(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Any,
 ) -> None:
     from hx_email.server.messaging.engine import QQEngineManager
 
     settings = make_settings(tmp_path)
-    manager = QQEngineManager(settings, instance_id=7)
-    executable = manager._dir / "Lagrange.OneBot"
-    executable.parent.mkdir(parents=True)
-    executable.write_text("#!/bin/sh\nexit 0\n")
-    executable.chmod(0o755)
+    manager = QQEngineManager(settings, instance_id=16)
 
-    monkeypatch.setattr(
-        "hx_email.server.messaging.engine.subprocess.Popen",
-        lambda *args, **kwargs: FakeEngineProcess(424242),
-    )
-    monkeypatch.setattr(QQEngineManager, "_api_ready", lambda self, port: True)
-    monkeypatch.setattr(QQEngineManager, "_alive", staticmethod(lambda pid: True))
+    class R:
+        def __init__(self, returncode: int = 0, stdout: str = "", stderr: str = "") -> None:
+            self.returncode: int = returncode
+            self.stdout: str = stdout
+            self.stderr: str = stderr
+
+    def fake_docker(self: QQEngineManager, *args: str) -> R:
+        cmd: list[str] = list(args)
+        if cmd[:2] == ["image", "inspect"]:
+            return R(0)
+        if cmd[0] == "run":
+            return R(1, stderr="docker run failed")
+        return R(0)
+
+    monkeypatch.setattr(QQEngineManager, "_docker", fake_docker)
+
+    with pytest.raises(RuntimeError, match="NapCat 容器启动失败"):
+        manager.start()
+
+
+def test_engine_manager_start_qr_and_stop(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    from hx_email.server.messaging.engine import QR_FILE_NAME, QQEngineManager, get_engine
+
+    settings = make_settings(tmp_path)
+    manager = QQEngineManager(settings, instance_id=7)
+    state: dict[str, bool] = {"running": False}
+
+    class R:
+        def __init__(self, returncode: int = 0, stdout: str = "", stderr: str = "") -> None:
+            self.returncode: int = returncode
+            self.stdout: str = stdout
+            self.stderr: str = stderr
+
+    def fake_docker(self: QQEngineManager, *args: str) -> R:
+        cmd: list[str] = list(args)
+        if cmd[:2] == ["image", "inspect"]:
+            return R(0)
+        if cmd[:2] == ["rm", "-f"]:
+            state["running"] = False
+            return R(0)
+        if cmd[0] == "run":
+            (manager._dir / "cache").mkdir(parents=True, exist_ok=True)
+            (manager._dir / "cache" / QR_FILE_NAME).write_bytes(b"QRDATA")
+            state["running"] = True
+            return R(0)
+        if cmd[:2] == ["inspect", "-f"]:
+            return R(0, stdout="true" if state["running"] else "false")
+        return R(0)
+
+    monkeypatch.setattr(QQEngineManager, "_docker", fake_docker)
 
     pid = manager.start(
         api_port=31001,
@@ -485,22 +578,16 @@ def test_engine_manager_start_qr_and_stop(
         event_url="http://127.0.0.1:8000/ev",
         access_token="tok",
     )
-    assert pid == 424242
-    assert (manager._dir / "engine.pid").read_text().strip() == "424242"
-    assert "OneBot11" in (manager._dir / "appsettings.json").read_text()
-
-    def fake_get(url: str, timeout: float = 10.0) -> FakeGetResponse:
-        assert "31002" in url
-        response = FakeGetResponse(200)
-        response.content = b"PNGDATA"
-        response.headers = {"content-type": "image/png"}
-        return response
-
-    monkeypatch.setattr("hx_email.server.messaging.engine.requests.get", fake_get)
-    assert manager.qr_image(31002) == b"PNGDATA"
+    assert pid == 10007
+    assert manager.is_running() is True
+    assert manager.qr_image() == b"QRDATA"
+    assert get_engine(7) is manager
+    assert (manager._dir / "config" / "onebot11.json").exists()
+    assert (manager._dir / "config" / "webui.json").exists()
 
     manager.stop()
-    assert not (manager._dir / "engine.pid").exists()
+    assert manager.is_running() is False
+    assert get_engine(7) is None
 
 
 def test_engine_start_stop_and_qr_routes(
@@ -650,51 +737,179 @@ def test_resolve_default_download_url_discovery_failure_raises(
     def fake_get(url: str, **kwargs: object) -> FakeGetResponse:
         raise requests.ConnectionError("github unreachable")
 
+    def fake_head(url: str, **kwargs: object) -> FakeGetResponse:
+        raise requests.ConnectionError("github unreachable")
+
     monkeypatch.setattr("hx_email.server.messaging.impl.discovery.requests.get", fake_get)
+    monkeypatch.setattr("hx_email.server.messaging.impl.discovery.requests.head", fake_head)
 
     with pytest.raises(RuntimeError, match="无法获取 QQ 引擎最新版本"):
         resolve_default_download_url()
 
 
-def test_ensure_installed_download_failure_raises_runtime_error(
+def test_asset_matches_accepts_tar_gz_and_zip() -> None:
+    from hx_email.server.messaging.impl.discovery import _asset_matches
+
+    assert (
+        _asset_matches(
+            "https://github.com/LagrangeDev/Lagrange.Core/releases/download/nightly/"
+            "Lagrange.OneBot_linux-x64_net9.0_SelfContained.tar.gz",
+            "linux-x64",
+        )
+        is True
+    )
+    assert (
+        _asset_matches(
+            "https://github.com/LagrangeDev/Lagrange.Core/releases/download/nightly/"
+            "Lagrange.OneBot_osx-arm64_net9.0_SelfContained.tar.gz",
+            "osx-arm64",
+        )
+        is True
+    )
+    assert (
+        _asset_matches(
+            "https://github.com/LagrangeDev/Lagrange.Core/releases/download/nightly/"
+            "Lagrange.OneBot_win-x64_net9.0_SelfContained.zip",
+            "win-x64",
+        )
+        is True
+    )
+    assert (
+        _asset_matches(
+            "https://github.com/LagrangeDev/Lagrange.Core/releases/download/0.25.0/"
+            "Lagrange.OneBot_0.25.0_linux-x64.zip",
+            "linux-x64",
+        )
+        is True
+    )
+    assert (
+        _asset_matches(
+            "https://github.com/LagrangeDev/Lagrange.Core/releases/download/nightly/"
+            "Lagrange.OneBot_win-x64_net9.0_SelfContained.zip",
+            "linux-x64",
+        )
+        is False
+    )
+
+
+def test_resolve_default_download_url_falls_back_to_nightly_tar_gz(
     monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Any,
+) -> None:
+    from hx_email.server.messaging.impl.discovery import (
+        default_asset_rid,
+        resolve_default_download_url,
+    )
+
+    rid = default_asset_rid()
+    ext = ".zip" if rid.startswith("win") else ".tar.gz"
+    expected = (
+        "https://github.com/LagrangeDev/Lagrange.Core/releases/download/nightly/"
+        f"Lagrange.OneBot_{rid}_net9.0_SelfContained{ext}"
+    )
+    asset_href = (
+        f"/LagrangeDev/Lagrange.Core/releases/download/nightly/"
+        f"Lagrange.OneBot_{rid}_net9.0_SelfContained{ext}"
+    )
+    calls: list[str] = []
+
+    def fake_get(url: str, **kwargs: object) -> FakeDiscoveryPage:
+        calls.append(url)
+        if "api.github.com" in url:
+            return FakeDiscoveryPage(status_code=403)
+        if "expanded_assets" in url:
+            assert url.endswith("expanded_assets/nightly")
+            return FakeDiscoveryPage(text=f'<a href="{asset_href}">x</a>')
+        return FakeDiscoveryPage(text="no release data here")
+
+    monkeypatch.setattr("hx_email.server.messaging.impl.discovery.requests.get", fake_get)
+
+    assert resolve_default_download_url() == expected
+    assert len(calls) == 2
+    assert calls[1].endswith("expanded_assets/nightly")
+
+
+def test_resolve_default_download_url_pinned_nightly_last_resort(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import requests
-    from hx_email.server.messaging.engine import QQEngineManager
+    from hx_email.server.messaging.impl.discovery import (
+        _pinned_nightly_urls,
+        default_asset_rid,
+        resolve_default_download_url,
+    )
 
-    settings = make_settings(tmp_path)
-    manager = QQEngineManager(settings, instance_id=11)
-    manager._dir.mkdir(parents=True)
+    rid = default_asset_rid()
+    expected = _pinned_nightly_urls(rid)[0]
+    head_calls: list[str] = []
 
     def fake_get(url: str, **kwargs: object) -> FakeGetResponse:
-        raise requests.ConnectionError("network down")
+        raise requests.ConnectionError("github unreachable")
 
-    monkeypatch.setattr("hx_email.server.messaging.engine.requests.get", fake_get)
+    def fake_head(url: str, **kwargs: object) -> FakeDiscoveryPage:
+        head_calls.append(url)
+        return FakeDiscoveryPage(status_code=200)
 
-    with pytest.raises(RuntimeError, match="下载失败"):
-        manager.ensure_installed(download_url="http://127.0.0.1:1/engine.zip")
+    monkeypatch.setattr("hx_email.server.messaging.impl.discovery.requests.get", fake_get)
+    monkeypatch.setattr("hx_email.server.messaging.impl.discovery.requests.head", fake_head)
+
+    assert resolve_default_download_url() == expected
+    assert head_calls == [expected]
 
 
-def test_engine_qr_image_falls_back_to_qr_file(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Any,
-) -> None:
-    import requests
-    from hx_email.server.messaging.engine import QQEngineManager
+def test_default_asset_rid_detects_arm64(monkeypatch: pytest.MonkeyPatch) -> None:
+    from hx_email.server.messaging.impl import discovery
+
+    monkeypatch.setattr(discovery.sys, "platform", "linux")
+    monkeypatch.setattr(discovery.platform, "machine", lambda: "aarch64")
+    assert discovery.default_asset_rid() == "linux-arm64"
+
+    monkeypatch.setattr(discovery.platform, "machine", lambda: "armv7l")
+    assert discovery.default_asset_rid() == "linux-arm"
+
+    monkeypatch.setattr(discovery.sys, "platform", "darwin")
+    monkeypatch.setattr(discovery.platform, "machine", lambda: "arm64")
+    assert discovery.default_asset_rid() == "osx-arm64"
+
+    monkeypatch.setattr(discovery.platform, "machine", lambda: "x86_64")
+    assert discovery.default_asset_rid() == "osx-x64"
+
+
+def test_engine_qr_image_reads_file_or_none(tmp_path: Any) -> None:
+    from hx_email.server.messaging.engine import QR_FILE_NAME, QQEngineManager
 
     settings = make_settings(tmp_path)
     manager = QQEngineManager(settings, instance_id=9)
-    manager._dir.mkdir(parents=True)
-    (manager._dir / "engine.pid").write_text("4242")
-    (manager._dir / "qr-0.png").write_bytes(b"PNGFILE")
-    monkeypatch.setattr(QQEngineManager, "_alive", staticmethod(lambda pid: True))
+    (manager._dir / "cache").mkdir(parents=True)
+    (manager._dir / "cache" / QR_FILE_NAME).write_bytes(b"QRDATA")
+    assert manager.qr_image() == b"QRDATA"
+    assert QQEngineManager(settings, instance_id=10).qr_image() is None
 
-    def fake_get(url: str, timeout: float = 10.0) -> FakeGetResponse:
-        raise requests.ConnectionError("engine webui not serving http")
 
-    monkeypatch.setattr("hx_email.server.messaging.engine.requests.get", fake_get)
-    assert manager.qr_image(22000) == b"PNGFILE"
+def test_engine_refresh_qr_route(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    from hx_email.server.messaging.engine import QQEngineManager
+
+    settings = make_settings(tmp_path)
+    migrate(settings)
+    client = TestClient(create_app(settings))
+    headers = login(client, settings)
+    instance = create_qq_instance(client, headers)
+
+    monkeypatch.setattr(QQEngineManager, "refresh_qr", lambda self: None)
+    response = client.post(
+        f"{API}/messaging/instances/{instance['id']}/engine/refresh-qr", headers=headers
+    )
+    assert response.status_code == 200
+    assert response.json()["success"] is True
+
+    def fake_refresh(self: QQEngineManager) -> None:
+        raise RuntimeError("QQ 引擎未运行, 请先启动内置引擎")
+
+    monkeypatch.setattr(QQEngineManager, "refresh_qr", fake_refresh)
+    response = client.post(
+        f"{API}/messaging/instances/{instance['id']}/engine/refresh-qr", headers=headers
+    )
+    assert response.status_code == 400
+    assert "未运行" in response.json()["detail"]
 
 
 def test_proxies_for_helper() -> None:
@@ -738,106 +953,3 @@ def test_resolve_default_download_url_passes_proxy_to_requests(
         "http": "http://127.0.0.1:7890",
         "https": "http://127.0.0.1:7890",
     }
-
-
-def test_ensure_installed_download_reports_proxy_state(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Any,
-) -> None:
-    import requests
-    from hx_email.server.messaging.engine import QQEngineManager
-
-    settings = make_settings(tmp_path)
-    manager = QQEngineManager(settings, instance_id=12)
-    manager._dir.mkdir(parents=True)
-    captured: list[dict[str, object]] = []
-
-    def fake_get(url: str, **kwargs: object) -> FakeGetResponse:
-        captured.append({"url": url, **kwargs})
-        raise requests.ConnectionError("network down")
-
-    monkeypatch.setattr("hx_email.server.messaging.engine.requests.get", fake_get)
-
-    with pytest.raises(RuntimeError, match="已配置代理"):
-        manager.ensure_installed(
-            download_url="http://127.0.0.1:1/engine.zip",
-            proxy_url="http://127.0.0.1:7890",
-        )
-    assert captured[0]["proxies"] == {
-        "http": "http://127.0.0.1:7890",
-        "https": "http://127.0.0.1:7890",
-    }
-
-
-def test_settings_proxy_reuses_app_proxy(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Any,
-) -> None:
-    from hx_email.server.messaging.engine import settings_proxy
-
-    settings = make_settings(tmp_path)
-
-    def fake_get_setting(
-        _settings: Any,
-        key: str,
-        default: str = "",
-    ) -> str:
-        return "http://127.0.0.1:7890" if key == "telegram_proxy_url" else default
-
-    monkeypatch.setattr("hx_email.server.messaging.engine.get_setting", fake_get_setting)
-    assert settings_proxy(settings) == "http://127.0.0.1:7890"
-
-
-def test_resolve_default_download_url_discovers_via_api(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from hx_email.server.messaging.impl.discovery import (
-        default_asset_rid,
-        resolve_default_download_url,
-    )
-
-    rid = default_asset_rid()
-    expected = (
-        "https://github.com/LagrangeDev/Lagrange.Core/releases/download/0.25.0/"
-        f"Lagrange.OneBot_0.25.0_{rid}.zip"
-    )
-    payload: dict[str, object] = {
-        "tag_name": "0.25.0",
-        "assets": [
-            {
-                "name": f"Lagrange.OneBot_0.25.0_{rid}.zip",
-                "browser_download_url": expected,
-            }
-        ],
-    }
-
-    def fake_get(url: str, **kwargs: object) -> FakeDiscoveryPage:
-        return FakeDiscoveryPage(json_payload=payload)
-
-    monkeypatch.setattr("hx_email.server.messaging.impl.discovery.requests.get", fake_get)
-
-    assert resolve_default_download_url() == expected
-
-
-def test_resolve_default_download_url_api_rate_limited_falls_back_to_html(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from hx_email.server.messaging.impl.discovery import (
-        default_asset_rid,
-        resolve_default_download_url,
-    )
-
-    rid = default_asset_rid()
-    expected = (
-        "https://github.com/LagrangeDev/Lagrange.Core/releases/download/0.25.0/"
-        f"Lagrange.OneBot_0.25.0_{rid}.zip"
-    )
-
-    def fake_get(url: str, **kwargs: object) -> FakeDiscoveryPage:
-        if "api.github.com" in url:
-            return FakeDiscoveryPage(status_code=403)
-        return FakeDiscoveryPage(text=f'"tag_name":"0.25.0" "browser_download_url":"{expected}"')
-
-    monkeypatch.setattr("hx_email.server.messaging.impl.discovery.requests.get", fake_get)
-
-    assert resolve_default_download_url() == expected

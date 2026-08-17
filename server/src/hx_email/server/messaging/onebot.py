@@ -1,4 +1,4 @@
-"""QQ adapter speaking the OneBot v11 HTTP API (NapCat / Lagrange)."""
+"""QQ adapter speaking the OneBot v11 HTTP API (NapCat embedded engine)."""
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ MAX_MESSAGE_LIMIT: int = 100
 
 class OneBotAdapter(MessagingAdapter):
     kind: str = "qq"
-    display_name: str = "QQ (OneBot 11)"
+    display_name: str = "QQ (NapCat / OneBot 11)"
     capabilities: Capabilities = CAPABILITIES
 
     def __init__(self, settings: Settings, instance: MessagingInstance) -> None:
@@ -60,7 +60,7 @@ class OneBotAdapter(MessagingAdapter):
 
     def _call(self, action: str, params: dict[str, Any]) -> dict[str, Any]:
         if not self._base_url:
-            raise MessagingError("未配置 api_base_url (NapCat HTTP 地址)")
+            raise MessagingError("未配置 api_base_url (NapCat OneBot HTTP 地址)")
         try:
             response: requests.Response = self._session.post(
                 f"{self._base_url}/{action}",
@@ -111,21 +111,11 @@ class OneBotAdapter(MessagingAdapter):
         )
 
     def create_login(self) -> LoginTicket:
-        webui_url: str = config_str(self._config, "webui_url")
-        if webui_url:
-            return LoginTicket(
-                mode="redirect",
-                url=webui_url,
-                instructions=(
-                    "在打开的 NapCat WebUI 中扫码登录;登录态由 NapCat 本地持久化,无需重复登录。"
-                ),
-            )
         return LoginTicket(
-            mode="manual",
-            instructions=(
-                "未配置 NapCat WebUI 地址:请先在本机启动 NapCat "
-                "并完成扫码登录,再填写 api_base_url。"
-            ),
+            mode="qr",
+            qr_image_url=f"/api/v1/messaging/instances/{self._instance.id}/login/qr",
+            instructions="用手机 QQ 扫描二维码完成登录;登录态由 NapCat 本地持久化。",
+            expires_in=300,
         )
 
     def check_login(self) -> LoginState:
@@ -208,36 +198,29 @@ class OneBotAdapter(MessagingAdapter):
         ]
 
     def group_action(self, group_id: str, action: GroupAction) -> bool:
-        group_int: int = int(group_id)
+        gid: int = int(group_id)
         if action.action == "kick":
-            self._call(
-                "set_group_kick",
-                {
-                    "group_id": group_int,
-                    "user_id": int(action.member_id),
-                    "reject_add_request": False,
-                },
-            )
+            self._call("set_group_kick", {"group_id": gid, "user_id": int(action.member_id or 0)})
         elif action.action == "ban":
             self._call(
                 "set_group_ban",
                 {
-                    "group_id": group_int,
-                    "user_id": int(action.member_id),
-                    "duration": action.duration_seconds,
+                    "group_id": gid,
+                    "user_id": int(action.member_id or 0),
+                    "duration": int(action.duration_seconds or 0),
                 },
             )
         elif action.action == "unban":
             self._call(
                 "set_group_ban",
-                {"group_id": group_int, "user_id": int(action.member_id), "duration": 0},
+                {"group_id": gid, "user_id": int(action.member_id or 0), "duration": 0},
             )
         elif action.action == "mute_all":
-            self._call("set_group_whole_ban", {"group_id": group_int, "enable": True})
+            self._call("set_group_whole_ban", {"group_id": gid, "enable": True})
         elif action.action == "unmute_all":
-            self._call("set_group_whole_ban", {"group_id": group_int, "enable": False})
+            self._call("set_group_whole_ban", {"group_id": gid, "enable": False})
         elif action.action == "leave":
-            self._call("set_group_leave", {"group_id": group_int})
+            self._call("set_group_leave", {"group_id": gid})
         else:
-            raise MessagingError(f"不支持的群操作: {action.action}")
+            raise MessagingError(f"不支持的群管理操作: {action.action}")
         return True
