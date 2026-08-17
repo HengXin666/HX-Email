@@ -145,7 +145,7 @@ export const ApiSecuritySettingsTab: React.FC<SettingsTabProps> = ({
         <div className="max-w-lg space-y-3">
           <ToggleRow
             label="启用外部邮箱池"
-            description="允许携带 X-API-Key 的服务领取、释放和完成邮箱任务"
+            description="允许携带 Authorization: Bearer (外部 API Key) 的服务领取、释放和完成邮箱任务"
             enabled={settings.pool_external_enabled === "true"}
             onChange={(value) => setSetting("pool_external_enabled", value ? "true" : "false")}
           />

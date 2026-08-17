@@ -16,13 +16,13 @@ SDK 都能直接对接。
 
 ## 两个 API 面
 
-| 面       | 前缀              | 认证                                                              | 用途                         |
-| -------- | ----------------- | ----------------------------------------------------------------- | ---------------------------- |
-| 业务 API | `/api/v1/*`       | `Authorization: Bearer <token>` (RFC 6750)                        | Web 前端与个人脚本           |
-| 外部 API | `/api/external/*` | `X-API-Key: <key>` (兼容 `Authorization: <key>` / `Bearer <key>`) | 自动化程序对接 (取码/邮箱池) |
+| 面       | 前缀              | 认证                                       | 用途                         |
+| -------- | ----------------- | ------------------------------------------ | ---------------------------- |
+| 业务 API | `/api/v1/*`       | `Authorization: Bearer <token>` (RFC 6750) | Web 前端与个人脚本           |
+| 外部 API | `/api/external/*` | `Authorization: Bearer <api-key>`          | 自动化程序对接 (取码/邮箱池) |
 
 - Bearer token 由 `POST /api/v1/auth/login` 获取。
-- API Key 在系统设置中生成; 外部 API 带内置限流 (超限返回 429)。
+- API Key 在系统设置中生成, 以 `Authorization: Bearer <api-key>` 携带; 外部 API 带内置限流 (超限返回 429)。
 - 认证失败返回 401 并携带 `WWW-Authenticate` 头 (RFC 6750/9110)。
 
 ## 请求 / 响应约定
@@ -67,7 +67,7 @@ curl -s http://127.0.0.1:8080/api/v1/usable-emails \
 
 # 外部 API (自动化取码)
 curl -s "http://127.0.0.1:8080/api/external/verification-code?email=xx@example.com" \
-  -H "X-API-Key: $API_KEY"
+  -H "Authorization: Bearer $API_KEY"
 ```
 
 ## 生成客户端 SDK

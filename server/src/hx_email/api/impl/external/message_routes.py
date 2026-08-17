@@ -50,10 +50,9 @@ def register_external_message_routes(
         subject_contains: str | None = Query(None),
         since_minutes: int | None = Query(None),
         claim_token: str | None = Query(None),
-        x_api_key: Annotated[str | None, Header()] = None,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_api_key(settings, x_api_key or authorization)
+        require_api_key(settings, authorization)
         result = get_messages(
             settings,
             mailbox_provider,
@@ -77,10 +76,9 @@ def register_external_message_routes(
         subject_contains: str | None = Query(None),
         since_minutes: int | None = Query(None),
         claim_token: str | None = Query(None),
-        x_api_key: Annotated[str | None, Header()] = None,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_api_key(settings, x_api_key or authorization)
+        require_api_key(settings, authorization)
         result = get_latest_message(
             settings,
             mailbox_provider,
@@ -100,10 +98,9 @@ def register_external_message_routes(
         email: str = Query(...),
         folder: str = Query("inbox"),
         claim_token: str | None = Query(None),
-        x_api_key: Annotated[str | None, Header()] = None,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_api_key(settings, x_api_key or authorization)
+        require_api_key(settings, authorization)
         result = get_message_detail(
             settings,
             mailbox_provider,
@@ -121,10 +118,9 @@ def register_external_message_routes(
         email: str = Query(...),
         folder: str = Query("inbox"),
         claim_token: str | None = Query(None),
-        x_api_key: Annotated[str | None, Header()] = None,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_api_key(settings, x_api_key or authorization)
+        require_api_key(settings, authorization)
         disable_raw: str = get_setting(settings, "external_api_disable_raw_content", "false")
         if disable_raw == "true":
             raise HTTPException(
@@ -153,10 +149,9 @@ def register_external_message_routes(
         code_regex: str | None = Query(None),
         code_source: str = Query("all"),
         claim_token: str | None = Query(None),
-        x_api_key: Annotated[str | None, Header()] = None,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_api_key(settings, x_api_key or authorization)
+        require_api_key(settings, authorization)
         result = extract_verification_code(
             settings,
             mailbox_provider,
@@ -181,10 +176,9 @@ def register_external_message_routes(
         subject_contains: str | None = Query(None),
         since_minutes: int | None = Query(None),
         claim_token: str | None = Query(None),
-        x_api_key: Annotated[str | None, Header()] = None,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_api_key(settings, x_api_key or authorization)
+        require_api_key(settings, authorization)
         result = extract_verification_link(
             settings,
             mailbox_provider,
@@ -209,10 +203,9 @@ def register_external_message_routes(
         poll_interval: int = Query(5),
         mode: str = Query("sync"),
         claim_token: str | None = Query(None),
-        x_api_key: Annotated[str | None, Header()] = None,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_api_key(settings, x_api_key or authorization)
+        require_api_key(settings, authorization)
         disable_wait: str = get_setting(settings, "external_api_disable_wait_message", "false")
         if disable_wait == "true":
             raise HTTPException(
@@ -238,9 +231,8 @@ def register_external_message_routes(
     @app.get("/api/external/probe/{probe_id}")
     def ext_probe_status(
         probe_id: str,
-        x_api_key: Annotated[str | None, Header()] = None,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_api_key(settings, x_api_key or authorization)
+        require_api_key(settings, authorization)
         result = get_probe_status(probe_id)
         return external_response(True, data=result)

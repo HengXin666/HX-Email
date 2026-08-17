@@ -1,4 +1,4 @@
-"""External API auth contract: X-API-Key primary, Authorization compat, RFC-style 401s."""
+"""External API auth contract: Authorization: Bearer only, RFC-style 401s."""
 
 import json
 from pathlib import Path
@@ -18,10 +18,10 @@ def make_client(tmp_path) -> TestClient:
     return client
 
 
-def test_external_api_accepts_standard_x_api_key_header(tmp_path):
+def test_external_api_accepts_bearer_api_key(tmp_path):
     client = make_client(tmp_path)
 
-    response = client.get("/api/external/health", headers={"X-API-Key": "test-key-123"})
+    response = client.get("/api/external/health", headers={"Authorization": "Bearer test-key-123"})
 
     assert response.status_code == 200
     assert response.json()["success"] is True
@@ -33,32 +33,42 @@ def test_external_api_accepts_key_from_json_array(tmp_path: Path) -> None:
     set_setting(settings, "external_api_key", "")
     set_setting(settings, "external_api_keys", json.dumps(["array-key-123"]))
     with TestClient(create_app(settings)) as client:
-        response = client.get("/api/external/health", headers={"X-API-Key": "array-key-123"})
+        response = client.get(
+            "/api/external/health", headers={"Authorization": "Bearer array-key-123"}
+        )
 
     assert response.status_code == 200
     assert response.json()["success"] is True
 
 
-def test_external_api_keeps_authorization_header_compatibility(tmp_path):
+def test_external_api_rejects_x_api_key_header(tmp_path):
     client = make_client(tmp_path)
 
-    raw = client.get("/api/external/health", headers={"Authorization": "test-key-123"})
-    bearer = client.get("/api/external/health", headers={"Authorization": "Bearer test-key-123"})
+    response = client.get("/api/external/health", headers={"X-API-Key": "test-key-123"})
 
-    assert raw.status_code == 200
-    assert bearer.status_code == 200
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"] == "Bearer"
+
+
+def test_external_api_rejects_raw_authorization_without_bearer(tmp_path):
+    client = make_client(tmp_path)
+
+    response = client.get("/api/external/health", headers={"Authorization": "test-key-123"})
+
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"] == "Bearer"
 
 
 def test_external_api_rejects_missing_or_invalid_key_with_www_authenticate(tmp_path):
     client = make_client(tmp_path)
 
     missing = client.get("/api/external/health")
-    invalid = client.get("/api/external/health", headers={"X-API-Key": "wrong"})
+    invalid = client.get("/api/external/health", headers={"Authorization": "Bearer wrong"})
 
     assert missing.status_code == 401
     assert invalid.status_code == 401
-    assert missing.headers["WWW-Authenticate"] == "ApiKey"
-    assert invalid.headers["WWW-Authenticate"] == "ApiKey"
+    assert missing.headers["WWW-Authenticate"] == "Bearer"
+    assert invalid.headers["WWW-Authenticate"] == "Bearer"
 
 
 def test_external_api_rejects_non_array_external_api_keys(tmp_path: Path) -> None:
@@ -67,7 +77,9 @@ def test_external_api_rejects_non_array_external_api_keys(tmp_path: Path) -> Non
     set_setting(settings, "external_api_key", "")
     set_setting(settings, "external_api_keys", json.dumps({"test-key-123": True}))
     with TestClient(create_app(settings)) as client:
-        response = client.get("/api/external/health", headers={"X-API-Key": "test-key-123"})
+        response = client.get(
+            "/api/external/health", headers={"Authorization": "Bearer test-key-123"}
+        )
 
     assert response.status_code == 401
 
@@ -81,16 +93,16 @@ def test_business_api_401_carries_www_authenticate_bearer(tmp_path):
     assert response.headers["WWW-Authenticate"] == "Bearer"
 
 
-def test_openapi_declares_security_schemes_and_hides_raw_auth_params(tmp_path):
+def test_openapi_declares_single_bearer_scheme_and_hides_raw_auth_params(tmp_path):
     client = make_client(tmp_path)
 
     spec = client.get("/openapi.json").json()
 
     schemes = spec["components"]["securitySchemes"]
+    assert list(schemes) == ["BearerAuth"]
     assert schemes["BearerAuth"]["scheme"] == "bearer"
-    assert schemes["ApiKeyAuth"]["name"] == "X-API-Key"
     assert spec["paths"]["/api/v1/usable-emails"]["get"]["security"] == [{"BearerAuth": []}]
-    assert spec["paths"]["/api/external/health"]["get"]["security"] == [{"ApiKeyAuth": []}]
+    assert spec["paths"]["/api/external/health"]["get"]["security"] == [{"BearerAuth": []}]
     assert spec["paths"]["/api/v1/auth/login"]["post"].get("security") is None
     for path_item in spec["paths"].values():
         for operation in path_item.values():

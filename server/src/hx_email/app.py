@@ -17,7 +17,7 @@ API_DESCRIPTION: str = (
     "多邮箱聚合与验证码读取服务。\n\n"
     "- 业务 API (`/api/v1/*`): `Authorization: Bearer <token>`, 通过 "
     "`POST /api/v1/auth/login` 获取 token。\n"
-    "- 外部 API (`/api/external/*`): `X-API-Key: <key>`, 在系统设置中生成。\n\n"
+    "- 外部 API (`/api/external/*`): `Authorization: Bearer <api-key>`, 在系统设置中生成。\n\n"
     '错误响应统一为 `{"detail": "..."}` (FastAPI 约定), 校验错误返回 422。'
 )
 
@@ -37,7 +37,7 @@ PUBLIC_PATHS: frozenset[str] = frozenset(
 
 HTTP_METHODS: frozenset[str] = frozenset({"get", "post", "put", "patch", "delete"})
 
-AUTH_HEADER_PARAMS: frozenset[str] = frozenset({"authorization", "x-api-key"})
+AUTH_HEADER_PARAMS: frozenset[str] = frozenset({"authorization"})
 
 
 def install_openapi_schema(app: FastAPI) -> None:
@@ -62,13 +62,7 @@ def install_openapi_schema(app: FastAPI) -> None:
         security_schemes["BearerAuth"] = {
             "type": "http",
             "scheme": "bearer",
-            "description": "POST /api/v1/auth/login 返回的 access_token",
-        }
-        security_schemes["ApiKeyAuth"] = {
-            "type": "apiKey",
-            "in": "header",
-            "name": "X-API-Key",
-            "description": "系统设置中生成的外部 API Key",
+            "description": "登录 access_token 或系统设置中生成的外部 API Key",
         }
         for path, operations in schema.get("paths", {}).items():
             for method, operation in operations.items():
@@ -85,9 +79,7 @@ def install_openapi_schema(app: FastAPI) -> None:
                     operation.pop("parameters", None)
                 if path in PUBLIC_PATHS:
                     continue
-                if path.startswith("/api/external/"):
-                    operation["security"] = [{"ApiKeyAuth": []}]
-                elif path.startswith("/api/v1/"):
+                if path.startswith(("/api/external/", "/api/v1/")):
                     operation["security"] = [{"BearerAuth": []}]
         app.openapi_schema = schema
         return schema

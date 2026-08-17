@@ -78,7 +78,7 @@ curl --fail --silent --show-error \
 在“设置 -> API 安全”生成 Key 并开启外部邮箱池后，请求携带：
 
 ```http
-X-API-Key: <generated-key>
+Authorization: Bearer <generated-key>
 ```
 
 可用端点：

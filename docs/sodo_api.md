@@ -274,7 +274,7 @@ IMAP 抓取后将邮件存入 SQLite `fetched_messages` 表，支持后续本地
 
 ## 13. 外部 API (密钥认证)
 
-使用 `X-API-Key` 头部认证的外部 API 路由，供浏览器扩展或第三方调用。所有邮件相关端点底层依赖 IMAP/Graph 读取。
+使用 `Authorization: Bearer <api-key>` 认证的外部 API 路由，供浏览器扩展或第三方调用。所有邮件相关端点底层依赖 IMAP/Graph 读取。
 
 ### HX-Email
 

@@ -35,10 +35,9 @@ def register_external_temp_mail_routes(
     @app.post("/api/external/temp-emails/apply")
     def ext_temp_email_apply(
         payload: ExternalTempMailApply,
-        x_api_key: Annotated[str | None, Header()] = None,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_api_key(settings, x_api_key or authorization)
+        require_api_key(settings, authorization)
         result = apply_temp_email(
             settings,
             temp_mail_providers,
@@ -55,10 +54,9 @@ def register_external_temp_mail_routes(
     def ext_temp_email_finish(
         task_token: str,
         payload: ExternalTempMailFinish,
-        x_api_key: Annotated[str | None, Header()] = None,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        require_api_key(settings, x_api_key or authorization)
+        require_api_key(settings, authorization)
         result = finish_temp_email(
             settings,
             task_token,

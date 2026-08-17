@@ -6,7 +6,7 @@
 
 ## 约定
 
-- **认证**: `Session` = 登录会话 Cookie; `API-Key` = 请求头 `X-API-Key`
+- **认证**: `Session` = 登录会话 Cookie; `API-Key` = 请求头 `Authorization: Bearer <api-key>`
 - **内部响应格式**:
   ```json
   {"success": true, ...}
@@ -305,21 +305,21 @@
 ## 11. 非前端 API（对外接口 / 外部调用）
 
 > 此类接口不直接服务前端页面，面向第三方客户端/注册机调用。
-> 认证方式: `X-API-Key` 请求头。
+> 认证方式: `Authorization: Bearer <api-key>` 请求头。
 > 响应格式: `{"success": true, "code": "OK", "message": "success", "data": {...}}`
 
 ### 11.1 外部邮件接口
 
-| 方法 | 端点                                     | 认证    | 请求参数                                                                                                             | 返回值 `data` 字段                                                           | 描述               |
-| ---- | ---------------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ------------------ |
-| GET  | `/api/external/messages`                 | API-Key | `?email=&folder=&skip=&top=&from_contains=&subject_contains=&since_minutes=&claim_token=`                            | `{"emails": [...], "count": int, "has_more": bool}`                          | 获取邮件列表       |
-| GET  | `/api/external/messages/latest`          | API-Key | 同上                                                                                                                 | `{"id": str, "subject": str, "from": str, ...}`                              | 获取最新一封邮件   |
-| GET  | `/api/external/messages/:message_id`     | API-Key | `?email=&folder=&claim_token=`                                                                                       | `{"id": str, "subject": str, "body": str, ...}`                              | 获取单封邮件详情   |
-| GET  | `/api/external/messages/:message_id/raw` | API-Key | `?email=&folder=&claim_token=`                                                                                       | `{"raw": str, ...}`                                                          | 获取邮件原始内容   |
-| GET  | `/api/external/verification-code`        | API-Key | `?email=&folder=&from_contains=&subject_contains=&since_minutes=&code_length=&code_regex=&code_source=&claim_token=` | `{"verification_code": str, "matched_email_id": str, ...}`                   | 提取验证码         |
-| GET  | `/api/external/verification-link`        | API-Key | `?email=&folder=&from_contains=&subject_contains=&since_minutes=&claim_token=`                                       | `{"verification_link": str, "matched_email_id": str, ...}`                   | 提取验证链接       |
-| GET  | `/api/external/wait-message`             | API-Key | `?email=&folder=&from_contains=&subject_contains=&since_minutes=&timeout_seconds=&poll_interval=&mode=&claim_token=` | `{"id": str, "subject": str, ...}` (sync) / `{"probe_id": str}` (async, 202) | 阻塞等待新邮件到达 |
-| GET  | `/api/external/probe/:probe_id`          | API-Key | `probe_id` (路径)                                                                                                    | `{"status": str, "result": {...} \| null}`                                   | 查询异步探测状态   |
+| 方法 | 端点                                     | 认证             | 请求参数                                                                                                             | 返回值 `data` 字段                                                           | 描述               |
+| ---- | ---------------------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ------------------ |
+| GET  | `/api/external/messages`                 | Bearer (API Key) | `?email=&folder=&skip=&top=&from_contains=&subject_contains=&since_minutes=&claim_token=`                            | `{"emails": [...], "count": int, "has_more": bool}`                          | 获取邮件列表       |
+| GET  | `/api/external/messages/latest`          | Bearer (API Key) | 同上                                                                                                                 | `{"id": str, "subject": str, "from": str, ...}`                              | 获取最新一封邮件   |
+| GET  | `/api/external/messages/:message_id`     | Bearer (API Key) | `?email=&folder=&claim_token=`                                                                                       | `{"id": str, "subject": str, "body": str, ...}`                              | 获取单封邮件详情   |
+| GET  | `/api/external/messages/:message_id/raw` | Bearer (API Key) | `?email=&folder=&claim_token=`                                                                                       | `{"raw": str, ...}`                                                          | 获取邮件原始内容   |
+| GET  | `/api/external/verification-code`        | Bearer (API Key) | `?email=&folder=&from_contains=&subject_contains=&since_minutes=&code_length=&code_regex=&code_source=&claim_token=` | `{"verification_code": str, "matched_email_id": str, ...}`                   | 提取验证码         |
+| GET  | `/api/external/verification-link`        | Bearer (API Key) | `?email=&folder=&from_contains=&subject_contains=&since_minutes=&claim_token=`                                       | `{"verification_link": str, "matched_email_id": str, ...}`                   | 提取验证链接       |
+| GET  | `/api/external/wait-message`             | Bearer (API Key) | `?email=&folder=&from_contains=&subject_contains=&since_minutes=&timeout_seconds=&poll_interval=&mode=&claim_token=` | `{"id": str, "subject": str, ...}` (sync) / `{"probe_id": str}` (async, 202) | 阻塞等待新邮件到达 |
+| GET  | `/api/external/probe/:probe_id`          | Bearer (API Key) | `probe_id` (路径)                                                                                                    | `{"status": str, "result": {...} \| null}`                                   | 查询异步探测状态   |
 
 **通用查询参数说明**:
 
@@ -342,29 +342,29 @@
 
 ### 11.2 外部邮箱池接口
 
-| 方法 | 端点                                | 认证    | 请求参数                                                                                                        | 返回值 `data` 字段                                           | 描述                   |
-| ---- | ----------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ---------------------- |
-| POST | `/api/external/pool/claim-random`   | API-Key | JSON `{"caller_id": str, "task_id": str, "provider?": str, "project_key?": str, "email_domain?": str}`          | `{"account_id": int, "email": str, "claim_token": str, ...}` | 从池中随机领取一个邮箱 |
-| POST | `/api/external/pool/claim-release`  | API-Key | JSON `{"account_id": int, "claim_token": str, "caller_id": str, "task_id": str, "reason?": str}`                | `{}`                                                         | 释放已领取的邮箱       |
-| POST | `/api/external/pool/claim-complete` | API-Key | JSON `{"account_id": int, "claim_token": str, "caller_id": str, "task_id": str, "result": str, "detail?": str}` | `{}`                                                         | 完成任务并释放邮箱     |
-| GET  | `/api/external/pool/stats`          | API-Key | —                                                                                                               | `{"total": int, "available": int, "claimed": int, ...}`      | 获取邮箱池统计信息     |
+| 方法 | 端点                                | 认证             | 请求参数                                                                                                        | 返回值 `data` 字段                                           | 描述                   |
+| ---- | ----------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ---------------------- |
+| POST | `/api/external/pool/claim-random`   | Bearer (API Key) | JSON `{"caller_id": str, "task_id": str, "provider?": str, "project_key?": str, "email_domain?": str}`          | `{"account_id": int, "email": str, "claim_token": str, ...}` | 从池中随机领取一个邮箱 |
+| POST | `/api/external/pool/claim-release`  | Bearer (API Key) | JSON `{"account_id": int, "claim_token": str, "caller_id": str, "task_id": str, "reason?": str}`                | `{}`                                                         | 释放已领取的邮箱       |
+| POST | `/api/external/pool/claim-complete` | Bearer (API Key) | JSON `{"account_id": int, "claim_token": str, "caller_id": str, "task_id": str, "result": str, "detail?": str}` | `{}`                                                         | 完成任务并释放邮箱     |
+| GET  | `/api/external/pool/stats`          | Bearer (API Key) | —                                                                                                               | `{"total": int, "available": int, "claimed": int, ...}`      | 获取邮箱池统计信息     |
 
 > 外部池接口需要满足: ① `pool_external_enabled` 为 true; ② API Key 拥有 `pool_access` 权限。
 
 ### 11.3 外部临时邮箱接口
 
-| 方法 | 端点                                           | 认证    | 请求参数                                                                  | 返回值 `data` 字段                                                     | 描述                   |
-| ---- | ---------------------------------------------- | ------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ---------------------- |
-| POST | `/api/external/temp-emails/apply`              | API-Key | JSON `{"caller_id": str, "task_id": str, "prefix?": str, "domain?": str}` | `{"email": str, "prefix": str, "domain": str, "task_token": str, ...}` | 申请临时邮箱           |
-| POST | `/api/external/temp-emails/:task_token/finish` | API-Key | JSON `{"result?": str, "detail?": str}`                                   | `{}`                                                                   | 完成任务并释放临时邮箱 |
+| 方法 | 端点                                           | 认证             | 请求参数                                                                  | 返回值 `data` 字段                                                     | 描述                   |
+| ---- | ---------------------------------------------- | ---------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ---------------------- |
+| POST | `/api/external/temp-emails/apply`              | Bearer (API Key) | JSON `{"caller_id": str, "task_id": str, "prefix?": str, "domain?": str}` | `{"email": str, "prefix": str, "domain": str, "task_token": str, ...}` | 申请临时邮箱           |
+| POST | `/api/external/temp-emails/:task_token/finish` | Bearer (API Key) | JSON `{"result?": str, "detail?": str}`                                   | `{}`                                                                   | 完成任务并释放临时邮箱 |
 
 ### 11.4 外部系统接口
 
-| 方法 | 端点                           | 认证    | 请求参数  | 返回值 `data` 字段                | 描述                  |
-| ---- | ------------------------------ | ------- | --------- | --------------------------------- | --------------------- |
-| GET  | `/api/external/health`         | API-Key | —         | `{"status": str, "version": str}` | 对外健康检查          |
-| GET  | `/api/external/capabilities`   | API-Key | —         | `{"features": {...}}`             | 查询外部 API 功能清单 |
-| GET  | `/api/external/account-status` | API-Key | `?email=` | `{"status": str, ...}`            | 查询邮箱账号状态      |
+| 方法 | 端点                           | 认证             | 请求参数  | 返回值 `data` 字段                | 描述                  |
+| ---- | ------------------------------ | ---------------- | --------- | --------------------------------- | --------------------- |
+| GET  | `/api/external/health`         | Bearer (API Key) | —         | `{"status": str, "version": str}` | 对外健康检查          |
+| GET  | `/api/external/capabilities`   | Bearer (API Key) | —         | `{"features": {...}}`             | 查询外部 API 功能清单 |
+| GET  | `/api/external/account-status` | Bearer (API Key) | `?email=` | `{"status": str, ...}`            | 查询邮箱账号状态      |
 
 ---
 

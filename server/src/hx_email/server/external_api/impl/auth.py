@@ -19,7 +19,7 @@ def _clean_expired_timestamps(timestamps: list[float], window_seconds: float) ->
 
 
 def validate_api_key(settings: Settings, api_key: str) -> bool:
-    """Check X-API-Key against stored keys.
+    """Check the external API key against stored keys.
 
     Supports both a single external_api_key and a JSON array external_api_keys.
     """
@@ -59,30 +59,29 @@ def check_rate_limit(settings: Settings, api_key: str) -> bool:
     return True
 
 
-def require_api_key(settings: Settings, credential: str | None) -> str:
-    """Validate an external API key and check its rate limit.
+def require_api_key(settings: Settings, authorization: str | None) -> str:
+    """Validate an external API key presented as Authorization: Bearer <key>.
 
-    Accepts the key from the X-API-Key header (standard form) or, for
-    compatibility, from Authorization as either the raw key or "Bearer <key>".
+    Only the Bearer scheme is accepted; the X-API-Key header form was removed
+    in favor of a single Authorization: Bearer auth scheme.
 
     Returns the valid API key string.
     Raises HTTPException(401) if key is missing or invalid.
     Raises HTTPException(429) if rate limit exceeded.
     """
-    api_key: str = (credential or "").strip()
-    if api_key.lower().startswith("bearer "):
-        api_key = api_key[7:].strip()
-    if not api_key:
+    scheme, _, token = (authorization or "").partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing X-API-Key header",
-            headers={"WWW-Authenticate": "ApiKey"},
+            detail="Missing Authorization header",
+            headers={"WWW-Authenticate": "Bearer"},
         )
+    api_key: str = token.strip()
     if not validate_api_key(settings, api_key):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid API key",
-            headers={"WWW-Authenticate": "ApiKey"},
+            headers={"WWW-Authenticate": "Bearer"},
         )
     if not check_rate_limit(settings, api_key):
         raise HTTPException(
