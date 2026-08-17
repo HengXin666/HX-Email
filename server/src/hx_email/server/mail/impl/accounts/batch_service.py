@@ -16,7 +16,12 @@ EXPORT_TOKEN_TTL_MINUTES: int = 5
 def batch_update_group(
     settings: Settings, user_id: int, account_ids: list[int], group_id: int
 ) -> int:
-    """Update group_id for multiple accounts. Returns count of updated accounts."""
+    """Update group_id for multiple accounts. Returns count of updated accounts.
+
+    地址跟随账号: 同时级联 usable_emails.group_id (与 batch_update_status /
+    batch_delete_accounts 的级联语义一致) -- 否则账号已归组、HX-Email 分组
+    卡片仍按 usable_emails 计数显示 0 (20260816 用户反馈).
+    """
     if not account_ids:
         return 0
     with connect(settings) as connection:
@@ -24,6 +29,11 @@ def batch_update_group(
         cursor = connection.execute(
             f"""UPDATE email_accounts SET group_id = ?
                 WHERE user_id = ? AND id IN ({placeholders})""",
+            (group_id, user_id, *account_ids),
+        )
+        connection.execute(
+            f"""UPDATE usable_emails SET group_id = ?
+                WHERE user_id = ? AND email_account_id IN ({placeholders})""",
             (group_id, user_id, *account_ids),
         )
     return cursor.rowcount
