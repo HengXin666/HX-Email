@@ -1,15 +1,22 @@
 """SSRF guard for user-supplied proxy and mail-server targets.
 
-Proxy targets (group ``proxy_url``, ``/groups/proxy-test``, IMAP tunneling) are
-restricted to a whitelist: loopback (``127.0.0.0/8``, ``::1``), the Docker
-gateway hostnames (``host.docker.internal`` / ``gateway.docker.internal``), and
-public addresses. RFC1918/ULA private ranges, link-local, cloud-metadata,
-multicast, broadcast, reserved and documentation ranges are all blocked. This
-matches the documented deployment (host-local ``http://127.0.0.1:7890`` proxies
-and the Docker bridge gateway) while closing the regression where any logged-in
-user could probe arbitrary internal host:port.
+Default policy (self-hosted): loopback (``127.0.0.0/8``, ``::1``), RFC1918/ULA
+private ranges (``10.0.0.0/8``, ``172.16.0.0/12``, ``192.168.0.0/16``,
+``fc00::/7``) and public addresses are all accepted for proxy/IMAP targets.
+Only the dangerous reserved segments stay blocked: cloud metadata
+(``169.254.169.254``), unspecified (``0.0.0.0/8``, ``::/128``), link-local
+(``169.254.0.0/16``, ``fe80::/10``), multicast/broadcast, TEST-NET, NAT64/
+6to4/Teredo, documentation ranges, etc. This matches the documented deployment:
+host-local ``http://127.0.0.1:7890`` proxies, LAN proxies
+(``http://192.168.x.x:7890``) and the Docker bridge gateway.
 
-Server-side outbound probes (plugin ``api_base_url``) use the stricter
+Strict mode (``HX_EMAIL_ALLOW_PRIVATE_PROXY=false``, for multi-tenant /
+Internet-exposed deployments) narrows proxy/IMAP targets to a whitelist:
+loopback, the Docker gateway hostnames (``host.docker.internal`` /
+``gateway.docker.internal``), and public addresses; RFC1918/ULA private ranges
+are then blocked so a logged-in user cannot probe arbitrary internal host:port.
+
+Server-side outbound probes (plugin ``api_base_url``) always use the stricter
 ``resolve_public_host``, which only allows public addresses. Hostnames are
 resolved and every resolved address must pass the same check; IPv4-mapped IPv6
 is judged by its embedded IPv4 address.
@@ -60,6 +67,15 @@ GLOBAL_UNICAST_IPV6: ipaddress.IPv6Network = ipaddress.IPv6Network("2000::/3")
 
 DOCKER_HOST_NAMES: frozenset[str] = frozenset({"host.docker.internal", "gateway.docker.internal"})
 
+# Set by app startup from Settings.allow_private_proxy (env HX_EMAIL_ALLOW_PRIVATE_PROXY).
+_ALLOW_PRIVATE_PROXY: bool = True
+
+
+def set_private_proxy_policy(allowed: bool) -> None:
+    """Set whether private ranges are accepted for proxy/IMAP targets."""
+    global _ALLOW_PRIVATE_PROXY
+    _ALLOW_PRIVATE_PROXY = allowed
+
 
 def _is_loopback(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     if isinstance(ip, ipaddress.IPv4Address):
@@ -89,11 +105,11 @@ def _is_hard_blocked(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
 
 
 def _is_blocked(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
-    """Proxy-guard check: loopback is allowed, private ranges are blocked."""
+    """Proxy-guard check: loopback is always allowed; private ranges follow policy."""
     if _is_loopback(ip):
         return False
     if _is_private(ip):
-        return True
+        return not _ALLOW_PRIVATE_PROXY
     return _is_hard_blocked(ip)
 
 

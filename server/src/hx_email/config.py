@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     update_compose_file: str = ""
     update_image: str = ""
     update_timeout_seconds: int = 900
+    # SSRF 守卫策略: 默认放行私网/内网代理与 IMAP 主机 (自托管本机 Clash/V2Ray、
+    # LAN 代理、Docker 桥接网关 IP 等), 仅拦截云元数据/link-local/组播等危险保留段;
+    # 公网多租户部署可设 HX_EMAIL_ALLOW_PRIVATE_PROXY=false 收紧为白名单
+    # (仅 127.0.0.0/8、::1、host.docker.internal 与公网地址)。
+    allow_private_proxy: bool = True
 
     @property
     def database_path(self) -> Path:

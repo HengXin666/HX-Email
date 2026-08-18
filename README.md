@@ -181,6 +181,7 @@ docker compose -f docker-compose.bridge.yml up -d --build
 
 - host 网络模式（Linux 默认）：容器与宿主机共享网络栈，`127.0.0.1:xxx` 直接生效
 - 桥接模式（Mac / Windows）：容器内的 `127.0.0.1` 指向容器自身，请改填 `http://host.docker.internal:7890`（compose 已通过 `host-gateway` 映射）
+- **私网/内网地址**：默认放行 RFC1918 私网段（`10.x` / `172.16-31.x` / `192.168.x`）与 ULA 地址，LAN 代理（如 `http://192.168.1.50:7890`）或 Docker 桥接网关 IP 可直接填写；仅拦截云元数据（`169.254.169.254`）、link-local、组播、TEST-NET 等危险保留段。若部署在公网且面向多租户，可在 `.env` 设置 `HX_EMAIL_ALLOW_PRIVATE_PROXY=false` 收紧为白名单（仅 `127.0.0.0/8`、`::1`、`host.docker.internal` 与公网地址）。
 
 ### 更新与升级
 

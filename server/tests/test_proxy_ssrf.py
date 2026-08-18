@@ -1,4 +1,8 @@
-"""Regression tests: proxy targets must not reach private/reserved networks."""
+"""Regression tests: proxy targets must never reach reserved/metadata networks.
+
+Private (RFC1918/ULA) ranges are allowed by default for self-hosted LAN proxies
+and rejected again in strict mode (HX_EMAIL_ALLOW_PRIVATE_PROXY=false).
+"""
 
 import socket
 from unittest.mock import patch
@@ -10,6 +14,7 @@ from hx_email.config import Settings
 from hx_email.database import migrate
 from hx_email.server.mail.imap.impl.address_guard import (
     resolve_proxy_host,
+    set_private_proxy_policy,
     validate_proxy_endpoint,
     validate_proxy_host,
 )
@@ -32,8 +37,21 @@ def test_proxy_validation_allows_loopback_and_docker_gateway_hosts() -> None:
         validate_proxy_endpoint(proxy_url)
 
 
-def test_proxy_validation_rejects_private_addresses() -> None:
-    """RFC1918/ULA private ranges are no longer reachable (fifth-round regression)."""
+def test_proxy_validation_allows_private_addresses_by_default() -> None:
+    """Self-hosted default: RFC1918/ULA private ranges are usable proxies."""
+    for proxy_url in [
+        "10.0.0.5:3128",
+        "192.168.1.1:8080",
+        "http://172.16.0.1:3128",
+        "http://[fc00::1]:8080",
+        "http://[::ffff:10.0.0.1]:3128",
+    ]:
+        validate_proxy_endpoint(proxy_url)
+
+
+def test_proxy_validation_rejects_private_addresses_in_strict_mode() -> None:
+    """Strict mode (HX_EMAIL_ALLOW_PRIVATE_PROXY=false) blocks RFC1918/ULA again."""
+    set_private_proxy_policy(False)
     for proxy_url in [
         "10.0.0.5:3128",
         "192.168.1.1:8080",
@@ -62,15 +80,21 @@ def test_proxy_validation_allows_public_addresses() -> None:
 
 
 def test_proxy_validation_judges_ipv4_mapped_ipv6_by_embedded_ipv4() -> None:
-    for proxy_url in ["http://[::ffff:127.0.0.1]:8080", "http://[::ffff:8.8.8.8]:8080"]:
+    for proxy_url in [
+        "http://[::ffff:127.0.0.1]:8080",
+        "http://[::ffff:8.8.8.8]:8080",
+        "http://[::ffff:10.0.0.1]:3128",
+    ]:
         validate_proxy_endpoint(proxy_url)
     for proxy_url in [
-        "http://[::ffff:10.0.0.1]:3128",
         "http://[::ffff:169.254.169.254]:80",
         "http://[64:ff9b::a00:1]:8080",
     ]:
         with pytest.raises(ValueError):
             validate_proxy_endpoint(proxy_url)
+    set_private_proxy_policy(False)
+    with pytest.raises(ValueError):
+        validate_proxy_endpoint("http://[::ffff:10.0.0.1]:3128")
 
 
 def test_proxy_validation_rejects_tunnel_and_nat64_ipv6() -> None:
@@ -116,7 +140,19 @@ def test_proxy_validation_allows_docker_host_resolving_to_private_gateway(monkey
     assert resolve_proxy_host("host.docker.internal") == "172.17.0.1"
 
 
-def test_proxy_validation_rejects_hostname_resolving_to_private_rfc1918(monkeypatch) -> None:
+def test_proxy_validation_allows_hostname_resolving_to_private_by_default(monkeypatch) -> None:
+    """A hostname resolving to a private LAN address stays usable by default."""
+    monkeypatch.setattr(
+        "hx_email.server.mail.imap.impl.address_guard.socket.getaddrinfo",
+        lambda host, port: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.9", 0))],
+    )
+    assert validate_proxy_host("proxy.internal") == "proxy.internal"
+    assert resolve_proxy_host("proxy.internal") == "10.0.0.9"
+
+
+def test_proxy_validation_rejects_hostname_resolving_to_private_in_strict_mode(monkeypatch) -> None:
+    """Strict mode rejects hostnames resolving into RFC1918 private ranges."""
+    set_private_proxy_policy(False)
     monkeypatch.setattr(
         "hx_email.server.mail.imap.impl.address_guard.socket.getaddrinfo",
         lambda host, port: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.9", 0))],
@@ -144,12 +180,27 @@ def test_resolve_proxy_host_pins_resolved_ip(monkeypatch) -> None:
     assert resolve_proxy_host("proxy.example.com") == "8.8.8.8"
 
 
-def test_resolve_proxy_host_rejects_any_private_resolved_address(monkeypatch) -> None:
+def test_resolve_proxy_host_rejects_any_metadata_resolved_address(monkeypatch) -> None:
+    """Metadata/link-local addresses stay blocked even in the default policy."""
     monkeypatch.setattr(
         "hx_email.server.mail.imap.impl.address_guard.socket.getaddrinfo",
         lambda host, port: [
             (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 0)),
             (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("169.254.169.254", 0)),
+        ],
+    )
+    with pytest.raises(ValueError):
+        resolve_proxy_host("proxy.example.com")
+
+
+def test_resolve_proxy_host_rejects_private_resolved_in_strict_mode(monkeypatch) -> None:
+    """Strict mode rejects hostnames resolving to any private address."""
+    set_private_proxy_policy(False)
+    monkeypatch.setattr(
+        "hx_email.server.mail.imap.impl.address_guard.socket.getaddrinfo",
+        lambda host, port: [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 0)),
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.9", 0)),
         ],
     )
     with pytest.raises(ValueError):
@@ -249,6 +300,32 @@ def test_group_create_rejects_metadata_proxy_and_accepts_local_proxy(tmp_path) -
         headers=headers,
     )
     assert local.status_code == 201
+    lan = client.post(
+        f"{API}/groups",
+        json={"name": "Lan", "proxy_url": "http://192.168.1.50:7890"},
+        headers=headers,
+    )
+    assert lan.status_code == 201
+
+
+def test_group_create_rejects_private_proxy_in_strict_mode(tmp_path) -> None:
+    settings = Settings(
+        data_dir=tmp_path,
+        admin_username="admin",
+        admin_password="admin",
+        allow_private_proxy=False,
+    )
+    migrate(settings)
+    client = TestClient(create_app(settings))
+    headers = login_admin(client, settings)
+
+    rejected = client.post(
+        f"{API}/groups",
+        json={"name": "Lan", "proxy_url": "http://192.168.1.50:7890"},
+        headers=headers,
+    )
+    assert rejected.status_code == 400
+    assert "不允许" in rejected.json()["detail"]
 
 
 def test_http_connect_via_proxy_rejects_metadata_proxy() -> None:

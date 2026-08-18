@@ -7,6 +7,7 @@ from hx_email.api.routes import register_routes
 from hx_email.config import Settings
 from hx_email.database import migrate
 from hx_email.server.mail.graph.fallback_provider import FallbackMailProvider
+from hx_email.server.mail.imap.impl.address_guard import set_private_proxy_policy
 from hx_email.server.mail.impl.fetch.scheduler import MailPollingScheduler
 from hx_email.server.mail.impl.temp_mail import CFWorkerTempMailProvider
 from hx_email.server.mail.temp_mail import TempMailProvider
@@ -93,6 +94,7 @@ def create_app(
     temp_mail_providers: dict[str, TempMailProvider] | None = None,
 ) -> FastAPI:
     resolved_settings: Settings = settings or Settings()
+    set_private_proxy_policy(resolved_settings.allow_private_proxy)
     resolved_mailbox_provider: MailboxProvider = mailbox_provider or FallbackMailProvider(
         resolved_settings
     )

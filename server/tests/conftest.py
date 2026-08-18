@@ -5,6 +5,7 @@ from collections.abc import Callable
 from typing import Any
 
 import pytest
+from hx_email.server.mail.imap.impl.address_guard import set_private_proxy_policy
 
 # Trusted provider-default IMAP hosts are hardcoded application constants.
 # The SSRF guard validates them by resolving DNS at account creation/import
@@ -44,3 +45,15 @@ def stub_provider_mail_dns(monkeypatch: pytest.MonkeyPatch) -> None:
         return real_getaddrinfo(host, port, *args, **kwargs)
 
     monkeypatch.setattr(socket, "getaddrinfo", stub_getaddrinfo)
+
+
+@pytest.fixture(autouse=True)
+def reset_proxy_policy() -> None:
+    """Restore the default (relaxed) SSRF policy after each test.
+
+    Tests that exercise strict mode flip the module-level policy via
+    set_private_proxy_policy / Settings(allow_private_proxy=False); this
+    fixture guarantees no policy leaks into later tests.
+    """
+    yield
+    set_private_proxy_policy(True)
