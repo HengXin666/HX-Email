@@ -15,7 +15,7 @@ RUN uv sync --frozen --no-dev
 # Self-update: docker CLI + compose plugin so the backend can pull images and
 # recreate containers through the mounted host docker socket (docker compose pull && up -d).
 # The release pipeline passes APP_VERSION so version-check reports the real release tag.
-ARG APP_VERSION=0.3.0
+ARG APP_VERSION=0.4.0
 ENV HX_EMAIL_APP_VERSION=${APP_VERSION}
 
 RUN set -eux; \
