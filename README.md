@@ -197,6 +197,8 @@ docker compose -f docker-compose.bridge.yml up -d --build
 
 > ⚠️ 安全提示：挂载 docker socket 等于把宿主机的 Docker 控制权交给容器内进程，仅建议在可信主机上使用。不需要该功能时，在 `.env` 设置 `HX_EMAIL_UPDATE_ENABLED=false` 并删除 compose 文件中对应的两行挂载即可。
 
+> 旧版本部署（或按上条提示删过挂载）的实例：运行中的容器无法动态补挂载 `/var/run/docker.sock` 与 `./:/compose`，需用当前 `docker-compose.yml` 重新部署一次（`docker compose up -d`）才能启用界面一键更新；系统设置页会显示对应的不可用原因。
+
 **方式二：手动更新**
 
 ```bash

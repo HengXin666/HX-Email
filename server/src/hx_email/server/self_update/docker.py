@@ -74,9 +74,16 @@ class DockerRunner:
             return "容器内未安装 docker CLI, 无法自动更新"
         mounts = self._inspect_mounts()
         if mounts is None:
-            return "无法连接宿主机 Docker, 请确认已挂载 /var/run/docker.sock"
+            return (
+                "无法连接宿主机 Docker, 请确认已挂载 /var/run/docker.sock; "
+                "旧部署需用新版 docker-compose 重新部署一次 (docker compose up -d) "
+                "才能启用自动更新"
+            )
         if COMPOSE_DIR not in mounts:
-            return "未检测到 /compose 挂载, 请使用新版 docker-compose 文件重新部署"
+            return (
+                "未检测到 /compose 挂载, 旧部署需用新版 docker-compose 重新部署一次 "
+                "(docker compose up -d) 才能启用自动更新"
+            )
         return ""
 
     def run_update(self, target_version: str) -> UpdateOutcome:
