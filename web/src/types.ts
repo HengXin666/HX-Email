@@ -4,6 +4,7 @@ export type {
   AccountImportResult,
   EmailAccount,
   GoogleOAuthConfig,
+  GoogleOAuthFlowStatus,
   GoogleOAuthPrepareResult,
   TokenConfig,
   TokenExchangeResult,

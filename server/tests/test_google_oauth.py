@@ -189,3 +189,156 @@ def test_google_oauth_rejects_a_different_google_account(tmp_path) -> None:
         "refresh_token": "",
         "imap_password": "old-app-password",
     }
+
+
+def _save_google_config(client: TestClient, headers: dict[str, str]) -> None:
+    client.put(
+        f"{API}/google-oauth/config",
+        json={
+            "client_id": "google-client-id",
+            "client_secret": "google-client-secret",
+            "redirect_uri": "http://localhost:8000/api/v1/google-oauth/callback",
+        },
+        headers=headers,
+    )
+
+
+def test_google_oauth_accountless_prepare_creates_account_on_callback(tmp_path) -> None:
+    settings = Settings(data_dir=tmp_path)
+    migrate(settings)
+    client = TestClient(create_app(settings))
+    headers = login_admin(client, settings)
+    _save_google_config(client, headers)
+
+    prepared = client.post(f"{API}/google-oauth/prepare", headers=headers)
+    assert prepared.status_code == 200
+    params = parse_qs(urlparse(prepared.json()["authorization_url"]).query)
+    assert params["client_id"] == ["google-client-id"]
+    assert "login_hint" not in params
+
+    with (
+        patch(
+            "hx_email.server.mail.google_oauth.impl.flow.exchange_google_code",
+            return_value={"access_token": "access-token", "refresh_token": "refresh-token"},
+        ),
+        patch(
+            "hx_email.server.mail.google_oauth.impl.flow.fetch_google_email",
+            return_value="alexrennie293@gmail.com",
+        ),
+    ):
+        callback = client.get(
+            f"{API}/google-oauth/callback",
+            params={"code": "auth-code", "state": prepared.json()["state"]},
+        )
+
+    assert callback.status_code == 200
+    assert "alexrennie293@gmail.com" in callback.text
+    status = client.get(
+        f"{API}/google-oauth/flow/{prepared.json()['state']}/status", headers=headers
+    ).json()
+    assert status["data"]["status"] == "done"
+    assert status["data"]["email"] == "alexrennie293@gmail.com"
+
+    with connect(settings) as connection:
+        row = connection.execute(
+            "SELECT id, provider, client_id, refresh_token, imap_password, username "
+            "FROM email_accounts WHERE primary_address = ? AND user_id = ?",
+            ("alexrennie293@gmail.com", 1),
+        ).fetchone()
+    assert row is not None
+    assert row["provider"] == "gmail"
+    assert row["client_id"] == "google-client-id"
+    assert row["imap_password"] == ""
+    assert row["username"] == "alexrennie293@gmail.com"
+    assert str(row["refresh_token"]).startswith("enc:v1:")
+    assert decrypt_secret(settings, str(row["refresh_token"])) == "refresh-token"
+    usable = connection.execute(
+        "SELECT address FROM usable_emails WHERE email_account_id = ?",
+        (row["id"],),
+    ).fetchone()
+    assert usable is not None
+    assert usable["address"] == "alexrennie293@gmail.com"
+
+
+def test_google_oauth_accountless_updates_existing_account(tmp_path) -> None:
+    settings = Settings(data_dir=tmp_path)
+    migrate(settings)
+    client = TestClient(create_app(settings))
+    headers = login_admin(client, settings)
+    _save_google_config(client, headers)
+    existing_id = client.post(
+        f"{API}/email-accounts",
+        json={
+            "provider": "gmail",
+            "primary_address": "owner@gmail.com",
+            "display_name": "Owner",
+            "imap_password": "old-app-password",
+        },
+        headers=headers,
+    ).json()["id"]
+
+    prepared = client.post(f"{API}/google-oauth/prepare", headers=headers).json()
+    with (
+        patch(
+            "hx_email.server.mail.google_oauth.impl.flow.exchange_google_code",
+            return_value={"access_token": "access-token", "refresh_token": "refresh-token"},
+        ),
+        patch(
+            "hx_email.server.mail.google_oauth.impl.flow.fetch_google_email",
+            return_value="owner@gmail.com",
+        ),
+    ):
+        callback = client.get(
+            f"{API}/google-oauth/callback",
+            params={"code": "auth-code", "state": prepared["state"]},
+        )
+
+    assert callback.status_code == 200
+    with connect(settings) as connection:
+        row = connection.execute(
+            "SELECT client_id, refresh_token, imap_password, username FROM email_accounts "
+            "WHERE id = ?",
+            (existing_id,),
+        ).fetchone()
+    assert row["client_id"] == "google-client-id"
+    assert row["imap_password"] == ""
+    assert row["username"] == "owner@gmail.com"
+    assert decrypt_secret(settings, str(row["refresh_token"])) == "refresh-token"
+    count = connection.execute("SELECT COUNT(*) FROM email_accounts").fetchone()[0]
+    assert count == 1
+
+
+def test_google_oauth_accountless_applies_group_on_create(tmp_path) -> None:
+    settings = Settings(data_dir=tmp_path)
+    migrate(settings)
+    client = TestClient(create_app(settings))
+    headers = login_admin(client, settings)
+    _save_google_config(client, headers)
+    group_id = client.post(f"{API}/groups", json={"name": "Bulk"}, headers=headers).json()["id"]
+
+    prepared = client.post(
+        f"{API}/google-oauth/prepare?group_id={group_id}", headers=headers
+    ).json()
+    with (
+        patch(
+            "hx_email.server.mail.google_oauth.impl.flow.exchange_google_code",
+            return_value={"access_token": "access-token", "refresh_token": "refresh-token"},
+        ),
+        patch(
+            "hx_email.server.mail.google_oauth.impl.flow.fetch_google_email",
+            return_value="grouped@gmail.com",
+        ),
+    ):
+        callback = client.get(
+            f"{API}/google-oauth/callback",
+            params={"code": "auth-code", "state": prepared["state"]},
+        )
+
+    assert callback.status_code == 200
+    with connect(settings) as connection:
+        row = connection.execute(
+            "SELECT group_id FROM email_accounts WHERE primary_address = ?",
+            ("grouped@gmail.com",),
+        ).fetchone()
+    assert row is not None
+    assert row["group_id"] == group_id

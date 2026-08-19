@@ -80,3 +80,9 @@ export interface GoogleOAuthPrepareResult {
   authorization_url: string;
   state: string;
 }
+
+export interface GoogleOAuthFlowStatus {
+  status: "pending" | "done" | "error" | "missing";
+  email: string;
+  error: string;
+}

@@ -9,7 +9,12 @@ from fastapi import APIRouter, Header, HTTPException, Response
 from hx_email.api.dependencies import require_user
 from hx_email.api.impl.mail.oauth.config_routes import google_oauth_config
 from hx_email.config import Settings
-from hx_email.server.mail.google_oauth import complete_google_oauth, prepare_google_oauth
+from hx_email.server.mail.google_oauth import (
+    complete_google_oauth,
+    google_flow_status,
+    prepare_google_oauth,
+    prepare_google_oauth_accountless,
+)
 from hx_email.server.settings_service import get_setting
 
 
@@ -25,7 +30,7 @@ def google_callback_html(message: str, success: bool) -> str:
         "</head><body style='font-family:sans-serif;background:#0d1117;color:#c9d1d9;"
         "display:grid;place-items:center;min-height:100vh;margin:0'>"
         f"<main><h1 style='color:{color};font-size:20px'>{safe_message}</h1>"
-        "<p>此窗口将自动关闭。</p></main>"
+        "<p>授权已完成, 此窗口可关闭, 请回到应用页面查看结果。</p></main>"
         f"<script>window.opener?.postMessage({payload}, '*');"
         "setTimeout(() => window.close(), 700);</script></body></html>"
     )
@@ -50,6 +55,39 @@ def register_google_authorization_routes(router: APIRouter, settings: Settings) 
             )
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
+
+    @router.post("/google-oauth/prepare")
+    def prepare_accountless_authorization(
+        group_id: int | None = None,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, str]:
+        """Generate a Google authorization link without a pre-typed email.
+
+        The authorized email is discovered from Google's userinfo during the
+        callback, which then creates or updates the matching Gmail account.
+        """
+        user = require_user(settings, authorization)
+        config = google_oauth_config(settings)
+        try:
+            return prepare_google_oauth_accountless(
+                settings,
+                user.id,
+                str(config["client_id"]),
+                get_setting(settings, "google_oauth_client_secret", ""),
+                str(config["redirect_uri"]),
+                group_id=group_id,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+
+    @router.get("/google-oauth/flow/{state}/status")
+    def authorization_flow_status(
+        state: str,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        """Poll the completion status of a Google authorization link."""
+        require_user(settings, authorization)
+        return {"success": True, "data": google_flow_status(state)}
 
     @router.get("/google-oauth/callback")
     def google_oauth_callback(

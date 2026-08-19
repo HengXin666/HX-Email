@@ -32,17 +32,19 @@ export function GoogleTokenGuide() {
           <IconKey size={14} /> Google 一键授权流程
         </h2>
         <div className="space-y-3">
-          <Step number={1} title="创建或选择 Gmail 账号">
-            Token 页面可以选择已有 Gmail，也可以先创建账号记录再继续授权。
+          <Step number={1} title="无需填写邮箱">
+            新增 Gmail 时不用手动输入邮箱：生成授权链接后，在任意浏览器打开并登录对应的 Google
+            账号，系统会从 Google 自动读取邮箱。
           </Step>
           <Step number={2} title="配置 Google Cloud OAuth 客户端">
             按页面向导创建 Web application，保存 Client ID、Secret 和完全一致的回调地址。
           </Step>
-          <Step number={3} title="使用 Google 授权">
-            在弹窗中选择与 Gmail 地址一致的 Google 账号并同意邮件权限。
+          <Step number={3} title="复制链接并授权">
+            授权链接不会被自动打开：复制后在需要授权的浏览器（或当前浏览器的其他标签页）中访问并同意邮件权限。
           </Step>
           <Step number={4} title="自动持久化">
-            回调会校验账号身份，并把 Refresh Token 加密写入账号，无需复制粘贴。
+            回调会校验账号身份，把 Refresh Token 加密写入自动创建（或更新）的 Gmail
+            账号，无需复制粘贴。
           </Step>
         </div>
       </Card>
@@ -52,7 +54,7 @@ export function GoogleTokenGuide() {
         </h2>
         <div className="space-y-3 text-sm leading-relaxed text-gh-text-secondary">
           <p>Google Client Secret 和 Refresh Token 均加密保存，页面不会回显。</p>
-          <p>授权 Google 账号必须与本地 Gmail 地址一致，避免 Token 绑错账号。</p>
+          <p>已有 Gmail 重新授权时，授权账号必须与本地地址一致，避免 Token 绑错账号。</p>
           <p>External + Testing 模式的邮件 Refresh Token 通常会在 7 天后失效。</p>
         </div>
       </Card>
@@ -72,7 +74,8 @@ export function GoogleTokenApiGuide() {
             PUT /google-oauth/config
           </Step>
           <Step number={2} title="生成授权链接">
-            POST /email-accounts/&#123;id&#125;/google-oauth/prepare
+            POST /google-oauth/prepare（新增账号，无需邮箱）或 POST
+            /email-accounts/&#123;id&#125;/google-oauth/prepare（已有账号）
           </Step>
           <Step number={3} title="自动完成回调">
             GET /google-oauth/callback 会校验邮箱并保存 Token
@@ -89,6 +92,12 @@ export function GoogleTokenApiGuide() {
         <CodeBlock>{`POST /api/v1/email-accounts/1/google-oauth/prepare
 
 // 返回 authorization_url；用户授权后 callback 会自动加密保存 refresh_token。`}</CodeBlock>
+        <CodeBlock>{`POST /api/v1/google-oauth/prepare
+// 新增 Gmail：无需传邮箱，授权回调自动创建账号
+// 可选 ?group_id=<id> 指定分组
+
+GET /api/v1/google-oauth/flow/<state>/status
+// 轮询授权完成状态：{"status":"pending|done|error|missing","email":"...","error":"..."}`}</CodeBlock>
       </Card>
     </div>
   );

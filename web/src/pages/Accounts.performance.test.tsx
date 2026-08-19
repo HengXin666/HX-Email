@@ -35,7 +35,9 @@ const fetchEmails = vi.fn();
 const updateEmailAccount = vi.fn();
 const getGoogleOAuthConfig = vi.fn();
 const prepareGoogleOAuth = vi.fn();
+const prepareGoogleOAuthNew = vi.fn();
 const saveGoogleOAuthConfig = vi.fn();
+const getGoogleOAuthFlowStatus = vi.fn();
 const createEmailAccount = vi.fn();
 const listEmailAccounts = vi.fn();
 const streamRefresh = vi.fn();
@@ -76,7 +78,9 @@ vi.mock("../api/client", () => ({
     updateEmailAccount: (...args: unknown[]) => updateEmailAccount(...args),
     getGoogleOAuthConfig: (...args: unknown[]) => getGoogleOAuthConfig(...args),
     prepareGoogleOAuth: (...args: unknown[]) => prepareGoogleOAuth(...args),
+    prepareGoogleOAuthNew: (...args: unknown[]) => prepareGoogleOAuthNew(...args),
     saveGoogleOAuthConfig: (...args: unknown[]) => saveGoogleOAuthConfig(...args),
+    getGoogleOAuthFlowStatus: (...args: unknown[]) => getGoogleOAuthFlowStatus(...args),
     createEmailAccount: (...args: unknown[]) => createEmailAccount(...args),
     listEmailAccounts: (...args: unknown[]) => listEmailAccounts(...args),
     verificationHistory: (...args: unknown[]) => verificationHistory(...args),
@@ -151,6 +155,15 @@ beforeEach(() => {
   prepareGoogleOAuth.mockResolvedValue({
     authorization_url: "https://accounts.google.com/o/oauth2/v2/auth?state=test",
     state: "test",
+  });
+  prepareGoogleOAuthNew.mockResolvedValue({
+    authorization_url: "https://accounts.google.com/o/oauth2/v2/auth?state=new-account",
+    state: "new-account",
+  });
+  getGoogleOAuthFlowStatus.mockResolvedValue({
+    status: "pending",
+    email: "",
+    error: "",
   });
   saveGoogleOAuthConfig.mockResolvedValue({
     client_id: "google-client-id",
@@ -249,22 +262,27 @@ test("settings credential tab uses account detail provider when list cache misse
   expect(screen.queryByDisplayValue("refresh-token-from-detail")).not.toBeInTheDocument();
 });
 
-test("gmail credential tab starts one-click Google authorization", async () => {
-  const openPopup = vi.spyOn(window, "open").mockReturnValue(null);
+test("gmail credential tab generates a copyable authorization link instead of opening a popup", async () => {
+  const openPopup = vi.spyOn(window, "open");
   renderAccounts();
 
   fireEvent.click(screen.getByTitle("设置"));
   fireEvent.click(screen.getByRole("button", { name: "凭证" }));
-  fireEvent.click(await screen.findByRole("button", { name: "使用 Google 授权" }));
+  const generateButton = await screen.findByRole("button", { name: "生成授权链接" });
+  await waitFor(() => expect(generateButton).toBeEnabled());
+  fireEvent.click(generateButton);
 
   await waitFor(() => {
     expect(prepareGoogleOAuth).toHaveBeenCalledWith(3);
   });
-  expect(openPopup).toHaveBeenCalledWith(
-    expect.stringContaining("accounts.google.com"),
-    "hx-google-oauth",
-    expect.any(String),
-  );
+  expect(openPopup).not.toHaveBeenCalled();
+  expect(
+    screen.getByText("https://accounts.google.com/o/oauth2/v2/auth?state=test"),
+  ).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "复制链接" }));
+  await waitFor(() => {
+    expect(document.execCommand).toHaveBeenCalledWith("copy");
+  });
   openPopup.mockRestore();
 });
 
@@ -297,7 +315,7 @@ test("settings can update the primary email address", async () => {
   });
 });
 
-test("adding Gmail defaults to the Google one-click authorization path", async () => {
+test("adding Gmail generates an authorization link without typing an email", async () => {
   renderAccounts();
 
   fireEvent.click(screen.getByTitle("添加邮箱"));
@@ -305,21 +323,27 @@ test("adding Gmail defaults to the Google one-click authorization path", async (
   fireEvent.keyDown(await screen.findByRole("option", { name: "Google Gmail" }), { key: "Enter" });
 
   expect(screen.getByText("Google 一键授权")).toBeInTheDocument();
-  expect(screen.getByRole("textbox", { name: "Gmail 地址" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "创建并继续授权" })).toBeInTheDocument();
+  expect(screen.queryByRole("textbox", { name: "Gmail 地址" })).not.toBeInTheDocument();
   expect(screen.queryByText("凭证信息（每行一个账户）")).not.toBeInTheDocument();
 
-  fireEvent.change(screen.getByRole("textbox", { name: "Gmail 地址" }), {
-    target: { value: "owner@gmail.com" },
-  });
-  fireEvent.click(screen.getByRole("button", { name: "创建并继续授权" }));
+  const generateButton = await screen.findByRole("button", { name: "生成授权链接" });
+  await waitFor(() => expect(generateButton).toBeEnabled());
+  fireEvent.click(generateButton);
   await waitFor(() => {
-    expect(createEmailAccount).toHaveBeenCalledWith({
-      provider: "gmail",
-      primary_address: "owner@gmail.com",
-      display_name: "owner@gmail.com",
-    });
+    expect(prepareGoogleOAuthNew).toHaveBeenCalledWith(null);
   });
+  expect(screen.getByText(/授权链接（请复制/)).toBeInTheDocument();
+
+  getGoogleOAuthFlowStatus.mockResolvedValueOnce({
+    status: "done",
+    email: "owner@gmail.com",
+    error: "",
+  });
+  fireEvent.click(screen.getByRole("button", { name: "我已完成授权" }));
+  await waitFor(() => {
+    expect(refreshEmails).toHaveBeenCalled();
+  });
+  expect(screen.getAllByText(/owner@gmail.com 授权成功/).length).toBeGreaterThan(0);
 });
 
 test("refresh all closes progress and reports the completed SSE summary", async () => {

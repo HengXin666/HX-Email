@@ -1,5 +1,6 @@
 import type {
   GoogleOAuthConfig,
+  GoogleOAuthFlowStatus,
   GoogleOAuthPrepareResult,
   TokenConfig,
   TokenExchangeResult,
@@ -25,6 +26,18 @@ export const tokenApi = {
     request<GoogleOAuthPrepareResult>(`/email-accounts/${accountId}/google-oauth/prepare`, {
       method: "POST",
     }),
+
+  prepareGoogleOAuthNew: (group_id?: number | null) => {
+    const query = group_id ? `?group_id=${encodeURIComponent(group_id)}` : "";
+    return request<GoogleOAuthPrepareResult>(`/google-oauth/prepare${query}`, {
+      method: "POST",
+    });
+  },
+
+  getGoogleOAuthFlowStatus: (state: string) =>
+    request<{ success: boolean; data: GoogleOAuthFlowStatus }>(
+      `/google-oauth/flow/${encodeURIComponent(state)}/status`,
+    ).then((r) => r.data),
 
   getTokenToolConfig: () =>
     request<{ success: boolean; data: TokenConfig }>("/token-tool/config").then((r) => r.data),
