@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { width: 300px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 13px; color: #202124; background: #fff; }
+      .wrap { padding: 14px; }
+      h1 { font-size: 14px; font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+      .sub { color: #5f6368; font-size: 12px; margin-bottom: 12px; line-height: 1.5; }
+      .step { display: flex; align-items: center; gap: 10px; border: 1px solid #dadce0; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; cursor: pointer; background: #fff; transition: background .15s; }
+      .step:hover { background: #f8f9fa; }
+      .step .num { width: 22px; height: 22px; border-radius: 50%; background: #1a73e8; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+      .step .txt { flex: 1; }
+      .step .txt .t { font-weight: 600; }
+      .step .txt .d { color: #5f6368; font-size: 11px; margin-top: 1px; }
+      .step .go { color: #1a73e8; font-size: 14px; }
+      .field { margin-bottom: 8px; }
+      .field label { display: block; font-size: 11px; color: #5f6368; margin-bottom: 3px; }
+      .field input { width: 100%; border: 1px solid #dadce0; border-radius: 8px; padding: 7px 10px; font-size: 12px; outline: none; }
+      .field input:focus { border-color: #1a73e8; }
+      .last { margin-top: 10px; border: 1px dashed #1a73e8; border-radius: 10px; padding: 10px; background: #f0f6ff; }
+      .last .l { font-size: 11px; color: #5f6368; margin-bottom: 4px; }
+      .last .pwd { font-family: Consolas, monospace; font-size: 14px; font-weight: 700; color: #174ea6; word-break: break-all; }
+      .last .line { font-family: Consolas, monospace; font-size: 11px; color: #3c4043; word-break: break-all; margin-top: 4px; }
+      .last .time { font-size: 10px; color: #80868b; margin-top: 4px; }
+      .empty { color: #80868b; font-size: 12px; }
+      .btn { border: 1px solid #1a73e8; background: #1a73e8; color: #fff; border-radius: 8px; padding: 6px 10px; font-size: 12px; cursor: pointer; margin-top: 8px; width: 100%; }
+      .btn:hover { background: #1765cc; }
+      .foot { margin-top: 10px; font-size: 10px; color: #9aa0a6; line-height: 1.6; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>🔑 HX-Email Gmail 助手</h1>
+      <div class="sub">已登录 Google 账号时，一键完成：两步验证 → 生成 16 位应用专用密码 → IMAP 开关。生成后自动复制。</div>
+
+      <div class="step" data-step="twostep">
+        <div class="num">1</div>
+        <div class="txt">
+          <div class="t">两步验证</div>
+          <div class="d">检查 / 开启（Google 密码验证部分需手动）</div>
+        </div>
+        <div class="go">›</div>
+      </div>
+      <div class="step" data-step="generate">
+        <div class="num">2</div>
+        <div class="txt">
+          <div class="t">生成应用专用密码</div>
+          <div class="d">自动填名 → 生成 → 复制导入行</div>
+        </div>
+        <div class="go">›</div>
+      </div>
+      <div class="step" data-step="imap">
+        <div class="num">3</div>
+        <div class="txt">
+          <div class="t">检查 Gmail IMAP 开关</div>
+          <div class="d">关闭时自动开启并保存</div>
+        </div>
+        <div class="go">›</div>
+      </div>
+
+      <div class="field">
+        <label for="baseUrl">HX-Email 地址（生成后「打开 HX-Email」用）</label>
+        <input id="baseUrl" type="text" placeholder="http://localhost:8000" />
+      </div>
+      <div class="field">
+        <label for="appName">应用专用密码名称</label>
+        <input id="appName" type="text" placeholder="HX-Email" />
+      </div>
+
+      <div class="last" id="lastResult">
+        <div class="l">最近一次生成</div>
+        <div class="empty">还没有生成记录。</div>
+      </div>
+      <button class="btn" id="copyLine" style="display:none">复制导入行（邮箱----密码）</button>
+
+      <div class="foot">
+        应用专用密码不会自动过期，除非在 Google 后台撤销；生成前需已开启两步验证。插件不会保存你的密码明文以外的任何敏感信息，密码仅存于本机剪贴板与本地 storage。
+      </div>
+    </div>
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -1,0 +1,42 @@
+{
+  "manifest_version": 3,
+  "name": "HX-Email Gmail 应用专用密码助手",
+  "version": "0.1.0",
+  "description": "一键开启两步验证、生成并复制 Gmail 16 位应用专用密码（App Password）、自动检查 IMAP 开关，供 HX-Email 使用。",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "HX-Email Gmail 应用专用密码助手",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": ["storage", "clipboardWrite"],
+  "host_permissions": [
+    "https://myaccount.google.com/*",
+    "https://accounts.google.com/*",
+    "https://mail.google.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://myaccount.google.com/*",
+        "https://accounts.google.com/*",
+        "https://mail.google.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

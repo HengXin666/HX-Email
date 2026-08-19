@@ -82,6 +82,9 @@ HX-Email 是一款面向「注册与验证」场景的现代化邮箱管理平�
   Google 账号 → 安全 → 两步验证 → 应用专用密码（需先开启两步验证）。粘贴时可带空格
   （如 `abcd efgh ijkl mnop`），系统自动兼容；只要不在 Google 后台撤销，凭证不会像
   OAuth Token 那样过期
+- 一键生成助手：Chrome 扩展（`extension/gmail-app-password/`）与油猴脚本
+  （`tampermonkey/hx-email-gmail-app-password.user.js`）自动完成
+  两步验证 → 生成并复制 16 位应用专用密码 → Gmail IMAP 开关，全程无需手动复制
 - 面向 Google OAuth 品牌验证就绪：公开首页、隐私政策、服务条款页面，后台支持上传 Google 站点验证文件
 
 ### 自动构建与发布
