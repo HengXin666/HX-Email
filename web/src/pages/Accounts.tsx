@@ -2584,15 +2584,30 @@ const AddEmailModal: React.FC<{
         />
 
         {isGmail && (
-          <Select
-            label="Gmail 接入方式"
-            value={gmailMethod}
-            onChange={(value) => setGmailMethod(value as "oauth" | "app-password")}
-            options={[
-              { value: "oauth", label: "Google 一键授权（推荐）" },
-              { value: "app-password", label: "App Password 批量导入" },
-            ]}
-          />
+          <>
+            <Select
+              label="Gmail 接入方式"
+              value={gmailMethod}
+              onChange={(value) => setGmailMethod(value as "oauth" | "app-password")}
+              options={[
+                { value: "oauth", label: "Google 一键授权（OAuth）" },
+                { value: "app-password", label: "应用专用密码（IMAP，免 OAuth 配置）" },
+              ]}
+            />
+            {gmailMethod === "app-password" && (
+              <div className="rounded-md bg-gh-canvas-inset border border-gh-border px-3 py-2.5 text-xs text-gh-text-secondary leading-relaxed space-y-1.5">
+                <p>
+                  应用专用密码（16 位）走 IMAP 直连，不需要配置 Google Cloud OAuth； 只要不在 Google
+                  后台撤销，凭证不会像 OAuth Token 那样自动过期。
+                </p>
+                <p>
+                  生成位置：Google 账号 → 安全 → 两步验证 → 应用专用密码（需先开启两步验证）。
+                  密码显示形如 <code className="font-mono text-gh-text">abcd efgh ijkl mnop</code>
+                  ，粘贴时无需手动去空格，系统会自动兼容。
+                </p>
+              </div>
+            )}
+          </>
         )}
 
         {isGmailOAuth && (
@@ -2634,13 +2649,17 @@ const AddEmailModal: React.FC<{
               placeholder={
                 isOutlook
                   ? "邮箱----密码----client_id----refresh_token"
-                  : "邮箱----IMAP授权码/应用密码"
+                  : isGmail
+                    ? "邮箱----16位应用专用密码（如 abcd efgh ijkl mnop）"
+                    : "邮箱----IMAP授权码/应用密码"
               }
             />
             <p className="text-xs text-gh-text-secondary mt-1.5">
               {isOutlook
                 ? "Outlook 格式：邮箱----密码----client_id----refresh_token"
-                : "格式：邮箱----IMAP授权码/应用密码"}
+                : isGmail
+                  ? "格式：邮箱----16位应用专用密码，每行一个；密码可带空格，系统自动兼容"
+                  : "格式：邮箱----IMAP授权码/应用密码"}
             </p>
           </div>
         )}
@@ -3248,6 +3267,12 @@ const EmailSettingsModal: React.FC<{
                           </button>
                         </div>
                       </div>
+                      {isGmail && (
+                        <p className="text-[11px] text-gh-text-secondary leading-relaxed">
+                          Gmail 应用专用密码为 16 位（如 abcd efgh ijkl mnop），粘贴时可带空格，
+                          无需手动去空格；它不会像 OAuth Token 一样过期。
+                        </p>
+                      )}
                       {isOutlook && (
                         <>
                           <Input

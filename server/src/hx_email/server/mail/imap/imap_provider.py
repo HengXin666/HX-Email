@@ -26,6 +26,7 @@ from hx_email.server.mail.imap.impl.fetch_batch import (
 from hx_email.server.mail.imap.impl.folder_candidates import get_imap_folder_candidates
 from hx_email.server.mail.imap.impl.outlook_fallback import imap_fetch_outlook_fallback
 from hx_email.server.mail.imap.impl.proxy import imap_connect_via_proxy, load_group_proxy
+from hx_email.server.mail.imap.password_rules import normalize_imap_password
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +114,7 @@ class IMAPMailboxProvider:
             and account.provider not in _OUTLOOK_PROVIDERS
         ):
             password = refresh_token
+        password = normalize_imap_password(account.provider, password)
         proxy_url: str = load_group_proxy(self._settings, account.id)
         if proxy_url:
             logger.info(

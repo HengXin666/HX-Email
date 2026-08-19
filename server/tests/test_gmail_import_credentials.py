@@ -253,3 +253,85 @@ def test_gmail_oauth_failure_does_not_return_app_password_hint(tmp_path) -> None
     assert "Google OAuth" in message
     assert "重新授权" in message
     assert "App Password" not in message
+
+
+def test_gmail_import_spaced_app_password_login_normalizes(tmp_path) -> None:
+    settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
+    migrate(settings)
+    client = TestClient(create_app(settings))
+    headers = login_admin(client, settings)
+    imported = client.post(
+        f"{API}/email-accounts/import",
+        json={
+            "provider": "gmail",
+            "text": "llh282000500@gmail.com----abcd efgh ijkl mnop",
+        },
+        headers=headers,
+    )
+    account = client.get(f"{API}/email-accounts", headers=headers).json()["accounts"][0]
+    usable_email_id = account["primary_usable_email"]["id"]
+    fake = FakeIMAP()
+
+    with patch("hx_email.server.mail.imap.imap_provider.imaplib.IMAP4_SSL", return_value=fake):
+        result = client.post(f"{API}/usable-emails/{usable_email_id}/fetch-emails", headers=headers)
+
+    assert imported.status_code == 201
+    assert result.status_code == 200
+    assert fake.login_args == ("llh282000500@gmail.com", "abcdefghijklmnop")
+
+
+def test_gmail_update_spaced_app_password_login_normalizes(tmp_path) -> None:
+    settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
+    migrate(settings)
+    client = TestClient(create_app(settings))
+    headers = login_admin(client, settings)
+    client.post(
+        f"{API}/email-accounts/import",
+        json={
+            "provider": "gmail",
+            "text": "llh282000500@gmail.com----gmail-app-pass",
+        },
+        headers=headers,
+    )
+    account = client.get(f"{API}/email-accounts", headers=headers).json()["accounts"][0]
+    updated = client.put(
+        f"{API}/email-accounts/{account['id']}",
+        json={"password": "abcd efgh ijkl mnop"},
+        headers=headers,
+    )
+    assert updated.status_code == 200
+    fake = FakeIMAP()
+
+    with patch("hx_email.server.mail.imap.imap_provider.imaplib.IMAP4_SSL", return_value=fake):
+        result = client.post(
+            f"{API}/usable-emails/{account['primary_usable_email']['id']}/fetch-emails",
+            headers=headers,
+        )
+
+    assert result.status_code == 200
+    assert fake.login_args == ("llh282000500@gmail.com", "abcdefghijklmnop")
+
+
+def test_non_gmail_fetch_keeps_password_verbatim(tmp_path) -> None:
+    settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
+    migrate(settings)
+    client = TestClient(create_app(settings))
+    headers = login_admin(client, settings)
+    imported = client.post(
+        f"{API}/email-accounts/import",
+        json={
+            "provider": "qq",
+            "text": "user@qq.com----auth code with spaces",
+        },
+        headers=headers,
+    )
+    account = client.get(f"{API}/email-accounts", headers=headers).json()["accounts"][0]
+    usable_email_id = account["primary_usable_email"]["id"]
+    fake = FakeIMAP()
+
+    with patch("hx_email.server.mail.imap.imap_provider.imaplib.IMAP4_SSL", return_value=fake):
+        result = client.post(f"{API}/usable-emails/{usable_email_id}/fetch-emails", headers=headers)
+
+    assert imported.status_code == 201
+    assert result.status_code == 200
+    assert fake.login_args == ("user@qq.com", "auth code with spaces")

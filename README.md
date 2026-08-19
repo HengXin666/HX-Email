@@ -78,6 +78,10 @@ HX-Email 是一款面向「注册与验证」场景的现代化邮箱管理平�
 ### Google 对接
 
 - Gmail 账号接入：OAuth 一键授权或应用专用密码
+- 应用专用密码（16 位）走 IMAP/SMTP 直连，无需 Google Cloud OAuth 配置；生成位置：
+  Google 账号 → 安全 → 两步验证 → 应用专用密码（需先开启两步验证）。粘贴时可带空格
+  （如 `abcd efgh ijkl mnop`），系统自动兼容；只要不在 Google 后台撤销，凭证不会像
+  OAuth Token 那样过期
 - 面向 Google OAuth 品牌验证就绪：公开首页、隐私政策、服务条款页面，后台支持上传 Google 站点验证文件
 
 ### 自动构建与发布
