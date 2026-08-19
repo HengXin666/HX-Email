@@ -1,28 +1,25 @@
 from __future__ import annotations
 
-import contextlib
-import socket
-import time
 from typing import Annotated
 
 from fastapi import APIRouter, Header, HTTPException, Response, status
 from pydantic import BaseModel
 
 from hx_email.api.dependencies import require_user
+from hx_email.api.impl.workspace.proxy import ProxyTestRequest, test_proxy_connect
 from hx_email.api.schemas import GroupCreate, TagCreate, UsableEmailOrganization
 from hx_email.api.serializers import serialize_workbench_email, serialize_workbench_overview
 from hx_email.config import Settings
-from hx_email.server.mail.imap.impl.address_guard import (
-    resolve_proxy_endpoint,
-    validate_proxy_endpoint,
-)
+from hx_email.server.mail.imap.impl.address_guard import validate_proxy_endpoint
 from hx_email.server.workspace.groups import (
     create_group,
     create_tag,
     delete_group,
+    delete_groups,
     export_group_accounts_text,
     list_groups,
     list_tags,
+    reorder_groups,
     update_group,
 )
 from hx_email.server.workspace.overview import get_workbench_overview
@@ -31,74 +28,9 @@ from hx_email.server.workspace.workbench import (
     organize_usable_email,
 )
 
-_TEST_TARGET_HOST: str = "outlook.office365.com"
-_TEST_TARGET_PORT: int = 993
-_TEST_TIMEOUT: int = 10
 
-
-class _ProxyTestRequest(BaseModel):
-    proxy_url: str
-
-
-def _test_proxy_connect(proxy_url: str) -> dict[str, object]:
-    """Test proxy connectivity by sending HTTP CONNECT to a known target."""
-    if not proxy_url:
-        return {"success": False, "latency_ms": 0, "message": "代理地址为空"}
-
-    try:
-        proxy_host, proxy_port = resolve_proxy_endpoint(proxy_url)
-    except ValueError as error:
-        return {"success": False, "latency_ms": 0, "message": str(error)}
-    start: float = time.monotonic()
-
-    try:
-        sock: socket.socket = socket.create_connection(
-            (proxy_host, proxy_port), timeout=_TEST_TIMEOUT
-        )
-    except OSError as exc:
-        latency: float = (time.monotonic() - start) * 1000
-        return {
-            "success": False,
-            "latency_ms": round(latency, 1),
-            "message": f"无法连接到代理服务器 {proxy_host}:{proxy_port} — {exc}",
-        }
-
-    try:
-        connect_cmd: str = (
-            f"CONNECT {_TEST_TARGET_HOST}:{_TEST_TARGET_PORT} HTTP/1.1\r\n"
-            f"Host: {_TEST_TARGET_HOST}:{_TEST_TARGET_PORT}\r\n\r\n"
-        )
-        sock.sendall(connect_cmd.encode())
-        response: bytes = b""
-        while b"\r\n\r\n" not in response:
-            chunk: bytes = sock.recv(4096)
-            if not chunk:
-                break
-            response += chunk
-        status_line: str = response.split(b"\r\n")[0].decode(errors="replace")
-        elapsed: float = (time.monotonic() - start) * 1000
-
-        if "200" in status_line:
-            return {
-                "success": True,
-                "latency_ms": round(elapsed, 1),
-                "message": f"代理连接成功, 延迟 {elapsed:.0f}ms",
-            }
-        return {
-            "success": False,
-            "latency_ms": round(elapsed, 1),
-            "message": f"代理 CONNECT 被拒绝: {status_line}",
-        }
-    except OSError as exc:
-        elapsed_fail: float = (time.monotonic() - start) * 1000
-        return {
-            "success": False,
-            "latency_ms": round(elapsed_fail, 1),
-            "message": f"代理通信失败: {exc}",
-        }
-    finally:
-        with contextlib.suppress(OSError):
-            sock.close()
+class _GroupIdsRequest(BaseModel):
+    group_ids: list[int]
 
 
 def register_workspace_routes(router: APIRouter, settings: Settings) -> None:
@@ -197,6 +129,30 @@ def register_workspace_routes(router: APIRouter, settings: Settings) -> None:
         if not delete_group(settings, user.id, group_id):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
 
+    @router.post("/groups/reorder")
+    def reorder_user_groups(
+        payload: _GroupIdsRequest,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        """Persist a new display order for the current user's groups."""
+        user = require_user(settings, authorization)
+        if not reorder_groups(settings, user.id, payload.group_ids):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="group_ids must contain exactly the user's own group ids",
+            )
+        return {"success": True}
+
+    @router.post("/groups/batch-delete")
+    def delete_user_groups(
+        payload: _GroupIdsRequest,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        """Delete several groups at once (associated emails keep their data)."""
+        user = require_user(settings, authorization)
+        deleted = delete_groups(settings, user.id, payload.group_ids)
+        return {"deleted": deleted}
+
     @router.get("/groups/{group_id}/export")
     def export_group(
         group_id: int,
@@ -213,12 +169,12 @@ def register_workspace_routes(router: APIRouter, settings: Settings) -> None:
 
     @router.post("/groups/proxy-test")
     def test_group_proxy(
-        payload: _ProxyTestRequest,
+        payload: ProxyTestRequest,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
         """Test whether a proxy URL is reachable via HTTP CONNECT."""
         require_user(settings, authorization)
-        return _test_proxy_connect(payload.proxy_url.strip())
+        return test_proxy_connect(payload.proxy_url.strip())
 
     @router.post("/tags", status_code=status.HTTP_201_CREATED)
     def create_user_tag(

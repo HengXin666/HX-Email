@@ -41,6 +41,8 @@ interface AppContextValue extends AppState {
     polling_enabled?: boolean,
   ) => Promise<Group>;
   deleteGroup: (id: number) => Promise<void>;
+  deleteGroups: (ids: number[]) => Promise<void>;
+  reorderGroups: (orderedIds: number[]) => Promise<void>;
   createEmail: (address: string, label?: string, groupId?: number | null) => Promise<UsableEmail>;
   organizeEmail: (
     id: number,
@@ -253,6 +255,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [refreshGroups, refreshEmails],
   );
 
+  const deleteGroups = useCallback(
+    async (ids: number[]) => {
+      await api.deleteGroups(ids);
+      await refreshGroups();
+      await refreshEmails();
+    },
+    [refreshGroups, refreshEmails],
+  );
+
+  const reorderGroups = useCallback(
+    async (orderedIds: number[]) => {
+      await api.reorderGroups(orderedIds);
+      await refreshGroups();
+    },
+    [refreshGroups],
+  );
+
   const createEmail = useCallback(
     async (address: string, label = "", groupId?: number | null) => {
       const e = await api.createUsableEmail(address, label);
@@ -365,6 +384,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         createGroup,
         updateGroup,
         deleteGroup,
+        deleteGroups,
+        reorderGroups,
         createEmail,
         organizeEmail,
         createPlatform,

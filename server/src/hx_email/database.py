@@ -16,7 +16,6 @@ def column_exists(connection: sqlite3.Connection, table: str, column: str) -> bo
     return any(row[1] == column for row in connection.execute(f"PRAGMA table_info({table})"))
 
 
-# Columns added after a table's initial CREATE, applied in order once all tables exist
 COLUMN_MIGRATIONS: tuple[tuple[str, str, str], ...] = (
     ("usable_emails", "email_account_id", "INTEGER REFERENCES email_accounts(id)"),
     ("usable_emails", "kind", "TEXT NOT NULL DEFAULT 'custom'"),
@@ -33,6 +32,7 @@ COLUMN_MIGRATIONS: tuple[tuple[str, str, str], ...] = (
     ("email_accounts", "telegram_enabled", "INTEGER NOT NULL DEFAULT 1"),
     ("groups", "proxy_url", "TEXT NOT NULL DEFAULT ''"),
     ("groups", "notify_enabled", "INTEGER NOT NULL DEFAULT 1"),
+    ("groups", "sort_order", "INTEGER NOT NULL DEFAULT 0"),
     ("fetched_messages", "message_id", "TEXT NOT NULL DEFAULT ''"),
     ("sessions", "expires_at", "TEXT NOT NULL DEFAULT ''"),
 )

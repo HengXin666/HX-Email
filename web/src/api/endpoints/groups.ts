@@ -29,6 +29,18 @@ export const groupsApi = {
 
   deleteGroup: (id: number) => request<void>(`/groups/${id}`, { method: "DELETE" }),
 
+  deleteGroups: (group_ids: number[]) =>
+    request<{ deleted: number }>("/groups/batch-delete", {
+      method: "POST",
+      body: JSON.stringify({ group_ids }),
+    }),
+
+  reorderGroups: (group_ids: number[]) =>
+    request<{ success: boolean }>("/groups/reorder", {
+      method: "POST",
+      body: JSON.stringify({ group_ids }),
+    }),
+
   toggleGroupNotify: (id: number, enabled: boolean) =>
     request<{ id: number; notify_enabled: boolean }>(`/groups/${id}/notify`, {
       method: "PUT",

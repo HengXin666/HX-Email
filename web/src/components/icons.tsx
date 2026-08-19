@@ -315,6 +315,24 @@ export const IconAlertTriangle: React.FC<IconProps> = (p) => (
   </Svg>
 );
 
+export const IconGripVertical: React.FC<IconProps> = (p) => (
+  <Svg {...p}>
+    <circle cx="9" cy="6" r="1" />
+    <circle cx="9" cy="12" r="1" />
+    <circle cx="9" cy="18" r="1" />
+    <circle cx="15" cy="6" r="1" />
+    <circle cx="15" cy="12" r="1" />
+    <circle cx="15" cy="18" r="1" />
+  </Svg>
+);
+
+export const IconCheckSquare: React.FC<IconProps> = (p) => (
+  <Svg {...p}>
+    <polyline points="9 11 12 14 22 4" />
+    <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+  </Svg>
+);
+
 export const IconArchive: React.FC<IconProps> = (p) => (
   <Svg {...p}>
     <polyline points="21 8 21 21 3 21 3 8" />

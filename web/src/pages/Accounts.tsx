@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, Reorder, useDragControls } from "framer-motion";
 import React, { useEffect, useMemo, useState } from "react";
 import { Topbar } from "../components/layout";
 
@@ -14,11 +14,13 @@ import { api, streamRefresh } from "../api/client";
 import {
   IconAlertTriangle,
   IconCheck,
+  IconCheckSquare,
   IconClock,
   IconCode,
   IconCopy,
   IconEdit,
   IconFolderPlus,
+  IconGripVertical,
   IconKey,
   IconLink,
   IconMail,
@@ -42,6 +44,7 @@ import type {
   AccountImportResult,
   EmailAccount,
   EmailMessagesPage,
+  Group,
   SSERefreshEvent,
   StoredEmailMessage,
   Tag,
@@ -110,7 +113,16 @@ const GroupSidebar: React.FC<{
   selectedGroupId: number | null;
   onSelect: (id: number | null) => void;
 }> = ({ selectedGroupId, onSelect }) => {
-  const { groups, emails, createGroup, updateGroup, deleteGroup, user } = useApp();
+  const {
+    groups,
+    emails,
+    createGroup,
+    updateGroup,
+    deleteGroup,
+    deleteGroups,
+    reorderGroups,
+    user,
+  } = useApp();
   const { toast } = useToast();
   const [editingGroup, setEditingGroup] = useState<number | null>(null);
   const [showNew, setShowNew] = useState(false);
@@ -120,6 +132,25 @@ const GroupSidebar: React.FC<{
   const [newPolling, setNewPolling] = useState(true);
   const [newProxy, setNewProxy] = useState("");
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  // 多选删除
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedGroupIds, setSelectedGroupIds] = useState<Set<number>>(new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false);
+  // 拖拽排序: 本地顺序, 拖拽期间不被 context 刷新覆盖;
+  // 仅在顺序真实变化时同步, 避免上游数组引用不稳定时反复 setState
+  const [orderedGroups, setOrderedGroups] = useState<Group[]>(groups);
+  const draggingRef = React.useRef(false);
+
+  useEffect(() => {
+    if (draggingRef.current) return;
+    setOrderedGroups((prev) => {
+      const sameOrder =
+        prev.length === groups.length &&
+        prev.every((g: Group, index: number) => g.id === groups[index]?.id);
+      return sameOrder ? prev : groups;
+    });
+  }, [groups]);
 
   // 创建分组弹窗的默认选项: 管理员从系统设置读取, 普通用户回落为默认勾选/空代理
   const groupDefaultsRef = React.useRef({ notify: true, polling: true, proxy: "" });
@@ -187,18 +218,82 @@ const GroupSidebar: React.FC<{
     }
   };
 
+  // 拖拽排序: 先乐观更新本地顺序, 再持久化; 失败回滚
+  const handleReorder = async (next: Group[]): Promise<void> => {
+    setOrderedGroups(next);
+    draggingRef.current = true;
+    try {
+      await reorderGroups(next.map((g: Group) => g.id));
+    } catch (err: any) {
+      toast(err.message, "error");
+      setOrderedGroups(groups);
+    } finally {
+      draggingRef.current = false;
+    }
+  };
+
+  const toggleSelectGroup = (id: number): void => {
+    setSelectedGroupIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const exitSelectionMode = (): void => {
+    setSelectionMode(false);
+    setSelectedGroupIds(new Set());
+  };
+
+  const confirmBulkDelete = async (): Promise<void> => {
+    const ids = Array.from(selectedGroupIds);
+    if (ids.length === 0) return;
+    setBulkDeleteLoading(true);
+    try {
+      await deleteGroups(ids);
+      toast(`已删除 ${ids.length} 个分组`, "success");
+      if (selectedGroupId !== null && ids.includes(selectedGroupId)) onSelect(null);
+      setSelectedGroupIds(new Set());
+      setBulkDeleteOpen(false);
+    } catch (err: any) {
+      toast(err.message, "error");
+    } finally {
+      setBulkDeleteLoading(false);
+    }
+  };
+
   return (
     <div className="w-44 shrink-0 min-h-0 border-r border-gh-border bg-gh-canvas-subtle/50 flex flex-col overflow-hidden">
       <div className="h-12 px-3 flex items-center justify-between border-b border-gh-border">
         <span className="text-xs font-semibold text-gh-text-muted uppercase tracking-wider">
           分组
         </span>
-        <button
-          onClick={openCreateDialog}
-          className="p-1 rounded-md text-gh-text-muted hover:text-gh-accent hover:bg-gh-accent/10 transition-colors"
-        >
-          <IconFolderPlus size={14} />
-        </button>
+        <div className="flex items-center gap-0.5">
+          <button
+            onClick={() => {
+              setSelectionMode((v) => !v);
+              setSelectedGroupIds(new Set());
+            }}
+            className={`p-1 rounded-md transition-colors ${
+              selectionMode
+                ? "text-gh-accent bg-gh-accent/10"
+                : "text-gh-text-muted hover:text-gh-accent hover:bg-gh-accent/10"
+            }`}
+            title={selectionMode ? "退出多选" : "多选删除"}
+          >
+            <IconCheckSquare size={14} />
+          </button>
+          <button
+            onClick={openCreateDialog}
+            className="p-1 rounded-md text-gh-text-muted hover:text-gh-accent hover:bg-gh-accent/10 transition-colors"
+          >
+            <IconFolderPlus size={14} />
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
@@ -215,18 +310,53 @@ const GroupSidebar: React.FC<{
           <span className="text-xs tabular-nums">{counts.all}</span>
         </button>
 
-        {groups.map((g) => (
-          <GroupItem
-            key={g.id}
-            group={g}
-            count={counts[g.id] || 0}
-            selected={selectedGroupId === g.id}
-            onClick={() => onSelect(g.id)}
-            onEdit={() => setEditingGroup(g.id)}
-            onDelete={() => handleDelete(g.id)}
-          />
-        ))}
+        <Reorder.Group
+          axis="y"
+          values={orderedGroups}
+          onReorder={handleReorder}
+          className="space-y-0.5"
+        >
+          {orderedGroups.map((g) => (
+            <GroupItem
+              key={g.id}
+              group={g}
+              count={counts[g.id] || 0}
+              selected={selectedGroupId === g.id}
+              selectionMode={selectionMode}
+              isSelected={selectedGroupIds.has(g.id)}
+              onClick={() => (selectionMode ? toggleSelectGroup(g.id) : onSelect(g.id))}
+              onToggleSelect={() => toggleSelectGroup(g.id)}
+              onEdit={() => setEditingGroup(g.id)}
+              onDelete={() => handleDelete(g.id)}
+            />
+          ))}
+        </Reorder.Group>
       </div>
+
+      {/* 多选操作栏 */}
+      {selectionMode && (
+        <div className="shrink-0 border-t border-gh-border p-2 space-y-1.5">
+          <div className="text-xs text-gh-text-secondary">
+            已选{" "}
+            <span className="text-gh-accent tabular-nums font-medium">{selectedGroupIds.size}</span>{" "}
+            个分组
+          </div>
+          <div className="flex gap-1.5">
+            <Button
+              variant="danger"
+              size="sm"
+              className="flex-1"
+              disabled={selectedGroupIds.size === 0}
+              onClick={() => setBulkDeleteOpen(true)}
+            >
+              <IconTrash size={12} /> 删除
+            </Button>
+            <Button variant="ghost" size="sm" className="flex-1" onClick={exitSelectionMode}>
+              <IconX size={12} /> 取消
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* 创建分组 */}
       <Modal
@@ -296,62 +426,135 @@ const GroupSidebar: React.FC<{
         onConfirm={confirmDelete}
         onCancel={() => setDeleteConfirmId(null)}
       />
+
+      <ConfirmModal
+        open={bulkDeleteOpen}
+        title="删除分组"
+        message={`确定删除选中的 ${selectedGroupIds.size} 个分组吗？此操作不可撤销。`}
+        confirmLabel="删除"
+        loading={bulkDeleteLoading}
+        onConfirm={confirmBulkDelete}
+        onCancel={() => setBulkDeleteOpen(false)}
+      />
     </div>
   );
 };
 
 const GroupItem: React.FC<{
-  group: any;
+  group: Group;
   count: number;
   selected: boolean;
+  selectionMode: boolean;
+  isSelected: boolean;
   onClick: () => void;
+  onToggleSelect: () => void;
   onEdit: () => void;
   onDelete: () => void;
-}> = ({ group, count, selected, onClick, onEdit, onDelete }) => {
+}> = ({
+  group,
+  count,
+  selected,
+  selectionMode,
+  isSelected,
+  onClick,
+  onToggleSelect,
+  onEdit,
+  onDelete,
+}) => {
+  const dragControls = useDragControls();
   return (
-    <div className="relative group">
-      <button
-        onClick={onClick}
-        className={`w-full flex items-center gap-2.5 px-2.5 py-2 pr-14 rounded-md text-sm transition-colors ${
-          selected
-            ? "bg-gh-accent/10 text-gh-accent"
-            : "text-gh-text-muted hover:text-gh-text hover:bg-gh-border/40"
-        }`}
-      >
-        <div
-          className="w-2.5 h-2.5 rounded-sm shrink-0"
-          style={{
-            background: group.color,
-            boxShadow: selected ? `0 0 6px ${group.color}` : "none",
-          }}
-        />
-        <span className="flex-1 text-left truncate">{group.name}</span>
-        <span className="text-xs tabular-nums opacity-70">{count}</span>
-      </button>
-      {/* 编辑 / 删除 — hover 时直接显示，无需二次点击下拉菜单 */}
-      <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+    <Reorder.Item
+      value={group}
+      dragListener={false}
+      dragControls={dragControls}
+      className="relative"
+    >
+      <div className="group flex items-center gap-0.5">
+        {/* 拖拽手柄 — 仅从此处可拖动排序 */}
         <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onEdit();
-          }}
-          className="p-1 rounded-md text-gh-text-muted hover:text-gh-accent hover:bg-gh-accent/10 transition-colors"
-          title="编辑分组"
+          type="button"
+          onPointerDown={(e) => dragControls.start(e)}
+          className="shrink-0 p-1 rounded text-gh-text-muted/40 hover:text-gh-text cursor-grab active:cursor-grabbing transition-colors"
+          title="拖拽排序"
         >
-          <IconEdit size={13} />
+          <IconGripVertical size={12} />
         </button>
+        {selectionMode && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleSelect();
+            }}
+            className={`shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+              isSelected
+                ? "bg-gh-accent border-gh-accent shadow-[0_0_0_3px_rgba(88,166,255,0.14)]"
+                : "border-gh-border bg-gh-canvas-inset hover:border-gh-text-muted"
+            }`}
+            title={isSelected ? "取消选择" : "选择此分组"}
+            aria-pressed={isSelected}
+          >
+            {isSelected && (
+              <svg
+                width="11"
+                height="11"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="white"
+                strokeWidth="3.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            )}
+          </button>
+        )}
         <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
-          className="p-1 rounded-md text-gh-text-muted hover:text-red-400 hover:bg-red-400/10 transition-colors"
-          title="删除分组"
+          onClick={onClick}
+          className={`flex-1 min-w-0 flex items-center gap-2 px-2 py-2 rounded-md text-sm transition-colors ${
+            selected
+              ? "bg-gh-accent/10 text-gh-accent"
+              : "text-gh-text-muted hover:text-gh-text hover:bg-gh-border/40"
+          }`}
         >
-          <IconTrash size={13} />
+          <div
+            className="w-2.5 h-2.5 rounded-sm shrink-0"
+            style={{
+              background: group.color,
+              boxShadow: selected ? `0 0 6px ${group.color}` : "none",
+            }}
+          />
+          <span className="flex-1 text-left truncate">{group.name}</span>
+          <span className="text-xs tabular-nums opacity-70">{count}</span>
         </button>
+        {/* 编辑 / 删除 — hover 时直接显示，无需二次点击下拉菜单 */}
+        {!selectionMode && (
+          <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit();
+              }}
+              className="p-1 rounded-md text-gh-text-muted hover:text-gh-accent hover:bg-gh-accent/10 transition-colors"
+              title="编辑分组"
+            >
+              <IconEdit size={13} />
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+              className="p-1 rounded-md text-gh-text-muted hover:text-red-400 hover:bg-red-400/10 transition-colors"
+              title="删除分组"
+            >
+              <IconTrash size={13} />
+            </button>
+          </div>
+        )}
       </div>
-    </div>
+    </Reorder.Item>
   );
 };
 

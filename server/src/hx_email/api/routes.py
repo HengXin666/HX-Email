@@ -44,7 +44,7 @@ from hx_email.api.impl.settings.settings_routes import register_settings_routes
 from hx_email.api.impl.settings.settings_test_routes import register_settings_test_routes
 from hx_email.api.impl.settings.update_routes import register_update_routes
 from hx_email.api.impl.temp_mail_routes import register_temp_mail_routes
-from hx_email.api.impl.workspace_routes import register_workspace_routes
+from hx_email.api.impl.workspace.routes import register_workspace_routes
 from hx_email.config import Settings
 from hx_email.server.data_transfer import (
     DataImportConflictError,

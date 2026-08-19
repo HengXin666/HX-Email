@@ -23,6 +23,26 @@ vi.mock("framer-motion", () => ({
       <div {...props}>{children}</div>
     ),
   },
+  Reorder: {
+    Group: ({
+      children,
+      values: _values,
+      onReorder: _onReorder,
+      ...props
+    }: React.HTMLAttributes<HTMLDivElement> & Record<string, unknown>) => (
+      <div {...props}>{children}</div>
+    ),
+    Item: ({
+      children,
+      value: _value,
+      dragListener: _dragListener,
+      dragControls: _dragControls,
+      ...props
+    }: React.HTMLAttributes<HTMLLIElement> & Record<string, unknown>) => (
+      <li {...props}>{children}</li>
+    ),
+  },
+  useDragControls: () => ({ start: vi.fn() }),
 }));
 
 const listPoolEntries = vi.fn();
@@ -98,7 +118,9 @@ vi.mock("../store/AppContext", () => ({
     addAlias: vi.fn(),
     createGroup: vi.fn(),
     deleteGroup: vi.fn(),
+    deleteGroups: vi.fn(),
     organizeEmail: vi.fn(),
+    reorderGroups: vi.fn(),
     refreshAccounts,
     refreshEmails,
     updateGroup: vi.fn(),

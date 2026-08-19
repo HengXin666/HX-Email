@@ -6,7 +6,13 @@ from hx_email.config import Settings
 from hx_email.database import migrate
 from hx_email.server.data_transfer import import_core_data
 from hx_email.server.settings_service import set_setting
-from hx_email.server.workspace.groups import create_group, update_group
+from hx_email.server.workspace.groups import (
+    create_group,
+    delete_groups,
+    list_groups,
+    reorder_groups,
+    update_group,
+)
 
 
 def _settings(tmp_path: Path) -> Settings:
@@ -160,3 +166,48 @@ def test_import_groups_accepts_string_booleans_from_api(tmp_path: Path) -> None:
     group = imported["groups"][0]
     assert group["notify_enabled"] == 0
     assert group["polling_enabled"] == 0
+
+
+def test_list_groups_orders_by_creation_then_reorder(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    first = create_group(settings, 1, "甲", "#58a6ff")
+    second = create_group(settings, 1, "乙", "#3fb950")
+    third = create_group(settings, 1, "丙", "#a371f7")
+    assert [g.id for g in list_groups(settings, 1)] == [first.id, second.id, third.id]
+    assert [g.sort_order for g in list_groups(settings, 1)] == [0, 1, 2]
+
+    assert reorder_groups(settings, 1, [third.id, first.id, second.id]) is True
+    assert [g.id for g in list_groups(settings, 1)] == [third.id, first.id, second.id]
+    assert [g.sort_order for g in list_groups(settings, 1)] == [0, 1, 2]
+
+
+def test_reorder_groups_rejects_foreign_duplicate_or_incomplete_ids(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    first = create_group(settings, 1, "甲", "#58a6ff")
+    second = create_group(settings, 1, "乙", "#3fb950")
+    assert reorder_groups(settings, 1, [first.id, 999]) is False
+    assert reorder_groups(settings, 1, [first.id, first.id]) is False
+    assert reorder_groups(settings, 1, [first.id]) is False
+    assert reorder_groups(settings, 1, [second.id, first.id, 3]) is False
+    assert [g.id for g in list_groups(settings, 1)] == [first.id, second.id]
+
+
+def test_delete_groups_removes_only_selected(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    first = create_group(settings, 1, "甲", "#58a6ff")
+    second = create_group(settings, 1, "乙", "#3fb950")
+    third = create_group(settings, 1, "丙", "#a371f7")
+    assert delete_groups(settings, 1, [first.id, third.id]) == 2
+    assert [g.id for g in list_groups(settings, 1)] == [second.id]
+    assert delete_groups(settings, 1, [first.id]) == 0
+    assert delete_groups(settings, 1, []) == 0
+    assert delete_groups(settings, 1, [first.id, first.id]) == 0
+
+
+def test_delete_groups_is_scoped_to_owner(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    mine = create_group(settings, 1, "我的", "#58a6ff")
+    theirs = create_group(settings, 2, "别人的", "#3fb950")
+    assert delete_groups(settings, 1, [mine.id, theirs.id]) == 1
+    assert [g.id for g in list_groups(settings, 1)] == []
+    assert [g.id for g in list_groups(settings, 2)] == [theirs.id]

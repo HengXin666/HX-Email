@@ -263,7 +263,7 @@ def test_proxy_test_endpoint_connects_to_public_proxy(tmp_path) -> None:
     headers = login_admin(client, settings)
 
     with patch(
-        "hx_email.api.impl.workspace_routes.socket.create_connection",
+        "hx_email.api.impl.workspace.proxy.socket.create_connection",
         return_value=FakeProxySocket(),
     ) as create_connection:
         response = client.post(

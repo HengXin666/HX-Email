@@ -16,6 +16,7 @@ class Group:
     proxy_url: str = ""
     notify_enabled: bool = True
     polling_enabled: bool = True
+    sort_order: int = 0
 
 
 @dataclass(frozen=True)
@@ -41,12 +42,22 @@ def create_group(
     if polling_enabled is None:
         polling_enabled = get_setting(settings, "group_default_polling_enabled", "true") == "true"
     with connect(settings) as connection:
+        next_order: int = next_sort_order(connection, user_id)
         cursor = connection.execute(
             """
-            INSERT INTO groups (user_id, name, color, proxy_url, notify_enabled, polling_enabled)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO groups
+                (user_id, name, color, proxy_url, notify_enabled, polling_enabled, sort_order)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (user_id, name, color, proxy_url, int(notify_enabled), int(polling_enabled)),
+            (
+                user_id,
+                name,
+                color,
+                proxy_url,
+                int(notify_enabled),
+                int(polling_enabled),
+                next_order,
+            ),
         )
     return Group(
         id=require_inserted_id(cursor.lastrowid),
@@ -55,6 +66,7 @@ def create_group(
         proxy_url=proxy_url,
         notify_enabled=notify_enabled,
         polling_enabled=polling_enabled,
+        sort_order=next_order,
     )
 
 
@@ -82,6 +94,15 @@ def coerce_bool(value: object, default: bool) -> bool:
     return default
 
 
+def next_sort_order(connection: Connection, user_id: int) -> int:
+    """Return the sort_order to append a new group at the end of the user's list."""
+    row = connection.execute(
+        "SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order FROM groups WHERE user_id = ?",
+        (user_id,),
+    ).fetchone()
+    return int(row["next_order"])
+
+
 def import_groups(
     settings: Settings, connection: Connection, user_id: int, payload: dict[str, Any]
 ) -> dict[int, int]:
@@ -92,8 +113,8 @@ def import_groups(
     ids: dict[int, int] = {}
     for group in payload.get("groups", []):
         cursor = connection.execute(
-            "INSERT INTO groups (user_id, name, color, proxy_url, notify_enabled, polling_enabled)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO groups (user_id, name, color, proxy_url, notify_enabled, polling_enabled,"
+            " sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 user_id,
                 group["name"],
@@ -101,6 +122,7 @@ def import_groups(
                 group.get("proxy_url") or default_proxy_url,
                 int(coerce_bool(group.get("notify_enabled"), default_notify)),
                 int(coerce_bool(group.get("polling_enabled"), default_polling)),
+                next_sort_order(connection, user_id),
             ),
         )
         ids[int(group["id"])] = require_inserted_id(cursor.lastrowid)
@@ -110,8 +132,8 @@ def import_groups(
 def list_groups(settings: Settings, user_id: int) -> list[Group]:
     with connect(settings) as connection:
         rows = connection.execute(
-            "SELECT id, name, color, proxy_url, notify_enabled, polling_enabled FROM groups"
-            " WHERE user_id = ? ORDER BY id",
+            "SELECT id, name, color, proxy_url, notify_enabled, polling_enabled, sort_order"
+            " FROM groups WHERE user_id = ? ORDER BY sort_order, id",
             (user_id,),
         ).fetchall()
     return [
@@ -122,6 +144,7 @@ def list_groups(settings: Settings, user_id: int) -> list[Group]:
             proxy_url=row["proxy_url"] or "",
             notify_enabled=bool(row["notify_enabled"]),
             polling_enabled=bool(row["polling_enabled"]),
+            sort_order=int(row["sort_order"]),
         )
         for row in rows
     ]
@@ -145,7 +168,7 @@ def update_group(
                 notify_enabled = COALESCE(?, notify_enabled),
                 polling_enabled = COALESCE(?, polling_enabled)
             WHERE id = ? AND user_id = ?
-            RETURNING id, name, color, proxy_url, notify_enabled, polling_enabled
+            RETURNING id, name, color, proxy_url, notify_enabled, polling_enabled, sort_order
             """,
             (
                 name,
@@ -166,7 +189,42 @@ def update_group(
         proxy_url=row["proxy_url"] or "",
         notify_enabled=bool(row["notify_enabled"]),
         polling_enabled=bool(row["polling_enabled"]),
+        sort_order=int(row["sort_order"]),
     )
+
+
+def reorder_groups(settings: Settings, user_id: int, ordered_ids: list[int]) -> bool:
+    """Persist a new display order for the user's groups.
+
+    The request must contain exactly the user's own group ids (no duplicates,
+    no foreign ids), otherwise nothing is written and False is returned.
+    """
+    with connect(settings) as connection:
+        owned_rows = connection.execute(
+            "SELECT id FROM groups WHERE user_id = ?", (user_id,)
+        ).fetchall()
+        owned_ids: set[int] = {int(row["id"]) for row in owned_rows}
+        if len(owned_ids) != len(ordered_ids) or set(ordered_ids) != owned_ids:
+            return False
+        connection.executemany(
+            "UPDATE groups SET sort_order = ? WHERE id = ? AND user_id = ?",
+            [(index, group_id, user_id) for index, group_id in enumerate(ordered_ids)],
+        )
+    return True
+
+
+def delete_groups(settings: Settings, user_id: int, group_ids: list[int]) -> int:
+    """Delete several groups at once; returns the number of rows removed."""
+    unique_ids: list[int] = list(dict.fromkeys(group_ids))
+    if not unique_ids:
+        return 0
+    placeholders: str = ",".join("?" for _ in unique_ids)
+    with connect(settings) as connection:
+        result = connection.execute(
+            f"DELETE FROM groups WHERE user_id = ? AND id IN ({placeholders})",
+            (user_id, *unique_ids),
+        )
+    return int(result.rowcount)
 
 
 def delete_group(settings: Settings, user_id: int, group_id: int) -> bool:
