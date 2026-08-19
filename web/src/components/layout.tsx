@@ -49,9 +49,14 @@ export const Sidebar: React.FC = () => {
     <aside className="sticky top-0 flex h-screen w-16 shrink-0 flex-col border-r border-gh-border bg-gh-canvas-subtle/60 backdrop-blur-xl transition-all duration-200 md:w-[180px]">
       {/* Logo */}
       <div className="flex h-14 items-center justify-center gap-3 border-b border-gh-border px-3 md:justify-start md:px-5">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-gh-accent to-gh-purple shadow-lg shadow-gh-accent/20">
-          <IconInbox size={16} className="text-white" />
-        </div>
+        <img
+          src="/icon-512.png"
+          alt="HX-Email"
+          width="36"
+          height="36"
+          draggable={false}
+          className="h-9 w-9 shrink-0 rounded-lg object-contain shadow-lg shadow-gh-accent/20"
+        />
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
