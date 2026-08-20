@@ -9,7 +9,7 @@ interface PlatformCreateModalProps {
   open: boolean;
   existingPlatforms: Platform[];
   onClose: () => void;
-  onCreate: (name: string) => Promise<void>;
+  onCreate: (names: string[]) => Promise<void>;
 }
 
 export const PlatformCreateModal: React.FC<PlatformCreateModalProps> = ({
@@ -20,7 +20,7 @@ export const PlatformCreateModal: React.FC<PlatformCreateModalProps> = ({
 }) => {
   const { toast } = useToast();
   const [platformName, setPlatformName] = useState("");
-  const [selectedPresetKey, setSelectedPresetKey] = useState<string | null>(null);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [isSaving, setIsSaving] = useState(false);
   const trimmedName = platformName.trim();
 
@@ -29,25 +29,30 @@ export const PlatformCreateModal: React.FC<PlatformCreateModalProps> = ({
     [existingPlatforms],
   );
   const isDuplicate = trimmedName.length > 0 && existingNames.has(trimmedName);
-  const canCreate = trimmedName.length > 0 && !isDuplicate && !isSaving;
+  const selectedPresets = PRESET_PLATFORMS.filter((preset) => selectedKeys.has(preset.key));
+  const customNames = trimmedName && !isDuplicate ? [trimmedName] : [];
+  const createNames = [...new Set([...selectedPresets.map((p) => p.name), ...customNames])];
+  const canCreate = createNames.length > 0 && !isSaving;
 
   useEffect(() => {
     if (!open) {
       setPlatformName("");
-      setSelectedPresetKey(null);
+      setSelectedKeys(new Set());
       setIsSaving(false);
     }
   }, [open]);
 
-  const handlePresetSelect = (preset: (typeof PRESET_PLATFORMS)[number]): void => {
+  const togglePreset = (preset: (typeof PRESET_PLATFORMS)[number]): void => {
     if (existingNames.has(preset.name)) return;
-    setSelectedPresetKey(preset.key);
-    setPlatformName(preset.name);
-  };
-
-  const handleNameChange = (event: React.ChangeEvent<HTMLInputElement>): void => {
-    setPlatformName(event.target.value);
-    setSelectedPresetKey(null);
+    setSelectedKeys((previous) => {
+      const next = new Set(previous);
+      if (next.has(preset.key)) {
+        next.delete(preset.key);
+      } else {
+        next.add(preset.key);
+      }
+      return next;
+    });
   };
 
   const handleCreate = async (): Promise<void> => {
@@ -55,13 +60,13 @@ export const PlatformCreateModal: React.FC<PlatformCreateModalProps> = ({
 
     setIsSaving(true);
     try {
-      await onCreate(trimmedName);
-      toast("平台已创建", "success");
+      await onCreate(createNames);
+      toast(`已创建 ${createNames.length} 个平台`, "success");
       setPlatformName("");
-      setSelectedPresetKey(null);
+      setSelectedKeys(new Set());
       onClose();
     } catch (error: unknown) {
-      toast(getErrorMessage(error), "error");
+      toast(error instanceof Error ? error.message : "平台创建失败", "error");
     } finally {
       setIsSaving(false);
     }
@@ -83,18 +88,28 @@ export const PlatformCreateModal: React.FC<PlatformCreateModalProps> = ({
           <Button variant="ghost" onClick={handleClose} disabled={isSaving}>
             取消
           </Button>
-          <Button variant="primary" onClick={handleCreate} disabled={!canCreate} loading={isSaving}>
-            创建
+          <Button
+            variant="primary"
+            onClick={() => void handleCreate()}
+            disabled={!canCreate}
+            loading={isSaving}
+          >
+            创建{createNames.length > 1 ? ` (${createNames.length})` : ""}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
         <div>
-          <div className="text-xs font-medium text-gh-text-muted mb-2">预选平台</div>
+          <div className="text-xs font-medium text-gh-text-muted mb-2">
+            预选平台（可多选）
+            {selectedPresets.length > 0 && (
+              <span className="ml-1.5 text-gh-accent">已选 {selectedPresets.length} 个</span>
+            )}
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {PRESET_PLATFORMS.map((preset) => {
-              const isSelected = selectedPresetKey === preset.key;
+              const isSelected = selectedKeys.has(preset.key);
               const isAdded = existingNames.has(preset.name);
 
               return (
@@ -103,13 +118,30 @@ export const PlatformCreateModal: React.FC<PlatformCreateModalProps> = ({
                   type="button"
                   aria-pressed={isSelected}
                   disabled={isAdded}
-                  onClick={() => handlePresetSelect(preset)}
+                  onClick={() => togglePreset(preset)}
                   className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all ${
                     isSelected
                       ? "border-gh-accent bg-gh-accent/10"
                       : "border-gh-border bg-gh-canvas-inset hover:border-gh-text-muted hover:bg-gh-border/20"
                   } disabled:cursor-not-allowed disabled:opacity-60`}
                 >
+                  <span
+                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                      isSelected ? "border-gh-accent bg-gh-accent" : "border-gh-text-muted"
+                    }`}
+                  >
+                    {isSelected && (
+                      <svg viewBox="0 0 12 12" className="h-2.5 w-2.5 text-white" fill="none">
+                        <path
+                          d="M2 6.5 4.8 9 10 3.5"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    )}
+                  </span>
                   <PlatformLogo name={preset.name} size="sm" />
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium text-gh-text truncate">{preset.name}</div>
@@ -126,10 +158,10 @@ export const PlatformCreateModal: React.FC<PlatformCreateModalProps> = ({
 
         <div>
           <Input
-            label="平台名称"
+            label="自定义平台名称"
             value={platformName}
-            onChange={handleNameChange}
-            placeholder="例如：OpenAI"
+            onChange={(event) => setPlatformName(event.target.value)}
+            placeholder="例如：OpenAI（可与上方多选同时创建）"
             autoFocus
           />
           {isDuplicate && <div className="mt-1.5 text-xs text-gh-danger">同名平台已存在</div>}
@@ -138,8 +170,3 @@ export const PlatformCreateModal: React.FC<PlatformCreateModalProps> = ({
     </Modal>
   );
 };
-
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return "平台创建失败";
-}

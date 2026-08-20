@@ -98,8 +98,10 @@ export const Platforms: React.FC = () => {
     return counts;
   }, [bindingsByPlatform, platforms]);
 
-  const handleCreate = async (name: string): Promise<void> => {
-    await createPlatform(name);
+  const handleCreate = async (names: string[]): Promise<void> => {
+    for (const name of names) {
+      await createPlatform(name);
+    }
   };
 
   const handleUpdate = async (): Promise<void> => {

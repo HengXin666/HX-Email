@@ -8,8 +8,9 @@ patterns 支持一个平台对应多个域名/关键词 (contains 可动态覆�
 from __future__ import annotations
 
 DEFAULT_PLATFORM_RULES: tuple[tuple[str, str, str, tuple[str, ...], str], ...] = (
-    ("OpenAI", "domain", "contains", ("openai.com",), "OpenAI"),
-    ("ChatGPT", "domain", "contains", ("chatgpt.com",), "ChatGPT"),
+    # OpenAI 家族统一识别到 OpenAI: chatgpt.com / codex.chatgpt.com 与
+    # *.openai.com 同属一家, 不再拆分 ChatGPT 独立平台
+    ("OpenAI", "domain", "contains", ("openai.com", "chatgpt.com"), "OpenAI"),
     ("Anthropic", "domain", "contains", ("anthropic.com", "claude.ai"), "Anthropic"),
     ("DeepSeek", "domain", "contains", ("deepseek.com", "deepseek.cn"), "DeepSeek"),
     ("Google", "domain", "contains", ("google", "youtube.com"), "Google"),
