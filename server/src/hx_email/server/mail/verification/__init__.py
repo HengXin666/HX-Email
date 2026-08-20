@@ -251,4 +251,7 @@ def coerce_message(message: MailboxMessage | dict[str, object]) -> MailboxMessag
         recipient_address=rcp if isinstance(rcp, str) else None,
         subject=str(message.get("subject", "")),
         body=str(message.get("body", "")),
+        from_address=str(message.get("from_address", "")),
+        from_email=str(message.get("from_email", "")),
+        body_html=str(message.get("body_html", "")),
     )

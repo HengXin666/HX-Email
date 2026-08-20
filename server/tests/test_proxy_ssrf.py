@@ -14,6 +14,7 @@ from hx_email.config import Settings
 from hx_email.database import migrate
 from hx_email.server.mail.imap.impl.address_guard import (
     resolve_proxy_host,
+    resolve_public_host,
     set_private_proxy_policy,
     validate_proxy_endpoint,
     validate_proxy_host,
@@ -72,6 +73,52 @@ def test_proxy_validation_rejects_metadata_and_reserved_addresses() -> None:
     ]:
         with pytest.raises(ValueError):
             validate_proxy_endpoint(proxy_url)
+
+
+def test_proxy_validation_allows_fake_ip_range_by_default() -> None:
+    """Clash/mihomo fake-ip pool (RFC 2544 198.18.0.0/15) is usable by default."""
+    for proxy_url in [
+        "http://198.18.0.44:7890",
+        "http://198.18.1.1:3128",
+        "http://[::ffff:198.18.0.44]:3128",
+    ]:
+        validate_proxy_endpoint(proxy_url)
+
+
+def test_proxy_validation_rejects_fake_ip_range_in_strict_mode() -> None:
+    set_private_proxy_policy(False)
+    with pytest.raises(ValueError):
+        validate_proxy_endpoint("http://198.18.0.44:7890")
+
+
+def test_proxy_validation_allows_hostname_resolving_to_fake_ip_by_default(monkeypatch) -> None:
+    """A hostname resolving into the fake-ip pool stays usable by default."""
+    monkeypatch.setattr(
+        "hx_email.server.mail.imap.impl.address_guard.socket.getaddrinfo",
+        lambda host, port: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("198.18.0.44", 0))],
+    )
+    assert validate_proxy_host("proxy.internal") == "proxy.internal"
+    assert resolve_proxy_host("proxy.internal") == "198.18.0.44"
+
+
+def test_proxy_validation_rejects_hostname_resolving_to_fake_ip_in_strict_mode(monkeypatch) -> None:
+    set_private_proxy_policy(False)
+    monkeypatch.setattr(
+        "hx_email.server.mail.imap.impl.address_guard.socket.getaddrinfo",
+        lambda host, port: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("198.18.0.44", 0))],
+    )
+    with pytest.raises(ValueError):
+        validate_proxy_host("proxy.internal")
+
+
+def test_public_resolution_still_rejects_fake_ip_range(monkeypatch) -> None:
+    """Plugin outbound probes keep the public-only whitelist (fake-ip still rejected)."""
+    monkeypatch.setattr(
+        "hx_email.server.mail.imap.impl.address_guard.socket.getaddrinfo",
+        lambda host, port: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("198.18.0.44", 0))],
+    )
+    with pytest.raises(ValueError):
+        resolve_public_host("api.example.com")
 
 
 def test_proxy_validation_allows_public_addresses() -> None:

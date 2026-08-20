@@ -2,8 +2,10 @@
 
 Default policy (self-hosted): loopback (``127.0.0.0/8``, ``::1``), RFC1918/ULA
 private ranges (``10.0.0.0/8``, ``172.16.0.0/12``, ``192.168.0.0/16``,
-``fc00::/7``) and public addresses are all accepted for proxy/IMAP targets.
-Only the dangerous reserved segments stay blocked: cloud metadata
+``fc00::/7``), the Clash/mihomo fake-ip pool (``198.18.0.0/15``, RFC 2544
+benchmarking — OpenClash/soft-router fake-ip DNS answers every domain with an
+address from this range) and public addresses are all accepted for proxy/IMAP
+targets. Only the dangerous reserved segments stay blocked: cloud metadata
 (``169.254.169.254``), unspecified (``0.0.0.0/8``, ``::/128``), link-local
 (``169.254.0.0/16``, ``fe80::/10``), multicast/broadcast, TEST-NET, NAT64/
 6to4/Teredo, documentation ranges, etc. This matches the documented deployment:
@@ -14,7 +16,8 @@ Strict mode (``HX_EMAIL_ALLOW_PRIVATE_PROXY=false``, for multi-tenant /
 Internet-exposed deployments) narrows proxy/IMAP targets to a whitelist:
 loopback, the Docker gateway hostnames (``host.docker.internal`` /
 ``gateway.docker.internal``), and public addresses; RFC1918/ULA private ranges
-are then blocked so a logged-in user cannot probe arbitrary internal host:port.
+and the fake-ip pool are then blocked so a logged-in user cannot probe
+arbitrary internal host:port.
 
 Server-side outbound probes (plugin ``api_base_url``) always use the stricter
 ``resolve_public_host``, which only allows public addresses. Hostnames are
@@ -39,13 +42,19 @@ PRIVATE_IPV4_NETWORKS: tuple[ipaddress.IPv4Network, ...] = (
 
 PRIVATE_IPV6_NETWORKS: tuple[ipaddress.IPv6Network, ...] = (ipaddress.IPv6Network("fc00::/7"),)
 
+# RFC 2544 benchmarking range: Clash/mihomo fake-ip 池 (默认 198.18.0.1/16)。
+# OpenClash/软路由 fake-ip DNS 会把任意域名解析进该段, 自托管代理场景常见;
+# 与 RFC1918 同理按策略放行 (默认允许, 严格模式拦截)。
+BENCHMARK_IPV4_NETWORKS: tuple[ipaddress.IPv4Network, ...] = (
+    ipaddress.IPv4Network("198.18.0.0/15"),
+)
+
 BLOCKED_IPV4_NETWORKS: tuple[ipaddress.IPv4Network, ...] = (
     ipaddress.IPv4Network("0.0.0.0/8"),
     ipaddress.IPv4Network("100.64.0.0/10"),
     ipaddress.IPv4Network("169.254.0.0/16"),
     ipaddress.IPv4Network("192.0.0.0/24"),
     ipaddress.IPv4Network("192.0.2.0/24"),
-    ipaddress.IPv4Network("198.18.0.0/15"),
     ipaddress.IPv4Network("198.51.100.0/24"),
     ipaddress.IPv4Network("203.0.113.0/24"),
     ipaddress.IPv4Network("224.0.0.0/4"),
@@ -93,6 +102,15 @@ def _is_private(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     return any(ip in network for network in PRIVATE_IPV6_NETWORKS)
 
 
+def _is_benchmark(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """Clash/mihomo fake-ip pool (RFC 2544 benchmarking range)."""
+    if isinstance(ip, ipaddress.IPv4Address):
+        return any(ip in network for network in BENCHMARK_IPV4_NETWORKS)
+    if ip.ipv4_mapped is not None:
+        return any(ip.ipv4_mapped in network for network in BENCHMARK_IPV4_NETWORKS)
+    return False
+
+
 def _is_hard_blocked(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     """Metadata/link-local/multicast/broadcast/reserved/documentation ranges."""
     if isinstance(ip, ipaddress.IPv4Address):
@@ -105,17 +123,22 @@ def _is_hard_blocked(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
 
 
 def _is_blocked(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
-    """Proxy-guard check: loopback is always allowed; private ranges follow policy."""
+    """Proxy-guard check: loopback is always allowed; private/fake-ip ranges follow policy."""
     if _is_loopback(ip):
         return False
-    if _is_private(ip):
+    if _is_private(ip) or _is_benchmark(ip):
         return not _ALLOW_PRIVATE_PROXY
     return _is_hard_blocked(ip)
 
 
 def _is_public(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
-    """Public-only check: loopback and private ranges are rejected too."""
-    return not _is_loopback(ip) and not _is_private(ip) and not _is_hard_blocked(ip)
+    """Public-only check: loopback, private and fake-ip ranges are rejected too."""
+    return (
+        not _is_loopback(ip)
+        and not _is_private(ip)
+        and not _is_benchmark(ip)
+        and not _is_hard_blocked(ip)
+    )
 
 
 def _normalize_host(host: str) -> str:

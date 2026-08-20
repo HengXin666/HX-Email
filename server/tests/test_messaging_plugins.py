@@ -532,9 +532,167 @@ def test_engine_start_raises_when_container_fails(
             return R(1, stderr="docker run failed")
         return R(0)
 
+    monkeypatch.setattr(QQEngineManager, "_ensure_docker_ready", lambda self: None)
     monkeypatch.setattr(QQEngineManager, "_docker", fake_docker)
 
     with pytest.raises(RuntimeError, match="NapCat 容器启动失败"):
+        manager.start()
+
+
+def test_engine_pull_falls_back_to_mirror_and_tags(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    """官方源 pull 失败时回退镜像源, 并 tag 回官方名后再启动容器。"""
+    from hx_email.server.messaging import engine as engine_module
+    from hx_email.server.messaging.engine import QR_FILE_NAME, QQEngineManager
+
+    settings = make_settings(tmp_path)
+    manager = QQEngineManager(settings, instance_id=18)
+
+    class R:
+        def __init__(self, returncode: int = 0, stdout: str = "", stderr: str = "") -> None:
+            self.returncode: int = returncode
+            self.stdout: str = stdout
+            self.stderr: str = stderr
+
+    pulled: list[list[str]] = []
+    tagged: list[list[str]] = []
+
+    def fake_pull(self: QQEngineManager, *args: str) -> R:
+        pulled.append(list(args))
+        image: str = args[1]
+        # 官方源失败, 镜像源成功
+        return R(0) if image.startswith(("docker.m.daocloud.io/", "docker.1ms.run/")) else R(1)
+
+    def fake_docker(self: QQEngineManager, *args: str) -> R:
+        cmd: list[str] = list(args)
+        if cmd[:2] == ["image", "inspect"]:
+            return R(1)  # 镜像不存在 → 触发拉取
+        if cmd[0] == "tag":
+            tagged.append(list(args))
+            return R(0)
+        if cmd[0] == "run":
+            (manager._dir / "cache").mkdir(parents=True, exist_ok=True)
+            (manager._dir / "cache" / QR_FILE_NAME).write_bytes(b"QR")
+            return R(0)
+        if cmd[:2] == ["inspect", "-f"]:
+            return R(0, stdout="true")
+        return R(0)
+
+    monkeypatch.setattr(engine_module, "DOCKER_MIRRORS", ("docker.m.daocloud.io", "docker.1ms.run"))
+    monkeypatch.setattr(QQEngineManager, "_ensure_docker_ready", lambda self: None)
+    monkeypatch.setattr(QQEngineManager, "_docker_pull", fake_pull)
+    monkeypatch.setattr(QQEngineManager, "_docker", fake_docker)
+
+    pid: int = manager.start(api_port=31011, webui_port=31012, access_token="tok")
+
+    assert pid == 10018
+    pull_images: list[str] = [args[1] for args in pulled]
+    assert pull_images[0] == engine_module.NAPCAT_IMAGE
+    assert pull_images[1] == "docker.m.daocloud.io/" + engine_module.NAPCAT_IMAGE
+    assert tagged[0][1] == pull_images[1]
+    assert tagged[0][2] == engine_module.NAPCAT_IMAGE
+    assert manager.qr_image() == b"QR"
+
+
+def test_engine_pull_raises_clear_error_when_all_sources_fail(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    from hx_email.server.messaging.engine import QQEngineManager
+
+    settings = make_settings(tmp_path)
+    manager = QQEngineManager(settings, instance_id=19)
+
+    class R:
+        def __init__(self, returncode: int = 0, stdout: str = "", stderr: str = "") -> None:
+            self.returncode: int = returncode
+            self.stdout: str = stdout
+            self.stderr: str = stderr
+
+    def fake_pull(self: QQEngineManager, *args: str) -> R:
+        return R(1, stderr="dial tcp: lookup registry-1.docker.io: i/o timeout")
+
+    def fake_docker(self: QQEngineManager, *args: str) -> R:
+        cmd: list[str] = list(args)
+        if cmd[:2] == ["image", "inspect"]:
+            return R(1)  # 镜像不存在 → 触发拉取
+        return R(0)
+
+    monkeypatch.setattr(QQEngineManager, "_ensure_docker_ready", lambda self: None)
+    monkeypatch.setattr(QQEngineManager, "_docker_pull", fake_pull)
+    monkeypatch.setattr(QQEngineManager, "_docker", fake_docker)
+
+    with pytest.raises(RuntimeError, match="NapCat 镜像下载失败"):
+        manager.start()
+
+
+def test_engine_preflight_reports_missing_docker_cli(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    from hx_email.server.messaging.engine import QQEngineManager
+
+    settings = make_settings(tmp_path)
+    manager = QQEngineManager(settings, instance_id=20)
+    monkeypatch.setattr("hx_email.server.messaging.engine.shutil.which", lambda _: None)
+
+    with pytest.raises(RuntimeError, match="未检测到 docker CLI"):
+        manager.start()
+
+
+def test_engine_preflight_reports_unreachable_daemon(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+
+    from hx_email.server.messaging.engine import QQEngineManager
+
+    settings = make_settings(tmp_path)
+    manager = QQEngineManager(settings, instance_id=21)
+
+    class R:
+        def __init__(self, returncode: int = 0, stdout: str = "", stderr: str = "") -> None:
+            self.returncode: int = returncode
+            self.stdout: str = stdout
+            self.stderr: str = stderr
+
+    monkeypatch.setattr(
+        "hx_email.server.messaging.engine.shutil.which", lambda _: "/usr/local/bin/docker"
+    )
+    monkeypatch.setattr(
+        "hx_email.server.messaging.engine.subprocess.run",
+        lambda *args, **kwargs: R(1, stderr="Cannot connect to the Docker daemon"),
+    )
+
+    with pytest.raises(RuntimeError, match="无法连接宿主机 Docker"):
+        manager.start()
+
+
+def test_engine_preflight_reports_daemon_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    import subprocess
+
+    from hx_email.server.messaging.engine import QQEngineManager
+
+    settings = make_settings(tmp_path)
+    manager = QQEngineManager(settings, instance_id=22)
+    monkeypatch.setattr(
+        "hx_email.server.messaging.engine.shutil.which", lambda _: "/usr/local/bin/docker"
+    )
+
+    def raise_timeout(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise subprocess.TimeoutExpired(cmd=["docker", "info"], timeout=30)
+
+    monkeypatch.setattr(
+        "hx_email.server.messaging.engine.subprocess.run",
+        raise_timeout,
+    )
+
+    with pytest.raises(RuntimeError, match="docker info 超时"):
         manager.start()
 
 
@@ -570,6 +728,7 @@ def test_engine_manager_start_qr_and_stop(
             return R(0, stdout="true" if state["running"] else "false")
         return R(0)
 
+    monkeypatch.setattr(QQEngineManager, "_ensure_docker_ready", lambda self: None)
     monkeypatch.setattr(QQEngineManager, "_docker", fake_docker)
 
     pid = manager.start(

@@ -45,6 +45,15 @@ export type {
   MessagingPluginInfo,
 } from "./messaging";
 export type { ActivityStats, Overview, OverviewSummary, VerificationStats } from "./overview";
-export type { BindingStatus, Platform, PlatformBinding } from "./platform";
+export type {
+  BindingStatus,
+  Platform,
+  PlatformBinding,
+  PlatformRule,
+  PlatformScanItem,
+  RuleMatchField,
+  RuleMatchType,
+  ScanAcceptResult,
+} from "./platform";
 export type { MailPoolEntry, MailPoolStatus, PoolAdminAccount, PoolStats } from "./pool";
 export type { InvalidTokenCandidate, RefreshLog, RefreshStats, SSERefreshEvent } from "./refresh";

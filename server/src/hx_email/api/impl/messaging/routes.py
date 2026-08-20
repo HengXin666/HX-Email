@@ -211,8 +211,7 @@ def register_messaging_routes(router: APIRouter, settings: Settings) -> None:
                 webui_port,
                 event_url,
                 token,
-                proxy_url=config.get("proxy_url", ""),
-                sign_url=config.get("sign_url", ""),
+                mirror=config.get("engine_mirror", ""),
             )
         except RuntimeError as error:
             raise HTTPException(
@@ -224,11 +223,14 @@ def register_messaging_routes(router: APIRouter, settings: Settings) -> None:
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=f"启动内置引擎失败: {error}",
             ) from error
+        # 桥接网络下后端容器内的 127.0.0.1 是自身, 用容器 IP 直连引擎; 拿不到时回退宿主端口。
+        engine_ip: str = manager.container_ip()
+        api_base: str = f"http://{engine_ip}:3000" if engine_ip else f"http://127.0.0.1:{api_port}"
         merged: dict[str, str] = {
             **config,
             "engine_api_port": str(api_port),
             "engine_webui_port": str(webui_port),
-            "api_base_url": f"http://127.0.0.1:{api_port}",
+            "api_base_url": api_base,
             "webui_url": f"http://127.0.0.1:{webui_port}",
         }
         updated = update_instance_config(settings, user.id, instance.id, merged)

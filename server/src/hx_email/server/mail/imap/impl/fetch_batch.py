@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import email
 import re
+from email.utils import parseaddr
 
 from hx_email.server.mail import EmailAccountMailbox, MailboxMessage
 from hx_email.server.mail.imap.imap_helpers import (
@@ -92,6 +93,8 @@ def message_from_raw(
         subject=decode_mime_header(str(msg.get("subject") or "")),
         body=body_text,
         from_address=extract_from(msg),
+        from_email=parseaddr(str(msg.get("from") or ""))[1].strip().lower(),
+        body_html=html_body,
         received_at=parse_date(msg.get("date")),
         message_id=uid,
         is_read="\\Seen" in flags_text,

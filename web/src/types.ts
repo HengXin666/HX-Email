@@ -52,7 +52,16 @@ export type {
   OverviewSummary,
   VerificationStats,
 } from "./types/overview";
-export type { BindingStatus, Platform, PlatformBinding } from "./types/platform";
+export type {
+  BindingStatus,
+  Platform,
+  PlatformBinding,
+  PlatformRule,
+  PlatformScanItem,
+  RuleMatchField,
+  RuleMatchType,
+  ScanAcceptResult,
+} from "./types/platform";
 export type {
   MailPoolEntry,
   MailPoolStatus,

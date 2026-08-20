@@ -123,6 +123,14 @@ class MessagingAdapter(ABC):
 **部署前置**：运行环境需可用 Docker（引擎通过 `docker` CLI 管理容器）；
 真实 QQ 客户端内存占用较高（数百 MB），请为实例预留足够资源。
 
+**镜像下载（Docker 部署常见问题）**：`engine/start` 首次会 `docker pull`
+NapCat 镜像（较大，下载可能耗时数分钟，后端已用长超时避免中断）。若网络
+无法访问 Docker Hub（如国内服务器），后端会自动依次回退内置加速镜像源
+（`docker.m.daocloud.io` 等），仍失败时可在 QQ 实例「高级设置 → 引擎镜像源」
+填写可用加速源（逗号分隔多个），或全局设置环境变量
+`HX_EMAIL_NAPCAT_MIRROR` 后重试。Docker 部署请确认已挂载
+`/var/run/docker.sock` 且容器用户有访问权限，否则启动会给出明确指引。
+
 相关接口：`POST .../engine/start`、`POST .../engine/stop`、`POST .../engine/refresh-qr`、
 `GET .../login/qr`。
 

@@ -515,6 +515,116 @@ ZIP 是敏感实例备份。复制运行中的 SQLite 目录前应先停止服�
 
 ---
 
+### GET /platform-rules
+
+**描述**: 获取当前用户的平台识别规则列表（自定义规则优先于域名启发式）。
+
+- **认证**: Bearer Token
+- **返回值** (200):
+
+```json
+{
+  "rules": [
+    {
+      "id": 1,
+      "user_id": 1,
+      "name": "GitHub 通知",
+      "match_field": "domain",
+      "match_type": "contains",
+      "pattern": "github.com",
+      "platform_name": "GitHub",
+      "enabled": true
+    }
+  ]
+}
+```
+
+---
+
+### POST /platform-rules
+
+**描述**: 创建平台识别规则。`match_field`: from / domain / subject / body；
+`match_type`: contains / exact / regex。
+
+- **认证**: Bearer Token
+- **请求体**:
+
+```json
+{
+  "name": "GitHub 通知",
+  "match_field": "domain",
+  "match_type": "contains",
+  "pattern": "github.com",
+  "platform_name": "GitHub",
+  "enabled": true
+}
+```
+
+**返回值** (201): 创建的规则对象；校验失败返回 422。
+
+---
+
+### PUT /platform-rules/{rule_id} / DELETE /platform-rules/{rule_id}
+
+**描述**: 更新 / 删除识别规则（DELETE 成功返回 204）。
+
+---
+
+### POST /platforms/scan
+
+**描述**: 一键识别全部历史邮件：按自定义规则（未命中回退到发件人域名）
+聚合出平台候选，**不会自动创建平台**，需用户确认后纳入。
+
+- **认证**: Bearer Token
+- **返回值** (200):
+
+```json
+{
+  "items": [
+    {
+      "platform": "github.com",
+      "source": "domain",
+      "senders": ["noreply@github.com"],
+      "sender_count": 1,
+      "message_count": 3,
+      "usable_email_ids": [10, 11],
+      "first_seen": "2026-08-01 10:00:00",
+      "last_seen": "2026-08-02 10:00:00"
+    }
+  ]
+}
+```
+
+---
+
+### POST /platforms/scan/accept
+
+**描述**: 把识别出的平台纳入平台目录（不存在则创建），并为相关可用邮箱
+创建 `active` 绑定；已存在的平台/绑定自动跳过。
+
+- **认证**: Bearer Token
+- **请求体**:
+
+```json
+{
+  "platform": "github.com",
+  "usable_email_ids": [10, 11]
+}
+```
+
+**返回值** (200):
+
+```json
+{
+  "platform": "github.com",
+  "platform_id": 5,
+  "bindings_created": 2,
+  "bindings_skipped": 0
+}
+```
+
+---
+
 ### POST /usable-emails/{usable_email_id}/platform-bindings
 
 **描述**: 将可用邮箱绑定到平台。

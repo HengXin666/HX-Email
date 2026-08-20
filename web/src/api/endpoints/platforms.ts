@@ -1,5 +1,22 @@
-import type { Platform, PlatformBinding } from "../../types";
+import type {
+  Platform,
+  PlatformBinding,
+  PlatformRule,
+  PlatformScanItem,
+  RuleMatchField,
+  RuleMatchType,
+  ScanAcceptResult,
+} from "../../types";
 import { request } from "../core";
+
+export interface PlatformRuleInput {
+  name: string;
+  match_field: RuleMatchField;
+  match_type: RuleMatchType;
+  pattern: string;
+  platform_name: string;
+  enabled: boolean;
+}
 
 export const platformsApi = {
   listPlatforms: () => request<{ platforms: Platform[] }>("/platforms").then((r) => r.platforms),
@@ -33,5 +50,32 @@ export const platformsApi = {
     request<PlatformBinding>(`/platform-bindings/${id}`, {
       method: "PUT",
       body: JSON.stringify({ status, notes }),
+    }),
+
+  listRules: () => request<{ rules: PlatformRule[] }>("/platform-rules").then((r) => r.rules),
+
+  createRule: (rule: PlatformRuleInput) =>
+    request<PlatformRule>("/platform-rules", {
+      method: "POST",
+      body: JSON.stringify(rule),
+    }),
+
+  updateRule: (id: number, rule: PlatformRuleInput) =>
+    request<PlatformRule>(`/platform-rules/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(rule),
+    }),
+
+  deleteRule: (id: number) => request<void>(`/platform-rules/${id}`, { method: "DELETE" }),
+
+  scanPlatforms: () =>
+    request<{ items: PlatformScanItem[] }>("/platforms/scan", { method: "POST" }).then(
+      (r) => r.items,
+    ),
+
+  acceptScan: (platform: string, usableEmailIds: number[]) =>
+    request<ScanAcceptResult>("/platforms/scan/accept", {
+      method: "POST",
+      body: JSON.stringify({ platform, usable_email_ids: usableEmailIds }),
     }),
 };

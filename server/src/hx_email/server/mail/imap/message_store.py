@@ -64,18 +64,20 @@ def save_messages(
                 """
                 INSERT OR IGNORE INTO fetched_messages (
                     user_id, usable_email_id, email_account_id,
-                    from_address, recipient_address, subject, body, message_id,
-                    received_at, body_hash
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    from_address, from_email, recipient_address, subject, body,
+                    body_html, message_id, received_at, body_hash
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     user_id,
                     usable_email_id,
                     email_account_id,
                     from_addr,
+                    msg.from_email or "",
                     msg.recipient_address or "",
                     subject,
                     msg.body or "",
+                    msg.body_html or "",
                     message_id,
                     received_at or now_iso(),
                     body_hash,
@@ -164,8 +166,8 @@ def get_messages(
     with connect(settings) as conn:
         rows = conn.execute(
             """
-            SELECT id, from_address, recipient_address, subject,
-                   body, message_id, received_at, created_at
+            SELECT id, from_address, from_email, recipient_address, subject,
+                   body, body_html, message_id, received_at, created_at
             FROM fetched_messages
             WHERE usable_email_id = ?
             ORDER BY received_at DESC, id DESC
@@ -251,9 +253,11 @@ def row_to_dict(row: Row) -> dict[str, object]:
     return {
         "id": row["id"],
         "from_address": row["from_address"],
+        "from_email": row["from_email"],
         "recipient_address": row["recipient_address"],
         "subject": row["subject"],
         "body": row["body"],
+        "body_html": row["body_html"],
         "message_id": row["message_id"],
         "received_at": row["received_at"],
         "created_at": row["created_at"],

@@ -9,6 +9,7 @@ import {
   IconServer,
   IconShield,
   IconTrash,
+  IconZap,
 } from "../components/icons";
 import { Topbar } from "../components/layout";
 import { Badge, Button, Card, Input, Modal, Select } from "../components/ui/Primitives";
@@ -17,6 +18,7 @@ import { useApp } from "../store/AppContext";
 import type { BindingStatus, Platform, PlatformBinding, UsableEmail } from "../types";
 import { PlatformCreateModal } from "./impl/PlatformCreateModal";
 import { PlatformLogo } from "./impl/PlatformLogo";
+import { PlatformRecognitionModal } from "./impl/PlatformRecognitionModal";
 
 type PlatformEmailBinding = PlatformBinding & { email: UsableEmail };
 
@@ -34,6 +36,7 @@ export const Platforms: React.FC = () => {
   const { toast } = useToast();
   const [query, setQuery] = useState("");
   const [showCreate, setShowCreate] = useState(false);
+  const [showRecognition, setShowRecognition] = useState(false);
   const [showAddEmail, setShowAddEmail] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [selectedPlatformId, setSelectedPlatformId] = useState<number | null>(null);
@@ -163,9 +166,14 @@ export const Platforms: React.FC = () => {
         title="平台绑定"
         subtitle="管理平台目录、可用邮箱绑定关系和验证状态"
         actions={
-          <Button variant="primary" onClick={() => setShowCreate(true)}>
-            <IconPlus size={14} /> 新建平台
-          </Button>
+          <>
+            <Button variant="secondary" onClick={() => setShowRecognition(true)}>
+              <IconZap size={14} /> 智能识别
+            </Button>
+            <Button variant="primary" onClick={() => setShowCreate(true)}>
+              <IconPlus size={14} /> 新建平台
+            </Button>
+          </>
         }
       />
 
@@ -323,6 +331,14 @@ export const Platforms: React.FC = () => {
         onClose={() => setShowCreate(false)}
         onCreate={handleCreate}
         existingPlatforms={platforms}
+      />
+
+      <PlatformRecognitionModal
+        open={showRecognition}
+        onClose={() => setShowRecognition(false)}
+        onAccepted={() => {
+          void Promise.all([refreshEmails(), refreshPlatforms(), refreshBindingMap()]);
+        }}
       />
 
       <PlatformEmailModal

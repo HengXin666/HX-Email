@@ -94,6 +94,8 @@ def to_mailbox_messages(
                 subject=message.subject,
                 body=body,
                 from_address=message.from_address,
+                from_email=message.from_address,
+                body_html=message.html or "",
                 received_at=message.received_at,
                 message_id=message.id,
             )

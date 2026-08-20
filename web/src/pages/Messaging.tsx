@@ -49,6 +49,7 @@ export const Messaging: React.FC = () => {
   const [editApiBaseUrl, setEditApiBaseUrl] = useState("");
   const [editProxyUrl, setEditProxyUrl] = useState("");
   const [editSignUrl, setEditSignUrl] = useState("");
+  const [editMirror, setEditMirror] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [qrUrl, setQrUrl] = useState<string | null>(null);
   const [autoStarted, setAutoStarted] = useState(false);
@@ -86,6 +87,7 @@ export const Messaging: React.FC = () => {
         setEditWebuiUrl(result.webui_url);
         setEditApiBaseUrl(result.api_base_url);
         setEditProxyUrl(instance.config.proxy_url ?? "");
+        setEditMirror(instance.config.engine_mirror ?? "");
       } catch (error: unknown) {
         toast(error instanceof Error ? error.message : "检测 NapCat 失败", "error");
       } finally {
@@ -183,6 +185,7 @@ export const Messaging: React.FC = () => {
         api_base_url: editApiBaseUrl.trim(),
         proxy_url: editProxyUrl.trim(),
         sign_url: editSignUrl.trim(),
+        engine_mirror: editMirror.trim(),
       });
       setLoginInstance(updated);
       setShowAdvanced(false);
@@ -704,13 +707,16 @@ export const Messaging: React.FC = () => {
               <div className="flex flex-col gap-3">
                 <div className="rounded-lg border border-gh-danger/40 bg-gh-danger/10 px-3 py-2 text-xs text-gh-danger">
                   {busy === "engine-start"
-                    ? "正在自动安装并启动内置引擎..."
+                    ? "正在下载并启动内置引擎（首次需联网下载，可能需几分钟）..."
                     : (probe?.message ?? "内置引擎尚未启动")}
                 </div>
                 <ol className="list-decimal space-y-1 pl-4 text-xs text-gh-text-secondary">
                   <li>系统会自动下载并运行 QQ 协议引擎（首次需联网，之后无需安装任何东西）</li>
                   <li>安装完成后自动显示二维码，用手机 QQ 扫码即可</li>
-                  <li>如自动安装失败，可点击下方按钮重试</li>
+                  <li>
+                    如自动下载失败（网络无法访问 Docker Hub
+                    时），可在「高级设置」填写镜像加速源后重试
+                  </li>
                 </ol>
                 <button
                   type="button"
@@ -744,6 +750,12 @@ export const Messaging: React.FC = () => {
                       placeholder="https://sign.lagrangecore.org/api/sign/46494"
                       value={editSignUrl}
                       onChange={(event) => setEditSignUrl(event.target.value)}
+                    />
+                    <Input
+                      label="引擎镜像源（可选；Docker Hub 不可达时填加速源，如 docker.m.daocloud.io）"
+                      placeholder="docker.m.daocloud.io"
+                      value={editMirror}
+                      onChange={(event) => setEditMirror(event.target.value)}
                     />
                     <Button
                       size="sm"

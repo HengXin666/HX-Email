@@ -1499,6 +1499,10 @@ const EmailCard: React.FC<{
 interface DetailMessage {
   id: number | string;
   from_address: string;
+  from_email?: string;
+  recipient_address?: string;
+  /** 收件人命中邮箱账号下的主邮箱/别名时的地址; other 表示未命中 */
+  recipient_kind?: "primary" | "alias" | "other";
   subject: string;
   text: string;
   html?: string;
@@ -1517,12 +1521,63 @@ interface VerificationLinkItem {
   url: string;
 }
 
-function mapStoredMessages(messages: StoredEmailMessage[]): DetailMessage[] {
+/** 归一化投递地址: 小写 + 去 +tag, Gmail 去点 (与后端 delivery 规则一致)。 */
+function normalizeDeliveryAddress(value: string): string {
+  const raw = value.trim().toLowerCase();
+  if (!raw.includes("@")) return raw;
+  const at = raw.lastIndexOf("@");
+  let local = raw.slice(0, at);
+  const domain = raw.slice(at + 1);
+  if (local.includes("+")) local = local.slice(0, local.indexOf("+"));
+  const normalizedLocal =
+    domain === "gmail.com" || domain === "googlemail.com" ? local.replace(/\./g, "") : local;
+  return `${normalizedLocal}@${domain === "googlemail.com" ? "gmail.com" : domain}`;
+}
+
+/** 从收件人原始串中提取所有邮箱地址。 */
+function recipientAddresses(value: string): string[] {
+  return value.toLowerCase().match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/g) ?? [];
+}
+
+/**
+ * 通过目标收件人邮箱判断该邮件投递到账号下的哪个地址:
+ * 命中别名 → alias, 命中主邮箱 → primary, 未命中 → other。
+ */
+function resolveRecipientKind(
+  recipient: string | undefined,
+  usableEmails: Array<{ address: string; kind: string }>,
+): { kind: "primary" | "alias" | "other"; address: string } | null {
+  if (!recipient) return null;
+  const addresses = recipientAddresses(recipient);
+  if (addresses.length === 0) return null;
+  for (const addr of addresses) {
+    const normalized = normalizeDeliveryAddress(addr);
+    const hit = usableEmails.find(
+      (email) => normalizeDeliveryAddress(email.address) === normalized,
+    );
+    if (hit) {
+      return {
+        kind: hit.kind === "primary" ? "primary" : hit.kind === "alias" ? "alias" : "other",
+        address: hit.address,
+      };
+    }
+  }
+  return { kind: "other", address: addresses[0] };
+}
+
+function mapStoredMessages(
+  messages: StoredEmailMessage[],
+  usableEmails: Array<{ address: string; kind: string }>,
+): DetailMessage[] {
   return messages.map((message: StoredEmailMessage) => ({
     id: message.id,
     from_address: message.from_address || "—",
+    from_email: message.from_email || "",
+    recipient_address: message.recipient_address || "",
+    recipient_kind: resolveRecipientKind(message.recipient_address, usableEmails)?.kind,
     subject: message.subject || "(无主题)",
     text: message.body || "",
+    html: message.body_html || "",
     verification_code: message.verification_code,
     received_at: message.received_at || message.created_at || "",
     created_at: message.created_at,
@@ -1610,7 +1665,7 @@ const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
             api.verificationHistory(email.id).catch(() => ({ matches: [] as VerificationMatch[] })),
           ]);
           if (activeLoadIdRef.current !== emailId) return;
-          setMessages(mapStoredMessages(messagePage.messages));
+          setMessages(mapStoredMessages(messagePage.messages, account?.usable_emails ?? []));
           setMessageTotal(messagePage.total);
           setCodes(mapCodeItems(verifyRes.matches));
           setLinks(mapLinkItems(verifyRes.matches));
@@ -1646,7 +1701,10 @@ const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
     try {
       const page = await api.getMessagesPage(emailId, MESSAGE_PAGE_SIZE, messages.length);
       if (activeLoadIdRef.current !== emailId) return;
-      setMessages((current: DetailMessage[]) => [...current, ...mapStoredMessages(page.messages)]);
+      setMessages((current: DetailMessage[]) => [
+        ...current,
+        ...mapStoredMessages(page.messages, account?.usable_emails ?? []),
+      ]);
       setMessageTotal(page.total);
     } catch (err: any) {
       if (activeLoadIdRef.current !== emailId) return;
@@ -2114,8 +2172,26 @@ const MessagesTab: React.FC<{
                     )}
                   </div>
                   {!isExpanded && (
-                    <div className="mt-0.5 truncate text-xs text-gh-text-secondary">
-                      {preview || "(无正文)"}
+                    <div className="mt-0.5 flex items-center gap-1.5 text-xs text-gh-text-secondary">
+                      {m.recipient_kind && (
+                        <span
+                          className={`inline-flex shrink-0 items-center rounded px-1 py-px text-[10px] font-medium ${
+                            m.recipient_kind === "alias"
+                              ? "bg-[#a371f7]/15 text-[#a371f7]"
+                              : m.recipient_kind === "primary"
+                                ? "bg-[#58a6ff]/15 text-[#58a6ff]"
+                                : "bg-gh-border/40 text-gh-text-muted"
+                          }`}
+                          title="该邮件投递到的邮箱类型 (按收件人地址判定)"
+                        >
+                          {m.recipient_kind === "alias"
+                            ? "别名"
+                            : m.recipient_kind === "primary"
+                              ? "主邮箱"
+                              : "其他"}
+                        </span>
+                      )}
+                      <span className="truncate">{preview || "(无正文)"}</span>
                     </div>
                   )}
                 </div>
@@ -2143,6 +2219,47 @@ const MessagesTab: React.FC<{
                       className="px-3 pb-3 pt-0 border-t border-gh-border/40 mx-3"
                       onClick={(e) => e.stopPropagation()}
                     >
+                      {(m.from_email || m.recipient_address) && (
+                        <div className="mt-3 flex flex-col gap-1 text-xs text-gh-text-secondary">
+                          {m.from_email && (
+                            <div className="flex items-center gap-1.5">
+                              <IconUser size={11} className="shrink-0" />
+                              <span className="truncate">
+                                发件人：
+                                <span className="text-gh-text font-mono">{m.from_email}</span>
+                              </span>
+                            </div>
+                          )}
+                          {m.recipient_address && (
+                            <div className="flex items-center gap-1.5">
+                              <IconMail size={11} className="shrink-0" />
+                              <span className="truncate">
+                                收件人：
+                                <span className="font-mono text-gh-text">
+                                  {m.recipient_address}
+                                </span>
+                              </span>
+                              {m.recipient_kind && (
+                                <span
+                                  className={`inline-flex shrink-0 items-center rounded px-1 py-px text-[10px] font-medium ${
+                                    m.recipient_kind === "alias"
+                                      ? "bg-[#a371f7]/15 text-[#a371f7]"
+                                      : m.recipient_kind === "primary"
+                                        ? "bg-[#58a6ff]/15 text-[#58a6ff]"
+                                        : "bg-gh-border/40 text-gh-text-muted"
+                                  }`}
+                                >
+                                  {m.recipient_kind === "alias"
+                                    ? "别名邮箱"
+                                    : m.recipient_kind === "primary"
+                                      ? "主邮箱"
+                                      : "其他地址"}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
                       <div className="mt-3 text-sm text-gh-text leading-relaxed break-words font-sans bg-gh-canvas-inset rounded-lg p-3 max-h-96 overflow-y-auto">
                         {m.html ? (
                           <div

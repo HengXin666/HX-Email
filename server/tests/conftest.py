@@ -8,11 +8,11 @@ import pytest
 from hx_email.server.mail.imap.impl.address_guard import set_private_proxy_policy
 
 # Trusted provider-default IMAP hosts are hardcoded application constants.
-# The SSRF guard validates them by resolving DNS at account creation/import
-# time; sandboxed/CI environments may intercept DNS and resolve them into the
-# RFC 2544 benchmarking range (198.18.0.0/15), which the guard correctly
-# blocks. Stub these constants to a public literal IP so account/import tests
-# stay hermetic and environment-independent.
+# The SSRF guard resolves them at account creation/import time; sandboxed/CI
+# environments may intercept DNS and answer with the Clash/mihomo fake-ip pool
+# (RFC 2544 198.18.0.0/15), which the guard allows by default but rejects in
+# strict mode. Stub these constants to a public literal IP so account/import
+# tests stay hermetic and policy-independent.
 PROVIDER_MAIL_HOSTS: frozenset[str] = frozenset(
     {
         "imap.gmail.com",

@@ -16,9 +16,11 @@ export interface TempCode {
 export interface StoredEmailMessage {
   id: number;
   from_address: string;
+  from_email?: string;
   recipient_address: string;
   subject: string;
   body: string;
+  body_html?: string;
   verification_code?: string | null;
   message_id?: string;
   received_at: string;

@@ -16,6 +16,8 @@ class MailboxMessage:
     subject: str
     body: str
     from_address: str = ""
+    from_email: str = ""
+    body_html: str = ""
     received_at: str = ""
     message_id: str = ""
     is_read: bool = False
