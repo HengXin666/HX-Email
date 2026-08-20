@@ -31,6 +31,7 @@ def migrate(settings: Settings) -> Path:
     database_path = settings.database_path
     database_path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(database_path) as connection:
+        connection.row_factory = sqlite3.Row
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS users (
@@ -270,4 +271,26 @@ def migrate(settings: Settings) -> Path:
         )
         connection.execute("PRAGMA user_version = 11")
         migrate_stored_secrets(settings, connection)
+        seed_default_platform_rules(connection, settings)
     return database_path
+
+
+def seed_default_platform_rules(connection: sqlite3.Connection, settings: Settings) -> None:
+    """首次启动为管理员用户安装默认识别规则 (按种入标记只执行一次)。"""
+    from hx_email.server.workspace.impl.rules_store import insert_default_rules
+
+    seeded = connection.execute(
+        "SELECT value FROM system_settings WHERE key = 'platform_rules_seeded_v1'"
+    ).fetchone()
+    if seeded is not None:
+        return
+    row = connection.execute(
+        "SELECT id FROM users WHERE username = ?", (settings.admin_username,)
+    ).fetchone()
+    if row is None:
+        return
+    insert_default_rules(connection, int(row[0]))
+    connection.execute(
+        "INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, '1')",
+        ("platform_rules_seeded_v1",),
+    )

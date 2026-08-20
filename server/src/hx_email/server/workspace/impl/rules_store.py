@@ -7,11 +7,13 @@
 from __future__ import annotations
 
 import re
+import sqlite3
 from dataclasses import dataclass
 from sqlite3 import Row
 
 from hx_email.config import Settings
 from hx_email.database import connect
+from hx_email.server.workspace.impl.default_rules import DEFAULT_PLATFORM_RULES
 
 MATCH_FIELDS: tuple[str, ...] = ("from", "domain", "subject", "body")
 MATCH_TYPES: tuple[str, ...] = ("contains", "exact", "regex")
@@ -57,9 +59,10 @@ def validate_rule(match_field: str, match_type: str, pattern: str) -> None:
 
 
 def list_rules(settings: Settings, user_id: int) -> list[PlatformRule]:
+    """规则列表; 按 id 倒序, 后添加的自定义规则优先于种入的默认规则。"""
     with connect(settings) as connection:
         rows = connection.execute(
-            "SELECT * FROM platform_rules WHERE user_id = ? ORDER BY id",
+            "SELECT * FROM platform_rules WHERE user_id = ? ORDER BY id DESC",
             (user_id,),
         ).fetchall()
     return [rule_from_row(row) for row in rows]
@@ -155,3 +158,35 @@ def delete_rule(settings: Settings, user_id: int, rule_id: int) -> bool:
             (rule_id, user_id),
         )
     return cursor.rowcount > 0
+
+
+def insert_default_rules(connection: sqlite3.Connection, user_id: int) -> int:
+    """按 (平台, 模式) 去重插入默认规则, 返回新增条数 (幂等)。"""
+    # 兼容无 row_factory 的迁移连接: 用位置索引而非列名。
+    existing: set[tuple[str, str]] = {
+        (str(row[0]), str(row[1]))
+        for row in connection.execute(
+            "SELECT platform_name, pattern FROM platform_rules WHERE user_id = ?",
+            (user_id,),
+        ).fetchall()
+    }
+    installed: int = 0
+    for name, match_field, match_type, pattern, platform_name in DEFAULT_PLATFORM_RULES:
+        if (platform_name, pattern) in existing:
+            continue
+        connection.execute(
+            """
+            INSERT INTO platform_rules (
+                user_id, name, match_field, match_type, pattern, platform_name, enabled
+            ) VALUES (?, ?, ?, ?, ?, ?, 1)
+            """,
+            (user_id, name, match_field, match_type, pattern, platform_name),
+        )
+        installed += 1
+    return installed
+
+
+def install_default_rules(settings: Settings, user_id: int) -> int:
+    """为用户安装缺失的默认识别规则 (幂等), 返回新增条数。"""
+    with connect(settings) as connection:
+        return insert_default_rules(connection, user_id)

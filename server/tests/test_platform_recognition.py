@@ -69,7 +69,7 @@ def test_rules_crud_and_validation(tmp_path: Any) -> None:
     assert rule["platform_name"] == "GitHub"
 
     listed = client.get(f"{API}/platform-rules", headers=headers).json()["rules"]
-    assert len(listed) == 1
+    assert any(r["id"] == rule["id"] for r in listed)
 
     updated = client.put(
         f"{API}/platform-rules/{rule['id']}",
@@ -100,10 +100,27 @@ def test_rules_crud_and_validation(tmp_path: Any) -> None:
 
     deleted = client.delete(f"{API}/platform-rules/{rule['id']}", headers=headers)
     assert deleted.status_code == 204
-    assert client.get(f"{API}/platform-rules", headers=headers).json()["rules"] == []
+    rules_after = client.get(f"{API}/platform-rules", headers=headers).json()["rules"]
+    assert all(r["id"] != rule["id"] for r in rules_after)
 
 
-def test_scan_groups_by_rule_and_domain_fallback(tmp_path: Any) -> None:
+def test_default_rules_seeded_once_on_fresh_database(tmp_path: Any) -> None:
+    """首次 migrate 自动种入默认规则, 二次 migrate 不重复。"""
+    from hx_email.database import migrate
+    from hx_email.server.workspace.impl.default_rules import DEFAULT_PLATFORM_RULES
+
+    client, headers, settings = make_app(tmp_path)
+    listed = client.get(f"{API}/platform-rules", headers=headers).json()["rules"]
+    assert len(listed) == len(DEFAULT_PLATFORM_RULES)
+    assert any(r["platform_name"] == "GitHub" for r in listed)
+
+    # 再次 migrate: 不重复种入
+    migrate(settings)
+    listed2 = client.get(f"{API}/platform-rules", headers=headers).json()["rules"]
+    assert len(listed2) == len(DEFAULT_PLATFORM_RULES)
+
+
+def test_scan_uses_default_rules_and_domain_fallback(tmp_path: Any) -> None:
     client, headers, _settings = make_app(tmp_path)
     email = client.post(
         f"{API}/usable-emails", json={"address": "me@example.com"}, headers=headers
@@ -126,39 +143,38 @@ def test_scan_groups_by_rule_and_domain_fallback(tmp_path: Any) -> None:
     )
     insert_fetched_message(
         _settings,
-        from_address="no-reply@google.com",
-        subject="验证码",
-        body="123456",
+        from_address="no-reply@random-weird-site.com",
+        subject="promo",
+        body="hello",
         usable_email_id=email_id,
     )
 
-    # 未配置规则: 回退到域名启发式
+    # 默认规则命中 GitHub; 未命中默认规则的域名回退到域名启发式
     scan = client.post(f"{API}/platforms/scan", headers=headers).json()["items"]
-    assert [item["platform"] for item in scan] == ["github.com", "google.com"]
-    github = scan[0]
-    assert github["message_count"] == 2
-    assert github["sender_count"] == 1
-    assert github["usable_email_ids"] == [email_id]
-    assert github["source"] == "domain"
+    by_name = {item["platform"]: item for item in scan}
+    assert by_name["GitHub"]["message_count"] == 2
+    assert by_name["GitHub"]["source"] == "GitHub"
+    assert by_name["random-weird-site.com"]["source"] == "domain"
+    assert by_name["random-weird-site.com"]["message_count"] == 1
 
-    # 配置规则后: 规则优先, 覆盖域名
+    # 自定义规则(后添加)优先于默认规则
     client.post(
         f"{API}/platform-rules",
         json={
-            "name": "GitHub 规则",
+            "name": "GitHub 自定义",
             "match_field": "domain",
             "match_type": "contains",
-            "pattern": "github",
-            "platform_name": "GitHub",
+            "pattern": "github.com",
+            "platform_name": "GitHub 自定义",
             "enabled": True,
         },
         headers=headers,
     )
     scan = client.post(f"{API}/platforms/scan", headers=headers).json()["items"]
     by_name = {item["platform"]: item for item in scan}
-    assert "GitHub" in by_name
-    assert by_name["GitHub"]["message_count"] == 2
-    assert by_name["GitHub"]["source"] == "GitHub 规则"
+    assert by_name["GitHub 自定义"]["message_count"] == 2
+    assert by_name["GitHub 自定义"]["source"] == "GitHub 自定义"
+    assert "GitHub" not in by_name
 
 
 def test_accept_scan_item_creates_platform_and_bindings(tmp_path: Any) -> None:
@@ -220,23 +236,7 @@ def test_analyze_email_only_rules_and_auto_binds(tmp_path: Any) -> None:
         usable_email_id=email_id,
     )
 
-    # 未配置规则: 不做域名启发式, 结果为空
-    empty = client.post(f"{API}/usable-emails/{email_id}/platforms/analyze", headers=headers).json()
-    assert empty["results"] == []
-
-    # 配置规则后: 只识别规则命中的平台, 自动创建平台与绑定
-    client.post(
-        f"{API}/platform-rules",
-        json={
-            "name": "GitHub 规则",
-            "match_field": "domain",
-            "match_type": "contains",
-            "pattern": "github.com",
-            "platform_name": "GitHub",
-            "enabled": True,
-        },
-        headers=headers,
-    )
+    # 默认规则命中 GitHub(自动创建平台+绑定); 未命中规则的域名不做启发式
     analyzed = client.post(
         f"{API}/usable-emails/{email_id}/platforms/analyze", headers=headers
     ).json()["results"]
@@ -258,6 +258,27 @@ def test_analyze_email_only_rules_and_auto_binds(tmp_path: Any) -> None:
     ).json()["results"]
     assert again[0]["bindings_created"] == 0
     assert again[0]["bindings_skipped"] == 1
+
+    # 自定义规则(后添加)优先: 同一发件人被映射到新平台
+    client.post(
+        f"{API}/platform-rules",
+        json={
+            "name": "GitHub 自定义",
+            "match_field": "domain",
+            "match_type": "contains",
+            "pattern": "github.com",
+            "platform_name": "GitHub 自定义",
+            "enabled": True,
+        },
+        headers=headers,
+    )
+    analyzed = client.post(
+        f"{API}/usable-emails/{email_id}/platforms/analyze", headers=headers
+    ).json()["results"]
+    by_platform = {item["platform"]: item for item in analyzed}
+    assert by_platform["GitHub 自定义"]["bindings_created"] == 1
+    # 自定义规则完全接管该发件人, 默认 GitHub 规则不再命中
+    assert "GitHub" not in by_platform
 
 
 def test_analyze_email_rejects_missing_email(tmp_path: Any) -> None:
