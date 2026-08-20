@@ -198,6 +198,74 @@ def test_accept_scan_item_creates_platform_and_bindings(tmp_path: Any) -> None:
     assert again["bindings_skipped"] == 1
 
 
+def test_analyze_email_only_rules_and_auto_binds(tmp_path: Any) -> None:
+    """邮箱分析: 仅按已配置规则识别(不做域名启发式), 并自动创建平台+绑定。"""
+    client, headers, settings = make_app(tmp_path)
+    email = client.post(
+        f"{API}/usable-emails", json={"address": "me@example.com"}, headers=headers
+    ).json()
+    email_id: int = email["id"]
+    insert_fetched_message(
+        settings,
+        from_address="noreply@github.com",
+        subject="[GitHub] PR",
+        body="hello",
+        usable_email_id=email_id,
+    )
+    insert_fetched_message(
+        settings,
+        from_address="no-reply@random-unknown-site.com",
+        subject="promo",
+        body="hi",
+        usable_email_id=email_id,
+    )
+
+    # 未配置规则: 不做域名启发式, 结果为空
+    empty = client.post(f"{API}/usable-emails/{email_id}/platforms/analyze", headers=headers).json()
+    assert empty["results"] == []
+
+    # 配置规则后: 只识别规则命中的平台, 自动创建平台与绑定
+    client.post(
+        f"{API}/platform-rules",
+        json={
+            "name": "GitHub 规则",
+            "match_field": "domain",
+            "match_type": "contains",
+            "pattern": "github.com",
+            "platform_name": "GitHub",
+            "enabled": True,
+        },
+        headers=headers,
+    )
+    analyzed = client.post(
+        f"{API}/usable-emails/{email_id}/platforms/analyze", headers=headers
+    ).json()["results"]
+    assert len(analyzed) == 1
+    github = analyzed[0]
+    assert github["platform"] == "GitHub"
+    assert github["message_count"] == 1
+    assert github["bindings_created"] == 1
+    assert "random-unknown-site.com" not in [item["platform"] for item in analyzed]
+
+    bindings = client.get(
+        f"{API}/usable-emails/{email_id}/platform-bindings", headers=headers
+    ).json()["platform_bindings"]
+    assert any(binding["platform"]["name"] == "GitHub" for binding in bindings)
+
+    # 再次分析: 绑定已存在, 跳过
+    again = client.post(
+        f"{API}/usable-emails/{email_id}/platforms/analyze", headers=headers
+    ).json()["results"]
+    assert again[0]["bindings_created"] == 0
+    assert again[0]["bindings_skipped"] == 1
+
+
+def test_analyze_email_rejects_missing_email(tmp_path: Any) -> None:
+    client, headers, _settings = make_app(tmp_path)
+    response = client.post(f"{API}/usable-emails/99999/platforms/analyze", headers=headers)
+    assert response.status_code == 422
+
+
 def test_accept_scan_item_without_emails_creates_platform_only(tmp_path: Any) -> None:
     client, headers, _settings = make_app(tmp_path)
     accepted = client.post(

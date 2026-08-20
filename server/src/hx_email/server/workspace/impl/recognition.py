@@ -117,13 +117,59 @@ def platform_for_message(
     subject: str,
     body: str,
     rules: list[PlatformRule],
+    *,
+    fallback: bool = True,
 ) -> tuple[str, str]:
-    """返回 (平台名, 来源); 来源为规则名或 'domain' 启发式。"""
+    """返回 (平台名, 来源); 来源为规则名或 'domain' 启发式 (fallback=False 仅走规则)。"""
     for rule in rules:
         if rule.enabled and _rule_matches(rule, from_address, subject, body):
             return rule.platform_name, rule.name or rule.platform_name
+    if not fallback:
+        return "", ""
     domain: str = _sender_domain(from_address)
     return (domain, DEFAULT_SOURCE) if domain else ("", "")
+
+
+def analyze_email_platforms(
+    settings: Settings,
+    user_id: int,
+    usable_email_id: int,
+) -> list[dict[str, object]]:
+    """分析单个邮箱的历史邮件(仅按已配置规则), 自动创建平台并绑定。
+
+    返回 [{platform, platform_id, message_count, bindings_created,
+    bindings_skipped}]。只识别规则命中的平台, 不做域名启发式。
+    """
+    from hx_email.server.mail.usable_emails import get_usable_email
+
+    if get_usable_email(settings, user_id, usable_email_id) is None:
+        raise ValueError("邮箱不存在")
+    rules: list[PlatformRule] = list_rules(settings, user_id)
+    matched: dict[str, int] = {}
+    with connect(settings) as connection:
+        rows = connection.execute(
+            """
+            SELECT from_address, subject, body
+            FROM fetched_messages
+            WHERE user_id = ? AND usable_email_id = ?
+            """,
+            (user_id, usable_email_id),
+        ).fetchall()
+    for row in rows:
+        platform, _source = platform_for_message(
+            str(row["from_address"] or ""),
+            str(row["subject"] or ""),
+            str(row["body"] or ""),
+            rules,
+            fallback=False,
+        )
+        if platform:
+            matched[platform] = matched.get(platform, 0) + 1
+    results: list[dict[str, object]] = []
+    for platform, message_count in matched.items():
+        accepted = accept_scan_item(settings, user_id, platform, [usable_email_id])
+        results.append({**accepted, "message_count": message_count})
+    return results
 
 
 def scan_historical_messages(settings: Settings, user_id: int) -> list[ScanItem]:

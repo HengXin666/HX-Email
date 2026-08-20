@@ -53,6 +53,7 @@ export type {
   VerificationStats,
 } from "./types/overview";
 export type {
+  AnalyzeEmailResult,
   BindingStatus,
   Platform,
   PlatformBinding,

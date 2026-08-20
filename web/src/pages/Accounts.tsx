@@ -26,6 +26,7 @@ import {
   IconMail,
   IconPlus,
   IconRefresh,
+  IconSearch,
   IconSettings,
   IconShield,
   IconStar,
@@ -804,9 +805,11 @@ const EmailList: React.FC<{
   const [showSettings, setShowSettings] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   const [sortOrder, setSortOrder] = useState<EmailSortOrder>("desc");
+  const [showTemp, setShowTemp] = useState(false);
 
   const filtered = useMemo(() => {
     let list: UsableEmail[] = emails.filter((email: UsableEmail) => email.kind !== "alias");
+    if (!showTemp) list = list.filter((email: UsableEmail) => email.kind !== "temp");
     const normalizedQuery: string = query.trim().toLowerCase();
     if (groupId !== null) list = list.filter((e) => e.group?.id === groupId);
     if (normalizedQuery) {
@@ -828,7 +831,7 @@ const EmailList: React.FC<{
       });
     }
     return list.sort((left, right) => compareEmailCreatedAt(left, right, sortOrder));
-  }, [accounts, emails, groupId, query, sortOrder]);
+  }, [accounts, emails, groupId, query, showTemp, sortOrder]);
 
   const group = groups.find((g) => g.id === groupId);
 
@@ -873,6 +876,17 @@ const EmailList: React.FC<{
             </span>
             <span className="text-xs text-gh-text-secondary tabular-nums">{filtered.length}</span>
           </div>
+          <button
+            onClick={() => setShowTemp((value) => !value)}
+            className={`p-1.5 rounded-md transition-colors ${
+              showTemp
+                ? "text-gh-accent bg-gh-accent/10"
+                : "text-gh-text-muted hover:text-gh-text hover:bg-gh-border/40"
+            }`}
+            title={showTemp ? "隐藏临时邮箱" : "显示临时邮箱（默认隐藏）"}
+          >
+            <IconTag size={14} />
+          </button>
           <button
             onClick={() => {
               refreshAccounts();
@@ -2024,7 +2038,11 @@ const EmailDetail: React.FC<{ email: UsableEmail | null }> = ({ email }) => {
           ) : tab === "verify" ? (
             <VerifyTab codes={codes} links={links} />
           ) : (
-            <BindingsTab bindings={bindings} emailId={email.id} />
+            <BindingsTab
+              bindings={bindings}
+              emailId={email.id}
+              onChanged={() => void loadData(false)}
+            />
           )}
         </AnimatePresence>
       </div>
@@ -2391,15 +2409,45 @@ const VerifyTab: React.FC<{ codes: any[]; links: any[] }> = ({ codes, links }) =
   );
 };
 
-const BindingsTab: React.FC<{ bindings: any[]; emailId: number }> = ({ bindings, emailId }) => {
+const BindingsTab: React.FC<{
+  bindings: any[];
+  emailId: number;
+  onChanged?: () => void;
+}> = ({ bindings, emailId, onChanged }) => {
   const { platforms, refreshEmails } = useApp();
   const { toast } = useToast();
   const [showBind, setShowBind] = useState(false);
   const [selPlatform, setSelPlatform] = useState<number | "">("");
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeResult, setAnalyzeResult] = useState<string | null>(null);
   const selectedPlatform =
     typeof selPlatform === "number"
       ? platforms.find((platform) => platform.id === selPlatform)
       : null;
+
+  const handleAnalyze = async () => {
+    setAnalyzing(true);
+    setAnalyzeResult(null);
+    try {
+      const results = await api.analyzeEmailPlatforms(emailId);
+      if (results.length === 0) {
+        toast("未发现可绑定的平台（仅识别已配置识别规则的平台）", "info");
+        setAnalyzeResult("未发现可绑定平台（请在「平台 → 智能识别」里配置规则）");
+        return;
+      }
+      const bound = results.filter((r) => r.bindings_created > 0);
+      toast(
+        bound.length > 0 ? `已自动绑定 ${bound.length} 个平台` : "平台均已绑定过",
+        bound.length > 0 ? "success" : "info",
+      );
+      setAnalyzeResult(results.map((r) => `${r.platform}（${r.message_count} 封邮件）`).join("、"));
+      onChanged?.();
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : "分析邮件失败", "error");
+    } finally {
+      setAnalyzing(false);
+    }
+  };
 
   const handleBind = async () => {
     if (typeof selPlatform !== "number") return;
@@ -2409,6 +2457,7 @@ const BindingsTab: React.FC<{ bindings: any[]; emailId: number }> = ({ bindings,
       setShowBind(false);
       setSelPlatform("");
       refreshEmails();
+      onChanged?.();
     } catch (err: unknown) {
       toast(err instanceof Error ? err.message : "平台绑定失败", "error");
     }
@@ -2426,10 +2475,27 @@ const BindingsTab: React.FC<{ bindings: any[]; emailId: number }> = ({ bindings,
     <div>
       <div className="flex items-center justify-between mb-3">
         <h4 className="text-sm font-semibold text-gh-text">平台绑定</h4>
-        <Button size="sm" variant="secondary" onClick={() => setShowBind(true)}>
-          <IconPlus size={12} /> 绑定平台
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            loading={analyzing}
+            onClick={() => void handleAnalyze()}
+            title="按已配置的识别规则分析该邮箱的历史邮件，自动创建并绑定命中的平台"
+          >
+            <IconSearch size={12} /> 分析邮件并绑定
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => setShowBind(true)}>
+            <IconPlus size={12} /> 绑定平台
+          </Button>
+        </div>
       </div>
+
+      {analyzeResult && (
+        <div className="mb-3 rounded-lg border border-gh-accent/30 bg-gh-accent/10 px-3 py-2 text-xs text-gh-text">
+          已自动识别并绑定：{analyzeResult}
+        </div>
+      )}
 
       {bindings.length === 0 ? (
         <div className="text-center py-12 text-gh-text-secondary text-sm">

@@ -1,4 +1,5 @@
 import type {
+  AnalyzeEmailResult,
   Platform,
   PlatformBinding,
   PlatformRule,
@@ -78,4 +79,9 @@ export const platformsApi = {
       method: "POST",
       body: JSON.stringify({ platform, usable_email_ids: usableEmailIds }),
     }),
+
+  analyzeEmailPlatforms: (emailId: number) =>
+    request<{ results: AnalyzeEmailResult[] }>(`/usable-emails/${emailId}/platforms/analyze`, {
+      method: "POST",
+    }).then((r) => r.results),
 };

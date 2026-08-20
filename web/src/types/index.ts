@@ -46,6 +46,7 @@ export type {
 } from "./messaging";
 export type { ActivityStats, Overview, OverviewSummary, VerificationStats } from "./overview";
 export type {
+  AnalyzeEmailResult,
   BindingStatus,
   Platform,
   PlatformBinding,

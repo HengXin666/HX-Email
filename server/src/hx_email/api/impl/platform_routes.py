@@ -20,10 +20,12 @@ from hx_email.config import Settings
 from hx_email.server.workspace.impl.recognition import (
     PlatformRule,
     accept_scan_item,
+    analyze_email_platforms,
     create_rule,
     delete_rule,
     list_rules,
     scan_historical_messages,
+    scan_item_dict,
     update_rule,
 )
 from hx_email.server.workspace.platforms import (
@@ -199,15 +201,9 @@ def register_platform_scan_routes(router: APIRouter, settings: Settings) -> None
     ) -> dict[str, list[dict[str, object]]]:
         """一键识别全部历史邮件, 返回按规则/域名聚合的平台候选。"""
         user = require_user(settings, authorization)
-        items = [
-            {
-                **asdict(item),
-                "senders": list(item.senders),
-                "usable_email_ids": list(item.usable_email_ids),
-            }
-            for item in scan_historical_messages(settings, user.id)
-        ]
-        return {"items": items}
+        return {
+            "items": [scan_item_dict(item) for item in scan_historical_messages(settings, user.id)]
+        }
 
     @router.post("/platforms/scan/accept")
     def accept_platform_scan(
@@ -225,6 +221,19 @@ def register_platform_scan_routes(router: APIRouter, settings: Settings) -> None
             )
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
+
+    @router.post("/usable-emails/{usable_email_id}/platforms/analyze")
+    def analyze_usable_email_platforms(
+        usable_email_id: int,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, list[dict[str, object]]]:
+        """分析该邮箱的历史邮件(仅按已配置规则), 自动创建平台并绑定。"""
+        user = require_user(settings, authorization)
+        try:
+            results = analyze_email_platforms(settings, user.id, usable_email_id)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        return {"results": results}
 
 
 def register_platform_binding_routes(router: APIRouter, settings: Settings) -> None:

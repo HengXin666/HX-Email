@@ -51,6 +51,7 @@ const getEmailAccount = vi.fn();
 const readVerification = vi.fn();
 const verificationHistory = vi.fn();
 const listBindings = vi.fn();
+const analyzeEmailPlatforms = vi.fn();
 const fetchEmails = vi.fn();
 const updateEmailAccount = vi.fn();
 const getGoogleOAuthConfig = vi.fn();
@@ -93,6 +94,7 @@ vi.mock("../api/client", () => ({
     getEmailAccount: (...args: unknown[]) => getEmailAccount(...args),
     getMessagesPage: (...args: unknown[]) => getMessagesPage(...args),
     listBindings: (...args: unknown[]) => listBindings(...args),
+    analyzeEmailPlatforms: (...args: unknown[]) => analyzeEmailPlatforms(...args),
     listPoolEntries: (...args: unknown[]) => listPoolEntries(...args),
     readVerification: (...args: unknown[]) => readVerification(...args),
     updateEmailAccount: (...args: unknown[]) => updateEmailAccount(...args),
@@ -162,6 +164,15 @@ beforeEach(() => {
   readVerification.mockResolvedValue({ matches: [{ code: "123456", link: null }] });
   verificationHistory.mockResolvedValue({ matches: [{ code: "123456", link: null }] });
   listBindings.mockResolvedValue([]);
+  analyzeEmailPlatforms.mockResolvedValue([
+    {
+      platform: "GitHub",
+      platform_id: 5,
+      message_count: 3,
+      bindings_created: 1,
+      bindings_skipped: 0,
+    },
+  ]);
   fetchEmails.mockResolvedValue({
     account_id: 3,
     email: "owner@example.com",
@@ -395,4 +406,19 @@ test("refresh all closes progress and reports the completed SSE summary", async 
   expect(screen.queryByText("正在刷新 Token...")).not.toBeInTheDocument();
   expect(refreshAccounts).toHaveBeenCalledOnce();
   expect(refreshEmails).toHaveBeenCalledOnce();
+});
+
+test("bindings tab analyze button auto-binds rule-matched platforms", async () => {
+  renderAccounts();
+
+  const emailCard = screen.getByText("Owner").closest(".cursor-pointer");
+  fireEvent.click(emailCard as HTMLElement);
+
+  fireEvent.click(await screen.findByRole("button", { name: /平台绑定/ }));
+  fireEvent.click(await screen.findByRole("button", { name: /分析邮件并绑定/ }));
+
+  await waitFor(() => {
+    expect(analyzeEmailPlatforms).toHaveBeenCalledWith(7);
+  });
+  expect(await screen.findByText(/已自动识别并绑定/)).toBeInTheDocument();
 });

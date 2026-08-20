@@ -625,6 +625,31 @@ ZIP 是敏感实例备份。复制运行中的 SQLite 目录前应先停止服�
 
 ---
 
+### POST /usable-emails/{usable_email_id}/platforms/analyze
+
+**描述**: 分析单个邮箱的历史邮件（**仅按已配置的识别规则**，不做域名启发式），
+自动创建命中的平台并绑定该邮箱（已存在的平台/绑定自动跳过）。
+
+- **认证**: Bearer Token
+- **路径参数**: `usable_email_id` (int)
+- **返回值** (200):
+
+```json
+{
+  "results": [
+    {
+      "platform": "GitHub",
+      "platform_id": 5,
+      "message_count": 3,
+      "bindings_created": 1,
+      "bindings_skipped": 0
+    }
+  ]
+}
+```
+
+---
+
 ### POST /usable-emails/{usable_email_id}/platform-bindings
 
 **描述**: 将可用邮箱绑定到平台。

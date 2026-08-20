@@ -45,3 +45,11 @@ export interface ScanAcceptResult {
   bindings_created: number;
   bindings_skipped: number;
 }
+
+export interface AnalyzeEmailResult {
+  platform: string;
+  platform_id: number;
+  message_count: number;
+  bindings_created: number;
+  bindings_skipped: number;
+}
