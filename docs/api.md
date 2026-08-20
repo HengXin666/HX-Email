@@ -517,7 +517,8 @@ ZIP 是敏感实例备份。复制运行中的 SQLite 目录前应先停止服�
 
 ### GET /platform-rules
 
-**描述**: 获取当前用户的平台识别规则列表（自定义规则优先于域名启发式）。
+**描述**: 获取当前用户的平台识别规则列表（自定义规则优先于域名启发式；一个规则可含
+多个匹配模式 `patterns`，任一命中即识别到该平台）。
 
 - **认证**: Bearer Token
 - **返回值** (200):
@@ -531,7 +532,7 @@ ZIP 是敏感实例备份。复制运行中的 SQLite 目录前应先停止服�
       "name": "GitHub 通知",
       "match_field": "domain",
       "match_type": "contains",
-      "pattern": "github.com",
+      "patterns": ["github.com", "githubusercontent.com"],
       "platform_name": "GitHub",
       "enabled": true
     }
@@ -544,7 +545,8 @@ ZIP 是敏感实例备份。复制运行中的 SQLite 目录前应先停止服�
 ### POST /platform-rules
 
 **描述**: 创建平台识别规则。`match_field`: from / domain / subject / body；
-`match_type`: contains / exact / regex。
+`match_type`: contains / exact / regex；`patterns` 为模式列表（域名模式下
+contains 可动态覆盖其全部子域名）。兼容旧字段 `pattern`（单模式）。
 
 - **认证**: Bearer Token
 - **请求体**:
@@ -554,7 +556,7 @@ ZIP 是敏感实例备份。复制运行中的 SQLite 目录前应先停止服�
   "name": "GitHub 通知",
   "match_field": "domain",
   "match_type": "contains",
-  "pattern": "github.com",
+  "patterns": ["github.com", "githubusercontent.com"],
   "platform_name": "GitHub",
   "enabled": true
 }
@@ -566,7 +568,44 @@ ZIP 是敏感实例备份。复制运行中的 SQLite 目录前应先停止服�
 
 ### PUT /platform-rules/{rule_id} / DELETE /platform-rules/{rule_id}
 
-**描述**: 更新 / 删除识别规则（DELETE 成功返回 204）。
+**描述**: 更新 / 删除识别规则（DELETE 成功返回 204）。更新请求体同 POST。
+
+---
+
+### GET /platform-rules/export
+
+**描述**: 导出当前用户的全部识别规则为纯数据 JSON（不含 id/user_id），便于分享。
+
+- **认证**: Bearer Token
+- **返回值** (200): `{"rules": [{name, match_field, match_type, patterns, platform_name, enabled}]}`
+
+---
+
+### POST /platform-rules/import
+
+**描述**: 导入识别规则。`strategy=skip` 跳过已存在（按匹配签名去重）；
+`strategy=replace` 先删同名平台规则再写入。无效条目计入 skipped。
+
+- **认证**: Bearer Token
+- **请求体**:
+
+```json
+{
+  "rules": [
+    {
+      "name": "MySite",
+      "match_field": "domain",
+      "match_type": "contains",
+      "patterns": ["mysite.com", "mysite.cn"],
+      "platform_name": "MySite",
+      "enabled": true
+    }
+  ],
+  "strategy": "skip"
+}
+```
+
+**返回值** (200): `{"imported": 1, "skipped": 0}`
 
 ---
 

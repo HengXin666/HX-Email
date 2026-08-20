@@ -118,7 +118,7 @@ def register_external_routes(
     mailbox_provider: MailboxProvider,
     temp_mail_providers: dict[str, TempMailProvider],
 ) -> None:
-    """Register external API routes secured by Authorization: Bearer (external API key)."""
+    """External API routes secured by Authorization: Bearer (external API key)."""
     register_external_system_routes(app, settings)
     register_external_message_routes(app, settings, mailbox_provider, temp_mail_providers)
     register_external_pool_routes(app, settings)

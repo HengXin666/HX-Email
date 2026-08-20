@@ -23,9 +23,24 @@ export interface PlatformRule {
   name: string;
   match_field: RuleMatchField;
   match_type: RuleMatchType;
-  pattern: string;
+  pattern?: string;
+  patterns: string[];
   platform_name: string;
   enabled: boolean;
+}
+
+export interface PlatformRuleInput {
+  name: string;
+  match_field: RuleMatchField;
+  match_type: RuleMatchType;
+  patterns: string[];
+  platform_name: string;
+  enabled: boolean;
+}
+
+export interface RuleImportResult {
+  imported: number;
+  skipped: number;
 }
 
 export interface PlatformScanItem {

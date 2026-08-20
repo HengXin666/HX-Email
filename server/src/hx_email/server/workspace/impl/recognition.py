@@ -104,12 +104,19 @@ def _rule_matches(
         haystack = body or ""
     if not haystack:
         return False
-    pattern: str = rule.pattern
-    if rule.match_type == "contains":
-        return pattern.lower() in haystack.lower()
-    if rule.match_type == "exact":
-        return haystack.lower() == pattern.lower()
-    return re.search(pattern, haystack) is not None
+    # 一个规则可含多个模式(多域名/多关键词), 任一命中即匹配
+    for pattern in rule.patterns:
+        if not pattern:
+            continue
+        if rule.match_type == "contains":
+            if pattern.lower() in haystack.lower():
+                return True
+        elif rule.match_type == "exact":
+            if haystack.lower() == pattern.lower():
+                return True
+        elif re.search(pattern, haystack) is not None:
+            return True
+    return False
 
 
 def platform_for_message(

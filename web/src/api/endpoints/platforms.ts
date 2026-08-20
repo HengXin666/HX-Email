@@ -3,21 +3,12 @@ import type {
   Platform,
   PlatformBinding,
   PlatformRule,
+  PlatformRuleInput,
   PlatformScanItem,
-  RuleMatchField,
-  RuleMatchType,
+  RuleImportResult,
   ScanAcceptResult,
 } from "../../types";
 import { request } from "../core";
-
-export interface PlatformRuleInput {
-  name: string;
-  match_field: RuleMatchField;
-  match_type: RuleMatchType;
-  pattern: string;
-  platform_name: string;
-  enabled: boolean;
-}
 
 export const platformsApi = {
   listPlatforms: () => request<{ platforms: Platform[] }>("/platforms").then((r) => r.platforms),
@@ -68,6 +59,15 @@ export const platformsApi = {
     }),
 
   deleteRule: (id: number) => request<void>(`/platform-rules/${id}`, { method: "DELETE" }),
+
+  exportRules: () =>
+    request<{ rules: PlatformRuleInput[] }>("/platform-rules/export").then((r) => r.rules),
+
+  importRules: (rules: PlatformRuleInput[], strategy: "skip" | "replace") =>
+    request<RuleImportResult>("/platform-rules/import", {
+      method: "POST",
+      body: JSON.stringify({ rules, strategy }),
+    }),
 
   scanPlatforms: () =>
     request<{ items: PlatformScanItem[] }>("/platforms/scan", { method: "POST" }).then(

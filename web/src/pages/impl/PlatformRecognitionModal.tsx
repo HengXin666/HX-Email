@@ -1,10 +1,23 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { api } from "../../api/client";
-import type { PlatformRuleInput } from "../../api/endpoints/platforms";
-import { IconPlus, IconRefresh, IconSearch, IconTrash, IconZap } from "../../components/icons";
+import {
+  IconDownload,
+  IconPlus,
+  IconRefresh,
+  IconSearch,
+  IconTrash,
+  IconUpload,
+  IconZap,
+} from "../../components/icons";
 import { Badge, Button, Input, Modal, Select } from "../../components/ui/Primitives";
 import { useToast } from "../../components/ui/Toast";
-import type { PlatformRule, PlatformScanItem, RuleMatchField, RuleMatchType } from "../../types";
+import type {
+  PlatformRule,
+  PlatformRuleInput,
+  PlatformScanItem,
+  RuleMatchField,
+  RuleMatchType,
+} from "../../types";
 
 const FIELD_OPTIONS: Array<{ value: RuleMatchField; label: string }> = [
   { value: "domain", label: "发件人域名" },
@@ -23,10 +36,15 @@ const EMPTY_FORM: PlatformRuleInput = {
   name: "",
   match_field: "domain",
   match_type: "contains",
-  pattern: "",
+  patterns: [],
   platform_name: "",
   enabled: true,
 };
+
+function patternsOf(rule: PlatformRule): string[] {
+  if (rule.patterns && rule.patterns.length > 0) return rule.patterns;
+  return rule.pattern ? [rule.pattern] : [];
+}
 
 interface PlatformRecognitionModalProps {
   open: boolean;
@@ -45,11 +63,16 @@ export const PlatformRecognitionModal: React.FC<PlatformRecognitionModalProps> =
   const [loadingRules, setLoadingRules] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<PlatformRuleInput>(EMPTY_FORM);
+  const [patternText, setPatternText] = useState("");
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [scanning, setScanning] = useState(false);
   const [items, setItems] = useState<PlatformScanItem[]>([]);
   const [accepting, setAccepting] = useState<string | null>(null);
+  const [showImport, setShowImport] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importStrategy, setImportStrategy] = useState<"skip" | "replace">("skip");
+  const [importing, setImporting] = useState(false);
 
   const loadRules = useCallback(async () => {
     setLoadingRules(true);
@@ -71,22 +94,28 @@ export const PlatformRecognitionModal: React.FC<PlatformRecognitionModalProps> =
 
   const resetForm = (): void => {
     setForm(EMPTY_FORM);
+    setPatternText("");
     setEditingId(null);
     setShowForm(false);
   };
 
   const handleSaveRule = async (): Promise<void> => {
-    if (!form.pattern.trim() || !form.platform_name.trim()) {
-      toast("请填写匹配模式与目标平台", "error");
+    const patterns = patternText
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    if (patterns.length === 0 || !form.platform_name.trim()) {
+      toast("请填写至少一个匹配模式与目标平台", "error");
       return;
     }
     setSaving(true);
     try {
+      const payload = { ...form, patterns };
       if (editingId !== null) {
-        await api.updateRule(editingId, form);
+        await api.updateRule(editingId, payload);
         toast("规则已更新", "success");
       } else {
-        await api.createRule(form);
+        await api.createRule(payload);
         toast("规则已创建", "success");
       }
       resetForm();
@@ -106,6 +135,52 @@ export const PlatformRecognitionModal: React.FC<PlatformRecognitionModalProps> =
       await loadRules();
     } catch (error: unknown) {
       toast(error instanceof Error ? error.message : "删除规则失败", "error");
+    }
+  };
+
+  const handleExport = async (): Promise<void> => {
+    try {
+      const rulesJson = await api.exportRules();
+      const blob = new Blob([JSON.stringify(rulesJson, null, 2)], {
+        type: "application/json;charset=utf-8",
+      });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `platform-rules-${new Date().toISOString().slice(0, 10)}.json`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      toast(`已导出 ${rulesJson.length} 条规则`, "success");
+    } catch (error: unknown) {
+      toast(error instanceof Error ? error.message : "导出失败", "error");
+    }
+  };
+
+  const handleImport = async (): Promise<void> => {
+    let parsed: PlatformRuleInput[];
+    try {
+      const value = JSON.parse(importText);
+      parsed = Array.isArray(value) ? value : Array.isArray(value?.rules) ? value.rules : [];
+      if (parsed.length === 0) throw new Error("未解析到规则");
+    } catch (error: unknown) {
+      toast(error instanceof Error ? error.message : "导入内容不是有效 JSON", "error");
+      return;
+    }
+    setImporting(true);
+    try {
+      const result = await api.importRules(parsed, importStrategy);
+      toast(
+        `导入完成：新增 ${result.imported} 条` +
+          (result.skipped > 0 ? `，跳过 ${result.skipped} 条` : ""),
+        "success",
+      );
+      setImportText("");
+      setShowImport(false);
+      await loadRules();
+    } catch (error: unknown) {
+      toast(error instanceof Error ? error.message : "导入失败", "error");
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -193,21 +268,62 @@ export const PlatformRecognitionModal: React.FC<PlatformRecognitionModalProps> =
 
       {tab === "rules" ? (
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <p className="text-xs text-gh-text-secondary">
-              自定义规则优先匹配（发件人/域名/主题/正文），未命中时回退到发件人域名
+              自定义规则优先匹配；一个平台可配多个域名/模式（每行一个），支持导入导出分享
             </p>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => {
-                resetForm();
-                setShowForm((value) => !value);
-              }}
-            >
-              <IconPlus size={12} /> {showForm ? "收起" : "添加规则"}
-            </Button>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <Button size="sm" variant="ghost" onClick={() => void handleExport()}>
+                <IconDownload size={12} /> 导出
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setShowImport((value) => !value)}>
+                <IconUpload size={12} /> 导入
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  resetForm();
+                  setShowForm((value) => !value);
+                }}
+              >
+                <IconPlus size={12} /> {showForm ? "收起" : "添加规则"}
+              </Button>
+            </div>
           </div>
+
+          {showImport && (
+            <div className="rounded-lg border border-gh-border bg-gh-canvas-inset p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <Select
+                  id="import-strategy"
+                  label="导入策略"
+                  value={importStrategy}
+                  onChange={(value) => setImportStrategy(value as "skip" | "replace")}
+                  options={[
+                    { value: "skip", label: "跳过已存在" },
+                    { value: "replace", label: "替换同名平台" },
+                  ]}
+                />
+                <div className="flex-1" />
+                <Button
+                  size="sm"
+                  variant="primary"
+                  loading={importing}
+                  onClick={() => void handleImport()}
+                >
+                  开始导入
+                </Button>
+              </div>
+              <textarea
+                value={importText}
+                onChange={(event) => setImportText(event.target.value)}
+                placeholder='粘贴规则 JSON，如 [{"platform_name":"MySite","match_field":"domain","match_type":"contains","patterns":["mysite.com"]}]'
+                rows={4}
+                className="w-full rounded-md border border-gh-border bg-gh-canvas px-2.5 py-2 text-xs font-mono text-gh-text placeholder:text-gh-text-muted outline-none focus:border-gh-accent"
+              />
+            </div>
+          )}
 
           {showForm && (
             <div className="rounded-lg border border-gh-border bg-gh-canvas-inset p-3 grid grid-cols-2 gap-2">
@@ -238,17 +354,19 @@ export const PlatformRecognitionModal: React.FC<PlatformRecognitionModalProps> =
                 options={TYPE_OPTIONS}
               />
               <div className="col-span-2">
-                <Input
-                  label="匹配模式"
+                <label className="block text-xs font-medium text-gh-text-secondary mb-1.5">
+                  匹配模式（每行一个；域名模式下包含匹配可覆盖其全部子域名）
+                </label>
+                <textarea
+                  value={patternText}
+                  onChange={(event) => setPatternText(event.target.value)}
                   placeholder={
                     form.match_type === "regex"
-                      ? "如 noreply@github\\.com$"
-                      : form.match_field === "domain"
-                        ? "如 github.com"
-                        : "匹配关键词"
+                      ? "noreply@github\\.com$\nno-reply@github\\.com$"
+                      : "github.com\ngithubusercontent.com"
                   }
-                  value={form.pattern}
-                  onChange={(event) => setForm({ ...form, pattern: event.target.value })}
+                  rows={3}
+                  className="w-full rounded-md border border-gh-border bg-gh-canvas px-2.5 py-2 text-xs font-mono text-gh-text placeholder:text-gh-text-muted outline-none focus:border-gh-accent"
                 />
               </div>
               <label className="flex items-center gap-2 text-sm text-gh-text-muted">
@@ -302,7 +420,7 @@ export const PlatformRecognitionModal: React.FC<PlatformRecognitionModalProps> =
                       {rule.name || "(未命名)"} ·{" "}
                       {FIELD_OPTIONS.find((o) => o.value === rule.match_field)?.label} ·{" "}
                       {TYPE_OPTIONS.find((o) => o.value === rule.match_type)?.label} ·{" "}
-                      <span className="font-mono">{rule.pattern}</span>
+                      <span className="font-mono">{patternsOf(rule).join("、")}</span>
                     </div>
                   </div>
                   <button
@@ -315,10 +433,11 @@ export const PlatformRecognitionModal: React.FC<PlatformRecognitionModalProps> =
                         name: rule.name,
                         match_field: rule.match_field,
                         match_type: rule.match_type,
-                        pattern: rule.pattern,
+                        patterns: patternsOf(rule),
                         platform_name: rule.platform_name,
                         enabled: rule.enabled,
                       });
+                      setPatternText(patternsOf(rule).join("\n"));
                       setShowForm(true);
                     }}
                   >

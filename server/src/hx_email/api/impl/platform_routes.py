@@ -1,4 +1,3 @@
-from dataclasses import asdict
 from typing import Annotated
 
 from fastapi import APIRouter, Header, HTTPException, status
@@ -18,15 +17,10 @@ from hx_email.api.serializers import (
 )
 from hx_email.config import Settings
 from hx_email.server.workspace.impl.recognition import (
-    PlatformRule,
     accept_scan_item,
     analyze_email_platforms,
-    create_rule,
-    delete_rule,
-    list_rules,
     scan_historical_messages,
     scan_item_dict,
-    update_rule,
 )
 from hx_email.server.workspace.platforms import (
     DuplicatePlatformBindingError,
@@ -43,22 +37,9 @@ from hx_email.server.workspace.platforms import (
 )
 
 
-class PlatformRuleWrite(BaseModel):
-    name: str = ""
-    match_field: str = "domain"
-    match_type: str = "contains"
-    pattern: str = ""
-    platform_name: str = ""
-    enabled: bool = True
-
-
 class PlatformScanAcceptRequest(BaseModel):
     platform: str = Field(min_length=1)
     usable_email_ids: list[int] = []
-
-
-def rule_dict(rule: PlatformRule) -> dict[str, object]:
-    return asdict(rule)
 
 
 def register_platform_routes(router: APIRouter, settings: Settings) -> None:
@@ -125,73 +106,11 @@ def register_platform_routes(router: APIRouter, settings: Settings) -> None:
             ]
         }
 
+    from hx_email.api.impl.platform_rule_routes import register_platform_rule_routes
+
     register_platform_rule_routes(router, settings)
     register_platform_scan_routes(router, settings)
     register_platform_binding_routes(router, settings)
-
-
-def register_platform_rule_routes(router: APIRouter, settings: Settings) -> None:
-    @router.get("/platform-rules")
-    def get_platform_rules(
-        authorization: Annotated[str | None, Header()] = None,
-    ) -> dict[str, list[dict[str, object]]]:
-        user = require_user(settings, authorization)
-        return {"rules": [rule_dict(rule) for rule in list_rules(settings, user.id)]}
-
-    @router.post("/platform-rules", status_code=status.HTTP_201_CREATED)
-    def create_user_platform_rule(
-        payload: PlatformRuleWrite,
-        authorization: Annotated[str | None, Header()] = None,
-    ) -> dict[str, object]:
-        user = require_user(settings, authorization)
-        try:
-            rule = create_rule(
-                settings,
-                user.id,
-                name=payload.name,
-                match_field=payload.match_field,
-                match_type=payload.match_type,
-                pattern=payload.pattern,
-                platform_name=payload.platform_name,
-                enabled=payload.enabled,
-            )
-        except ValueError as error:
-            raise HTTPException(status_code=422, detail=str(error)) from error
-        return rule_dict(rule)
-
-    @router.put("/platform-rules/{rule_id}")
-    def update_user_platform_rule(
-        rule_id: int,
-        payload: PlatformRuleWrite,
-        authorization: Annotated[str | None, Header()] = None,
-    ) -> dict[str, object]:
-        user = require_user(settings, authorization)
-        try:
-            rule = update_rule(
-                settings,
-                user.id,
-                rule_id,
-                name=payload.name,
-                match_field=payload.match_field,
-                match_type=payload.match_type,
-                pattern=payload.pattern,
-                platform_name=payload.platform_name,
-                enabled=payload.enabled,
-            )
-        except ValueError as error:
-            raise HTTPException(status_code=422, detail=str(error)) from error
-        if rule is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rule not found")
-        return rule_dict(rule)
-
-    @router.delete("/platform-rules/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
-    def delete_user_platform_rule(
-        rule_id: int,
-        authorization: Annotated[str | None, Header()] = None,
-    ) -> None:
-        user = require_user(settings, authorization)
-        if not delete_rule(settings, user.id, rule_id):
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rule not found")
 
 
 def register_platform_scan_routes(router: APIRouter, settings: Settings) -> None:

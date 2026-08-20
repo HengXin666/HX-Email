@@ -60,6 +60,10 @@ def migrate_platform_rules_schema(connection: sqlite3.Connection) -> None:
         )
         """
     )
+    if not column_exists(connection, "platform_rules", "patterns"):
+        connection.execute(
+            "ALTER TABLE platform_rules ADD COLUMN patterns TEXT NOT NULL DEFAULT '[]'"
+        )
     connection.execute(
         """
         CREATE INDEX IF NOT EXISTS idx_platform_rules_user

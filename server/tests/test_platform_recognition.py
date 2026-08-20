@@ -303,3 +303,130 @@ def test_accept_scan_item_without_emails_creates_platform_only(tmp_path: Any) ->
         headers=headers,
     )
     assert empty.status_code == 422
+
+
+def test_rule_supports_multiple_patterns(tmp_path: Any) -> None:
+    """一条规则可配多个域名/模式, 任一命中即识别到该平台。"""
+    client, headers, settings = make_app(tmp_path)
+    email = client.post(
+        f"{API}/usable-emails", json={"address": "me@example.com"}, headers=headers
+    ).json()
+    email_id: int = email["id"]
+    insert_fetched_message(
+        settings,
+        from_address="noreply@github.com",
+        subject="PR",
+        body="hi",
+        usable_email_id=email_id,
+    )
+    insert_fetched_message(
+        settings,
+        from_address="bot@raw.githubusercontent.com",
+        subject="asset",
+        body="yo",
+        usable_email_id=email_id,
+    )
+
+    created = client.post(
+        f"{API}/platform-rules",
+        json={
+            "name": "GitHub 全家桶",
+            "match_field": "domain",
+            "match_type": "contains",
+            "patterns": ["github.com", "githubusercontent.com"],
+            "platform_name": "GitHub 全家桶",
+            "enabled": True,
+        },
+        headers=headers,
+    )
+    assert created.status_code == 201
+    rule = created.json()
+    assert rule["patterns"] == ["github.com", "githubusercontent.com"]
+
+    # 两条不同域名消息都命中同一规则
+    analyzed = client.post(
+        f"{API}/usable-emails/{email_id}/platforms/analyze", headers=headers
+    ).json()["results"]
+    assert analyzed[0]["platform"] == "GitHub 全家桶"
+    assert analyzed[0]["message_count"] == 2
+
+    # 编辑规则: 移除一个模式后只命中剩余模式
+    updated = client.put(
+        f"{API}/platform-rules/{rule['id']}",
+        json={
+            "name": "GitHub 全家桶",
+            "match_field": "domain",
+            "match_type": "contains",
+            "patterns": ["githubusercontent.com"],
+            "platform_name": "GitHub 全家桶",
+            "enabled": True,
+        },
+        headers=headers,
+    )
+    assert updated.status_code == 200
+    analyzed = client.post(
+        f"{API}/usable-emails/{email_id}/platforms/analyze", headers=headers
+    ).json()["results"]
+    assert analyzed[0]["message_count"] == 1
+
+
+def test_rules_export_and_import(tmp_path: Any) -> None:
+    """规则可导出 JSON, 导入按策略去重/替换。"""
+    client, headers, _settings = make_app(tmp_path)
+    client.post(
+        f"{API}/platform-rules",
+        json={
+            "name": "MySite",
+            "match_field": "domain",
+            "match_type": "contains",
+            "patterns": ["mysite.com", "mysite.cn"],
+            "platform_name": "MySite",
+            "enabled": True,
+        },
+        headers=headers,
+    )
+    exported = client.get(f"{API}/platform-rules/export", headers=headers).json()["rules"]
+    my_site = next(r for r in exported if r["platform_name"] == "MySite")
+    assert my_site["patterns"] == ["mysite.com", "mysite.cn"]
+
+    # 导入完全相同规则: skip 跳过
+    result = client.post(
+        f"{API}/platform-rules/import",
+        json={"rules": [my_site], "strategy": "skip"},
+        headers=headers,
+    ).json()
+    assert result["skipped"] == 1
+    assert result["imported"] == 0
+
+    # 导入新规则
+    extra = {
+        "name": "Another",
+        "match_field": "subject",
+        "match_type": "regex",
+        "patterns": [r"verify[-\s]?code"],
+        "platform_name": "Another",
+        "enabled": True,
+    }
+    result = client.post(
+        f"{API}/platform-rules/import",
+        json={"rules": [extra], "strategy": "skip"},
+        headers=headers,
+    ).json()
+    assert result["imported"] == 1
+    listed = client.get(f"{API}/platform-rules", headers=headers).json()["rules"]
+    assert any(r["platform_name"] == "Another" for r in listed)
+
+    # replace 策略: 同名平台规则被替换为新模式
+    replaced = client.post(
+        f"{API}/platform-rules/import",
+        json={
+            "rules": [{"platform_name": "MySite", "patterns": ["newsite.com"]}],
+            "strategy": "replace",
+        },
+        headers=headers,
+    ).json()
+    assert replaced["imported"] == 1
+    listed = client.get(f"{API}/platform-rules", headers=headers).json()["rules"]
+    my_site_now = next(r for r in listed if r["platform_name"] == "MySite")
+    assert my_site_now["patterns"] == ["newsite.com"]
+    assert sum(1 for r in listed if r["platform_name"] == "MySite") == 1

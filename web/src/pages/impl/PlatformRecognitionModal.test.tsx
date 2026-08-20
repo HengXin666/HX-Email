@@ -45,7 +45,7 @@ const existingRule: PlatformRule = {
   name: "GitHub 通知",
   match_field: "domain",
   match_type: "contains",
-  pattern: "github.com",
+  patterns: ["github.com"],
   platform_name: "GitHub",
   enabled: true,
 };
@@ -94,7 +94,7 @@ test("rules tab lists existing rules and can create a new one", async () => {
 
   fireEvent.change(screen.getByLabelText("规则名称"), { target: { value: "Google 验证码" } });
   fireEvent.change(screen.getByLabelText("目标平台"), { target: { value: "Google" } });
-  fireEvent.change(screen.getByLabelText("匹配模式"), { target: { value: "google.com" } });
+  fireEvent.change(screen.getByPlaceholderText(/github.com/), { target: { value: "google.com" } });
   fireEvent.click(screen.getByRole("button", { name: "创建规则" }));
 
   await waitFor(() => {
@@ -102,7 +102,7 @@ test("rules tab lists existing rules and can create a new one", async () => {
       expect.objectContaining({
         name: "Google 验证码",
         platform_name: "Google",
-        pattern: "google.com",
+        patterns: ["google.com"],
         match_field: "domain",
       }),
     );
