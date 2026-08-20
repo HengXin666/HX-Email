@@ -2,9 +2,8 @@
 
 NapCat 直接运行腾讯官方 QQ 客户端, 签名在客户端内部完成, 不依赖外部签名
 服务器, 协议版本自动跟随 QQ。本模块负责按实例拉起/停止容器, 生成 OneBot
-HTTP 配置, 并代理登录二维码。镜像下载在 Docker 部署下最常见的失败:
-docker pull 超时(镜像较大)、Docker Hub 不可达(镜像源回退)、容器内未挂载
-docker.sock(前置检查给出指引)。
+HTTP 配置, 并代理登录二维码; 各失败路径均带出错误详情与容器日志, 便于
+Docker 部署下定位(下载超时、镜像源回退、socket 未挂载、容器启动退出等)。
 """
 
 from __future__ import annotations
@@ -79,14 +78,12 @@ class QQEngineManager:
         return result.returncode == 0 and result.stdout.strip() == "true"
 
     def _docker_pull(self, *args: str) -> subprocess.CompletedProcess[str]:
-        # 大镜像下载耗时, 长超时避免被 120s 默认值中断。
         return subprocess.run(["docker", *args], capture_output=True, text=True, timeout=900.0)
 
     def _ensure_docker_ready(self) -> None:
         if shutil.which("docker") is None:
             raise RuntimeError(
-                "未检测到 docker CLI, 无法启动内置 QQ 引擎; "
-                "请使用项目自带 docker-compose 部署(镜像已内置 docker CLI)或宿主机安装 Docker"
+                "未检测到 docker CLI; 请使用项目自带 docker-compose 部署(镜像内置 docker CLI)"
             )
         try:
             info: subprocess.CompletedProcess[str] = subprocess.run(
@@ -96,27 +93,27 @@ class QQEngineManager:
             raise RuntimeError("docker info 超时, 无法连接宿主机 Docker") from None
         if info.returncode != 0:
             raise RuntimeError(
-                "无法连接宿主机 Docker 守护进程: "
+                "无法连接宿主机 Docker: "
                 + (info.stderr or info.stdout).strip()[:300]
-                + "; Docker 部署请确认已挂载 /var/run/docker.sock 且容器用户有访问权限"
+                + "; 请确认已挂载 /var/run/docker.sock 且容器用户有访问权限"
             )
-
-    def _mirror_prefixes(self, mirror: str) -> list[str]:
-        raw: str = (mirror or os.environ.get("HX_EMAIL_NAPCAT_MIRROR", "")).strip()
-        return [item.strip() for item in raw.split(",") if item.strip()] or list(DOCKER_MIRRORS)
 
     def _pull_image(self, mirror: str = "") -> None:
         attempts: list[str] = []
-        candidates: list[str] = [
-            NAPCAT_IMAGE,
-            *[f"{prefix}/{NAPCAT_IMAGE}" for prefix in self._mirror_prefixes(mirror)],
-        ]
+        last_error: str = ""
+        raw: str = (mirror or os.environ.get("HX_EMAIL_NAPCAT_MIRROR", "")).strip()
+        prefixes: list[str] = [item.strip() for item in raw.split(",") if item.strip()] or list(
+            DOCKER_MIRRORS
+        )
+        candidates: list[str] = [NAPCAT_IMAGE, *[f"{p}/{NAPCAT_IMAGE}" for p in prefixes]]
         for candidate in candidates:
             try:
                 result: subprocess.CompletedProcess[str] = self._docker_pull("pull", candidate)
                 ok: bool = result.returncode == 0
+                last_error = result.stderr.strip() or result.stdout.strip()
             except subprocess.TimeoutExpired:
                 ok = False
+                last_error = "下载超时(超过 15 分钟), 请检查网络带宽或配置镜像源"
             if not ok:
                 attempts.append(candidate)
                 continue
@@ -129,8 +126,7 @@ class QQEngineManager:
         raise RuntimeError(
             "NapCat 镜像下载失败, 已尝试: "
             + ", ".join(attempts)
-            + "; 请检查网络/DNS, 若无法访问 Docker Hub, 可在「高级设置 → 引擎镜像源」"
-            "填写加速源(如 docker.m.daocloud.io)或设置环境变量 HX_EMAIL_NAPCAT_MIRROR 后重试"
+            + f"; 最近一次错误: {last_error[:300]}"
         )
 
     def start(
@@ -198,10 +194,8 @@ class QQEngineManager:
             encoding="utf-8",
         )
 
-        env: list[str] = [f"NAPCAT_UID={os.getuid()}", f"NAPCAT_GID={os.getgid()}"]
-        env_args: list[str] = []
-        for item in env:
-            env_args += ["-e", item]
+        env_args: list[str] = ["-e", f"NAPCAT_UID={os.getuid()}"]
+        env_args += ["-e", f"NAPCAT_GID={os.getgid()}"]
         volumes: list[str] = []
         for sub in _SUBDIRS:
             target: str = "/app/.config/QQ" if sub == "data" else f"/app/napcat/{sub}"
@@ -235,10 +229,10 @@ class QQEngineManager:
             if qr.is_file():
                 break
             if not self._container_running(name):
-                raise RuntimeError(f"NapCat 容器退出: {self._error or '请查看容器日志'}")
+                raise RuntimeError(f"NapCat 容器退出: {self._error or self.logs(15)}")
             time.sleep(1)
         else:
-            raise RuntimeError("NapCat 启动超时(二维码未生成), 请检查容器日志")
+            raise RuntimeError(f"NapCat 启动超时(二维码未生成), 容器日志: {self.logs(15)}")
         _ENGINES[self._instance_id] = self
         return self._instance_id + 10000
 
@@ -253,7 +247,6 @@ class QQEngineManager:
         return self._docker("image", "inspect", NAPCAT_IMAGE).returncode == 0
 
     def container_ip(self, name: str = "") -> str:
-        """容器网桥 IP (桥接网络部署需用其直连引擎 API); 失败返回空串由调用方回退。"""
         try:
             result: subprocess.CompletedProcess[str] = self._docker(
                 "inspect",
@@ -263,9 +256,7 @@ class QQEngineManager:
             )
         except Exception:
             return ""
-        if result.returncode:
-            return ""
-        candidates: list[str] = result.stdout.strip().split()
+        candidates: list[str] = result.stdout.strip().split() if result.returncode == 0 else []
         return candidates[0] if candidates else ""
 
     def qr_image(self, webui_port: int = 0) -> bytes | None:
@@ -298,3 +289,12 @@ class QQEngineManager:
 
     def is_running(self) -> bool:
         return self._container_running(container_name(self._instance_id))
+
+    def logs(self, lines: int = 15) -> str:
+        try:
+            result: subprocess.CompletedProcess[str] = self._docker(
+                "logs", "--tail", str(lines), container_name(self._instance_id)
+            )
+        except Exception:
+            return "无法读取容器日志, 请用 docker logs -f " + container_name(self._instance_id)
+        return result.stdout.strip() or result.stderr.strip() or "(容器无日志输出)"

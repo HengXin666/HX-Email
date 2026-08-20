@@ -124,12 +124,21 @@ class MessagingAdapter(ABC):
 真实 QQ 客户端内存占用较高（数百 MB），请为实例预留足够资源。
 
 **镜像下载（Docker 部署常见问题）**：`engine/start` 首次会 `docker pull`
-NapCat 镜像（较大，下载可能耗时数分钟，后端已用长超时避免中断）。若网络
-无法访问 Docker Hub（如国内服务器），后端会自动依次回退内置加速镜像源
-（`docker.m.daocloud.io` 等），仍失败时可在 QQ 实例「高级设置 → 引擎镜像源」
-填写可用加速源（逗号分隔多个），或全局设置环境变量
-`HX_EMAIL_NAPCAT_MIRROR` 后重试。Docker 部署请确认已挂载
-`/var/run/docker.sock` 且容器用户有访问权限，否则启动会给出明确指引。
+NapCat 镜像（较大，下载可能耗时数分钟，后端已用 900s 长超时避免中断）。
+海外 VPS 上网络本身通常没问题，下载失败多为以下 Docker 部署机制问题，报错
+现在会直接带出具体原因（docker stderr / 容器日志尾部）：
+
+- **未挂载 docker.sock**：用 Portainer / Coolify / 1Panel 等面板一键部署时常
+  不传 `/var/run/docker.sock`，启动会明确提示「无法连接宿主机 Docker」；
+- **匿名拉取限流**：共享 IP 超过 Docker Hub 匿名限额时报 `toomanyrequests`；
+- **镜像标签失效**：`mlikiowa/napcat-docker:latest` 被移除/变更时报
+  `manifest unknown`；
+- **容器启动即退出**：Xvfb / QQ 客户端启动失败时报错自动附带
+  `docker logs` 尾部，也可手动 `docker logs -f hx-messaging-<实例id>` 查看。
+
+国内网络无法访问 Docker Hub 时，后端自动回退内置加速镜像源
+（`docker.m.daocloud.io` 等），仍失败可在 QQ 实例「高级设置 → 引擎镜像源」
+填写可用加速源（逗号分隔多个），或全局设置环境变量 `HX_EMAIL_NAPCAT_MIRROR`。
 
 相关接口：`POST .../engine/start`、`POST .../engine/stop`、`POST .../engine/refresh-qr`、
 `GET .../login/qr`。

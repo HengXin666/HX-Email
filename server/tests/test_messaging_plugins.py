@@ -628,6 +628,71 @@ def test_engine_pull_raises_clear_error_when_all_sources_fail(
         manager.start()
 
 
+def test_engine_pull_error_includes_last_docker_stderr(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    """下载失败报错带上最近一次 docker pull 的 stderr (限流/manifest unknown 可定位)。"""
+    from hx_email.server.messaging.engine import QQEngineManager
+
+    settings = make_settings(tmp_path)
+    manager = QQEngineManager(settings, instance_id=24)
+
+    class R:
+        def __init__(self, returncode: int = 0, stdout: str = "", stderr: str = "") -> None:
+            self.returncode: int = returncode
+            self.stdout: str = stdout
+            self.stderr: str = stderr
+
+    def fake_pull(self: QQEngineManager, *args: str) -> R:
+        return R(1, stderr="toomanyrequests: You have reached your pull rate limit")
+
+    def fake_docker(self: QQEngineManager, *args: str) -> R:
+        return R(1) if list(args)[:2] == ["image", "inspect"] else R(0)
+
+    monkeypatch.setattr(QQEngineManager, "_ensure_docker_ready", lambda self: None)
+    monkeypatch.setattr(QQEngineManager, "_docker_pull", fake_pull)
+    monkeypatch.setattr(QQEngineManager, "_docker", fake_docker)
+
+    with pytest.raises(RuntimeError, match="toomanyrequests"):
+        manager.start()
+
+
+def test_engine_start_attaches_container_logs_on_exit(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    """容器中途退出时, 报错自动带上 docker logs 尾部, 便于定位真实原因。"""
+    from hx_email.server.messaging.engine import QQEngineManager
+
+    settings = make_settings(tmp_path)
+    manager = QQEngineManager(settings, instance_id=25)
+
+    class R:
+        def __init__(self, returncode: int = 0, stdout: str = "", stderr: str = "") -> None:
+            self.returncode: int = returncode
+            self.stdout: str = stdout
+            self.stderr: str = stderr
+
+    def fake_docker(self: QQEngineManager, *args: str) -> R:
+        cmd: list[str] = list(args)
+        if cmd[:2] == ["image", "inspect"]:
+            return R(0)
+        if cmd[0] == "run":
+            return R(0)
+        if cmd[:2] == ["inspect", "-f"]:
+            return R(0, stdout="false")  # 容器已退出
+        if cmd[0] == "logs":
+            return R(0, stdout="Xvfb failed: no screens found")
+        return R(0)
+
+    monkeypatch.setattr(QQEngineManager, "_ensure_docker_ready", lambda self: None)
+    monkeypatch.setattr(QQEngineManager, "_docker", fake_docker)
+
+    with pytest.raises(RuntimeError, match="Xvfb failed"):
+        manager.start()
+
+
 def test_engine_preflight_reports_missing_docker_cli(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Any,
