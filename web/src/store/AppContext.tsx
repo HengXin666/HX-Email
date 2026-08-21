@@ -1,6 +1,15 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { api } from "../api/client";
-import type { EmailAccount, Group, Overview, Platform, Tag, UsableEmail, User } from "../types";
+import type {
+  EmailAccount,
+  Group,
+  GroupTokenStatus,
+  Overview,
+  Platform,
+  Tag,
+  UsableEmail,
+  User,
+} from "../types";
 
 interface AppState {
   user: User | null;
@@ -11,6 +20,7 @@ interface AppState {
   platforms: Platform[];
   accounts: EmailAccount[];
   overview: Overview | null;
+  groupTokenStatus: GroupTokenStatus | null;
   loading: boolean;
 }
 
@@ -25,12 +35,14 @@ interface AppContextValue extends AppState {
   refreshPlatforms: () => Promise<void>;
   refreshAccounts: () => Promise<void>;
   refreshOverview: () => Promise<void>;
+  refreshGroupTokenStatus: () => Promise<void>;
   createGroup: (
     name: string,
     color?: string,
     proxy_url?: string,
     notify_enabled?: boolean,
     polling_enabled?: boolean,
+    allowed_provider?: string,
   ) => Promise<Group>;
   updateGroup: (
     id: number,
@@ -39,6 +51,7 @@ interface AppContextValue extends AppState {
     proxy_url?: string,
     notify_enabled?: boolean,
     polling_enabled?: boolean,
+    allowed_provider?: string,
   ) => Promise<Group>;
   deleteGroup: (id: number) => Promise<void>;
   deleteGroups: (ids: number[]) => Promise<void>;
@@ -126,6 +139,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     platforms: [],
     accounts: [],
     overview: null,
+    groupTokenStatus: null,
     loading: false,
   });
 
@@ -162,6 +176,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
+  const refreshGroupTokenStatus = useCallback(async () => {
+    try {
+      const groupTokenStatus = await api.getGroupTokenStatus();
+      setState((s) => {
+        if (
+          s.groupTokenStatus &&
+          JSON.stringify(s.groupTokenStatus) === JSON.stringify(groupTokenStatus)
+        ) {
+          return s; // 索引未变化: 跳过 setState, 避免无谓重渲染
+        }
+        return { ...s, groupTokenStatus };
+      });
+    } catch {
+      /* keep previous index on error */
+    }
+  }, []);
+
   const refreshTags = useCallback(async () => {
     const tags = await api.listTags();
     setState((s) => ({ ...s, tags }));
@@ -174,6 +205,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       refreshPlatforms(),
       refreshAccounts(),
       refreshOverview(),
+      refreshGroupTokenStatus(),
       refreshTags(),
     ]);
   }, [
@@ -182,6 +214,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     refreshPlatforms,
     refreshAccounts,
     refreshOverview,
+    refreshGroupTokenStatus,
     refreshTags,
   ]);
 
@@ -222,12 +255,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       proxy_url?: string,
       notify_enabled?: boolean,
       polling_enabled?: boolean,
+      allowed_provider?: string,
     ) => {
-      const g = await api.createGroup(name, color, proxy_url, notify_enabled, polling_enabled);
+      const g = await api.createGroup(
+        name,
+        color,
+        proxy_url,
+        notify_enabled,
+        polling_enabled,
+        allowed_provider,
+      );
       await refreshGroups();
+      await refreshGroupTokenStatus();
       return g;
     },
-    [refreshGroups],
+    [refreshGroups, refreshGroupTokenStatus],
   );
 
   const updateGroup = useCallback(
@@ -238,12 +280,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       proxy_url?: string,
       notify_enabled?: boolean,
       polling_enabled?: boolean,
+      allowed_provider?: string,
     ) => {
-      const g = await api.updateGroup(id, name, color, proxy_url, notify_enabled, polling_enabled);
+      const g = await api.updateGroup(
+        id,
+        name,
+        color,
+        proxy_url,
+        notify_enabled,
+        polling_enabled,
+        allowed_provider,
+      );
       await refreshGroups();
+      await refreshGroupTokenStatus();
       return g;
     },
-    [refreshGroups],
+    [refreshGroups, refreshGroupTokenStatus],
   );
 
   const deleteGroup = useCallback(
@@ -251,8 +303,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await api.deleteGroup(id);
       await refreshGroups();
       await refreshEmails();
+      await refreshGroupTokenStatus();
     },
-    [refreshGroups, refreshEmails],
+    [refreshGroups, refreshEmails, refreshGroupTokenStatus],
   );
 
   const deleteGroups = useCallback(
@@ -260,8 +313,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await api.deleteGroups(ids);
       await refreshGroups();
       await refreshEmails();
+      await refreshGroupTokenStatus();
     },
-    [refreshGroups, refreshEmails],
+    [refreshGroups, refreshEmails, refreshGroupTokenStatus],
   );
 
   const reorderGroups = useCallback(
@@ -277,18 +331,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const e = await api.createUsableEmail(address, label);
       if (groupId) await api.organizeUsableEmail(e.id, { group_id: groupId });
       await refreshEmails();
+      await refreshGroupTokenStatus();
       return e;
     },
-    [refreshEmails],
+    [refreshEmails, refreshGroupTokenStatus],
   );
 
   const organizeEmail = useCallback(
     async (id: number, data: any) => {
       const e = await api.organizeUsableEmail(id, data);
       await refreshEmails();
+      await refreshGroupTokenStatus();
       return e;
     },
-    [refreshEmails],
+    [refreshEmails, refreshGroupTokenStatus],
   );
 
   const createPlatform = useCallback(
@@ -322,9 +378,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const a = await api.createEmailAccount(data);
       await refreshAccounts();
       await refreshEmails();
+      await refreshGroupTokenStatus();
       return a;
     },
-    [refreshAccounts, refreshEmails],
+    [refreshAccounts, refreshEmails, refreshGroupTokenStatus],
   );
 
   const addAlias = useCallback(
@@ -332,9 +389,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const a = await api.addAlias(accountId, address, label);
       await refreshAccounts();
       await refreshEmails();
+      await refreshGroupTokenStatus();
       return a;
     },
-    [refreshAccounts, refreshEmails],
+    [refreshAccounts, refreshEmails, refreshGroupTokenStatus],
   );
 
   const createTempMail = useCallback(
@@ -381,6 +439,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         refreshPlatforms,
         refreshAccounts,
         refreshOverview,
+        refreshGroupTokenStatus,
         createGroup,
         updateGroup,
         deleteGroup,

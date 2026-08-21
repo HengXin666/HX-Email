@@ -54,8 +54,8 @@ def export_core_data(settings: Settings, user_id: int) -> dict[str, object]:
         )
         groups = rows(
             connection,
-            "SELECT id, name, color, proxy_url, notify_enabled, polling_enabled FROM groups"
-            " WHERE user_id = ? ORDER BY id",
+            "SELECT id, name, color, proxy_url, notify_enabled, polling_enabled,"
+            " allowed_provider FROM groups WHERE user_id = ? ORDER BY id",
             user_id,
         )
         tags = rows(

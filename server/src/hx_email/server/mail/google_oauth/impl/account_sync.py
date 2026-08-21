@@ -6,6 +6,7 @@ from hx_email.config import Settings
 from hx_email.database import connect
 from hx_email.security import encrypt_secret
 from hx_email.server.mail.email_accounts import add_email_account
+from hx_email.server.mail.impl.patrol.options import assert_group_allows_provider
 
 
 def update_account_credentials(
@@ -57,6 +58,7 @@ def save_credentials_by_email(
         account_id: int = int(row["id"])
         update_account_credentials(settings, user_id, account_id, client_id, refresh_token, email)
         if group_id is not None:
+            assert_group_allows_provider(settings, user_id, group_id, "gmail")
             with connect(settings) as connection:
                 connection.execute(
                     """

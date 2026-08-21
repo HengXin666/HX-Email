@@ -17,6 +17,7 @@ class Group:
     notify_enabled: bool = True
     polling_enabled: bool = True
     sort_order: int = 0
+    allowed_provider: str = ""
 
 
 @dataclass(frozen=True)
@@ -34,6 +35,7 @@ def create_group(
     proxy_url: str = "",
     notify_enabled: bool | None = None,
     polling_enabled: bool | None = None,
+    allowed_provider: str = "",
 ) -> Group:
     if not proxy_url:
         proxy_url = get_setting(settings, "group_default_proxy_url", "")
@@ -46,8 +48,9 @@ def create_group(
         cursor = connection.execute(
             """
             INSERT INTO groups
-                (user_id, name, color, proxy_url, notify_enabled, polling_enabled, sort_order)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                (user_id, name, color, proxy_url, notify_enabled, polling_enabled, sort_order,
+                 allowed_provider)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 user_id,
@@ -57,6 +60,7 @@ def create_group(
                 int(notify_enabled),
                 int(polling_enabled),
                 next_order,
+                allowed_provider,
             ),
         )
     return Group(
@@ -67,6 +71,7 @@ def create_group(
         notify_enabled=notify_enabled,
         polling_enabled=polling_enabled,
         sort_order=next_order,
+        allowed_provider=allowed_provider,
     )
 
 
@@ -114,7 +119,7 @@ def import_groups(
     for group in payload.get("groups", []):
         cursor = connection.execute(
             "INSERT INTO groups (user_id, name, color, proxy_url, notify_enabled, polling_enabled,"
-            " sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            " sort_order, allowed_provider) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 user_id,
                 group["name"],
@@ -123,6 +128,7 @@ def import_groups(
                 int(coerce_bool(group.get("notify_enabled"), default_notify)),
                 int(coerce_bool(group.get("polling_enabled"), default_polling)),
                 next_sort_order(connection, user_id),
+                group.get("allowed_provider", ""),
             ),
         )
         ids[int(group["id"])] = require_inserted_id(cursor.lastrowid)
@@ -132,8 +138,8 @@ def import_groups(
 def list_groups(settings: Settings, user_id: int) -> list[Group]:
     with connect(settings) as connection:
         rows = connection.execute(
-            "SELECT id, name, color, proxy_url, notify_enabled, polling_enabled, sort_order"
-            " FROM groups WHERE user_id = ? ORDER BY sort_order, id",
+            "SELECT id, name, color, proxy_url, notify_enabled, polling_enabled, sort_order,"
+            " allowed_provider FROM groups WHERE user_id = ? ORDER BY sort_order, id",
             (user_id,),
         ).fetchall()
     return [
@@ -145,6 +151,7 @@ def list_groups(settings: Settings, user_id: int) -> list[Group]:
             notify_enabled=bool(row["notify_enabled"]),
             polling_enabled=bool(row["polling_enabled"]),
             sort_order=int(row["sort_order"]),
+            allowed_provider=row["allowed_provider"] or "",
         )
         for row in rows
     ]
@@ -159,6 +166,7 @@ def update_group(
     proxy_url: str = "",
     notify_enabled: bool | None = None,
     polling_enabled: bool | None = None,
+    allowed_provider: str | None = None,
 ) -> Group | None:
     with connect(settings) as connection:
         row = connection.execute(
@@ -166,9 +174,11 @@ def update_group(
             UPDATE groups
             SET name = ?, color = ?, proxy_url = ?,
                 notify_enabled = COALESCE(?, notify_enabled),
-                polling_enabled = COALESCE(?, polling_enabled)
+                polling_enabled = COALESCE(?, polling_enabled),
+                allowed_provider = COALESCE(?, allowed_provider)
             WHERE id = ? AND user_id = ?
-            RETURNING id, name, color, proxy_url, notify_enabled, polling_enabled, sort_order
+            RETURNING id, name, color, proxy_url, notify_enabled, polling_enabled, sort_order,
+                      allowed_provider
             """,
             (
                 name,
@@ -176,6 +186,7 @@ def update_group(
                 proxy_url,
                 None if notify_enabled is None else int(notify_enabled),
                 None if polling_enabled is None else int(polling_enabled),
+                None if allowed_provider is None else (allowed_provider or ""),
                 group_id,
                 user_id,
             ),
@@ -190,6 +201,7 @@ def update_group(
         notify_enabled=bool(row["notify_enabled"]),
         polling_enabled=bool(row["polling_enabled"]),
         sort_order=int(row["sort_order"]),
+        allowed_provider=row["allowed_provider"] or "",
     )
 
 
@@ -243,43 +255,3 @@ def list_tags(settings: Settings, user_id: int) -> list[Tag]:
             (user_id,),
         ).fetchall()
     return [Tag(id=row["id"], name=row["name"], color=row["color"]) for row in rows]
-
-
-def export_group_accounts_text(settings: Settings, user_id: int, group_id: int) -> str | None:
-    """Export email accounts in a group as tab-separated text."""
-    with connect(settings) as connection:
-        group_row = connection.execute(
-            "SELECT id, name FROM groups WHERE id = ? AND user_id = ?",
-            (group_id, user_id),
-        ).fetchone()
-        if group_row is None:
-            return None
-
-        rows = connection.execute(
-            """
-            SELECT ea.primary_address, ea.provider, ea.display_name, ea.status
-            FROM email_accounts ea
-            INNER JOIN usable_emails ue
-              ON ue.email_account_id = ea.id AND ue.user_id = ea.user_id
-            WHERE ea.user_id = ? AND ue.group_id = ?
-            ORDER BY ea.id
-            """,
-            (user_id, group_id),
-        ).fetchall()
-
-    lines: list[str] = [
-        f"# Group: {group_row['name']}",
-        "# Email\tProvider\tDisplay Name\tStatus",
-    ]
-    for row in rows:
-        lines.append(
-            "\t".join(
-                [
-                    row["primary_address"],
-                    row["provider"],
-                    row["display_name"],
-                    row["status"],
-                ]
-            )
-        )
-    return "\n".join(lines)

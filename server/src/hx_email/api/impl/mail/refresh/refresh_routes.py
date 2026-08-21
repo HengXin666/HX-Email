@@ -13,6 +13,10 @@ from fastapi.responses import StreamingResponse
 from hx_email.api.dependencies import require_user
 from hx_email.api.schemas import RefreshSelectedRequest
 from hx_email.config import Settings
+from hx_email.server.mail.impl.patrol.refresh import (
+    refresh_group_accounts,
+    refresh_ungrouped_accounts,
+)
 from hx_email.server.mail.impl.refresh_service import (
     refresh_all_accounts,
     refresh_failed_accounts,
@@ -81,6 +85,29 @@ def register_refresh_routes(
         user = require_user(settings, authorization)
         return StreamingResponse(
             refresh_all_accounts(settings, user.id, mailbox_provider),
+            media_type="text/event-stream",
+        )
+
+    @router.post("/email-accounts/refresh/group/{group_id}")
+    def refresh_group(
+        group_id: int,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> StreamingResponse:
+        """Batch-refresh tokens of all OAuth accounts in one group (SSE)."""
+        user = require_user(settings, authorization)
+        return StreamingResponse(
+            refresh_group_accounts(settings, user.id, group_id, mailbox_provider),
+            media_type="text/event-stream",
+        )
+
+    @router.post("/email-accounts/refresh/ungrouped")
+    def refresh_ungrouped(
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> StreamingResponse:
+        """Batch-refresh tokens of OAuth accounts that belong to no group (SSE)."""
+        user = require_user(settings, authorization)
+        return StreamingResponse(
+            refresh_ungrouped_accounts(settings, user.id, mailbox_provider),
             media_type="text/event-stream",
         )
 

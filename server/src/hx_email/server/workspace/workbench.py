@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from hx_email.config import Settings
 from hx_email.database import connect
+from hx_email.server.mail.impl.patrol.options import assert_group_allows_provider
 from hx_email.server.workspace.groups import Group, Tag
 
 
@@ -49,6 +50,23 @@ def organize_usable_email(
             ).fetchone()
             if group is None:
                 return None
+            account_row = connection.execute(
+                """
+                SELECT ea.provider
+                FROM usable_emails ue
+                LEFT JOIN email_accounts ea ON ea.id = ue.email_account_id
+                WHERE ue.id = ? AND ue.user_id = ?
+                """,
+                (usable_email_id, user_id),
+            ).fetchone()
+            if account_row is not None and account_row["provider"]:
+                assert_group_allows_provider(
+                    settings,
+                    user_id,
+                    group_id,
+                    str(account_row["provider"]),
+                    connection,
+                )
 
         if tag_ids:
             placeholders = ",".join("?" for _ in tag_ids)

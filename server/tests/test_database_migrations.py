@@ -56,7 +56,7 @@ def test_migrate_creates_sqlite_database_in_configured_data_dir(tmp_path):
     assert {"email_account_id", "kind", "status", "group_id", "created_at"}.issubset(
         usable_email_columns
     )
-    assert {"notify_enabled", "polling_enabled"}.issubset(group_columns)
+    assert {"notify_enabled", "polling_enabled", "allowed_provider"}.issubset(group_columns)
     assert {"user_id", "usable_email_id", "provider", "provider_mailbox_id"}.issubset(
         temp_mailbox_columns
     )

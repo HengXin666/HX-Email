@@ -31,7 +31,10 @@ def register_batch_routes(router: APIRouter, settings: Settings) -> None:
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
         user = require_user(settings, authorization)
-        updated = batch_update_group(settings, user.id, payload.account_ids, payload.group_id)
+        try:
+            updated = batch_update_group(settings, user.id, payload.account_ids, payload.group_id)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
         return {"success": True, "updated_count": updated}
 
     @router.post("/email-accounts/batch-delete")

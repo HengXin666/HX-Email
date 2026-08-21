@@ -70,6 +70,38 @@ curl -s "http://127.0.0.1:8080/api/external/verification-code?email=xx@example.c
   -H "Authorization: Bearer $API_KEY"
 ```
 
+## 分组 Token 巡查
+
+分组维度维护实时索引: 每个分组 (以及未分组桶) 有多少账号、多少账号的
+OAuth token 有效。索引由数据库实时聚合, 每次刷新/增删账号后自动一致。
+
+| 方法   | 路径                                        | 认证       | 说明                                                                      |
+| ------ | ------------------------------------------- | ---------- | ------------------------------------------------------------------------- |
+| `GET`  | `/api/v1/groups/token-status`               | 业务 token | 分组索引 + 未分组桶 (账号数/有效 token 数)                                |
+| `GET`  | `/api/v1/groups`                            | 业务 token | 分组列表, 每项附带 `allowed_provider`/`account_count`/`valid_token_count` |
+| `POST` | `/api/v1/email-accounts/refresh/group/{id}` | 业务 token | 按分组批量巡查刷新 token (SSE 流式)                                       |
+| `POST` | `/api/v1/email-accounts/refresh/ungrouped`  | 业务 token | 巡查未分组账号 token (SSE 流式)                                           |
+| `GET`  | `/api/external/token-status?user_id=1`      | API key    | 外部: 分组 token 索引 (含未分组桶)                                        |
+| `POST` | `/api/external/token/refresh`               | API key    | 外部: 同步巡查, body `{"group_id": N}` (0 = 未分组), 返回逐账号结果       |
+
+分组可设置 `allowed_provider` 限定渠道 (如仅收 gmail), 设为空串表示不限;
+把渠道不符的账号移入受限分组会被拒绝 (422)。
+
+```bash
+# 查看索引 (业务)
+curl -s http://127.0.0.1:8080/api/v1/groups/token-status \
+  -H "Authorization: Bearer $TOKEN"
+
+# 巡查某分组 (SSE)
+curl -N -X POST http://127.0.0.1:8080/api/v1/email-accounts/refresh/group/1 \
+  -H "Authorization: Bearer $TOKEN"
+
+# 外部 API: 同步巡查分组 1 并拿 JSON 结果
+curl -s -X POST http://127.0.0.1:8080/api/external/token/refresh \
+  -H "Authorization: Bearer $API_KEY" -H "Content-Type: application/json" \
+  -d '{"group_id": 1}'
+```
+
 ## 生成客户端 SDK
 
 ```bash

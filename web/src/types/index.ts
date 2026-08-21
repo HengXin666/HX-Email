@@ -21,7 +21,7 @@ export type {
   UsableEmailStatus,
   WorkbenchEmail,
 } from "./email";
-export type { Group, Tag } from "./group";
+export type { Group, GroupTokenStatus, Tag } from "./group";
 export type {
   EmailMessagesPage,
   LatestMailMessage,

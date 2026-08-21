@@ -15,6 +15,7 @@ from hx_email.api.impl.external import (
     register_external_pool_routes,
     register_external_system_routes,
     register_external_temp_mail_routes,
+    register_external_token_routes,
 )
 from hx_email.api.impl.google_verification.admin_routes import (
     register_google_verification_routes,
@@ -107,8 +108,6 @@ def register_routes(
     register_messaging_event_routes(api, settings)
 
     app.include_router(api)
-
-    # External API routes stay on app directly (already use /api/external/ prefix)
     register_external_routes(app, settings, mailbox_provider, temp_mail_providers)
 
 
@@ -118,11 +117,11 @@ def register_external_routes(
     mailbox_provider: MailboxProvider,
     temp_mail_providers: dict[str, TempMailProvider],
 ) -> None:
-    """External API routes secured by Authorization: Bearer (external API key)."""
     register_external_system_routes(app, settings)
     register_external_message_routes(app, settings, mailbox_provider, temp_mail_providers)
     register_external_pool_routes(app, settings)
     register_external_temp_mail_routes(app, settings, temp_mail_providers)
+    register_external_token_routes(app, settings, mailbox_provider)
 
 
 def register_health_routes(app: FastAPI) -> None:

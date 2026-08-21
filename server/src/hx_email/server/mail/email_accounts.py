@@ -11,6 +11,7 @@ from hx_email.server.mail.impl.accounts.account_helpers import (
     add_alias_email,
     usable_email_from_row,
 )
+from hx_email.server.mail.impl.patrol.options import assert_group_allows_provider
 from hx_email.server.mail.usable_emails import UsableEmail
 
 __all__ = [
@@ -80,6 +81,8 @@ def add_email_account(
     alias_addresses = alias_addresses or []
     created_at: str = utc_now_iso()
     with connect(settings) as connection:
+        if group_id is not None:
+            assert_group_allows_provider(settings, user_id, group_id, provider, connection)
         try:
             account_cursor = connection.execute(
                 """

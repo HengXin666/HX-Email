@@ -40,12 +40,14 @@ import { CopyButton } from "../components/ui/CopyButton";
 import { Badge, Button, Card, Checkbox, Input, Modal, Select } from "../components/ui/Primitives";
 import { EmptyState, LoadingState } from "../components/ui/StateDisplay";
 import { useToast } from "../components/ui/Toast";
+import { useGroupTokenStatusPolling } from "../hooks/useGroupTokenStatusPolling";
 import { useApp } from "../store/AppContext";
 import type {
   AccountImportResult,
   EmailAccount,
   EmailMessagesPage,
   Group,
+  GroupTokenStatus,
   SSERefreshEvent,
   StoredEmailMessage,
   Tag,
@@ -69,6 +71,19 @@ const COLORS = [
   "#d29922",
   "#db61a2",
   "#6e7681",
+];
+
+const PROVIDER_CHANNEL_OPTIONS = [
+  { value: "", label: "不限渠道" },
+  { value: "gmail", label: "Google Gmail" },
+  { value: "outlook", label: "Microsoft Outlook" },
+  { value: "qq", label: "QQ 邮箱" },
+  { value: "163", label: "163 邮箱" },
+  { value: "126", label: "126 邮箱" },
+  { value: "aliyun", label: "阿里邮箱" },
+  { value: "yahoo", label: "Yahoo" },
+  { value: "custom", label: "自定义 IMAP" },
+  { value: "temp_mail", label: "临时邮箱" },
 ];
 
 const MESSAGE_PAGE_SIZE = 30;
@@ -110,18 +125,26 @@ const EmailProviderIcon: React.FC<{
 };
 
 // ========== 左侧：分组栏 ==========
+const UNGROUPED_GROUP_ID = 0;
+const EMAIL_PAGE_SIZE = 100;
+
 const GroupSidebar: React.FC<{
   selectedGroupId: number | null;
   onSelect: (id: number | null) => void;
-}> = ({ selectedGroupId, onSelect }) => {
+  showTemp: boolean;
+}> = ({ selectedGroupId, onSelect, showTemp }) => {
   const {
     groups,
     emails,
+    groupTokenStatus,
     createGroup,
     updateGroup,
     deleteGroup,
     deleteGroups,
     reorderGroups,
+    refreshAccounts,
+    refreshEmails,
+    refreshGroupTokenStatus,
     user,
   } = useApp();
   const { toast } = useToast();
@@ -132,12 +155,15 @@ const GroupSidebar: React.FC<{
   const [newNotify, setNewNotify] = useState(true);
   const [newPolling, setNewPolling] = useState(true);
   const [newProxy, setNewProxy] = useState("");
+  const [newProvider, setNewProvider] = useState("");
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   // 多选删除
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedGroupIds, setSelectedGroupIds] = useState<Set<number>>(new Set());
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false);
+  // 巡查 (批量刷新 token): 进行中的分组 id, "ungrouped" 表示未分组
+  const [patrollingTarget, setPatrollingTarget] = useState<number | "ungrouped" | null>(null);
   // 拖拽排序: 本地顺序, 拖拽期间不被 context 刷新覆盖;
   // 仅在顺序真实变化时同步, 避免上游数组引用不稳定时反复 setState
   const [orderedGroups, setOrderedGroups] = useState<Group[]>(groups);
@@ -177,22 +203,69 @@ const GroupSidebar: React.FC<{
     setNewNotify(groupDefaultsRef.current.notify);
     setNewPolling(groupDefaultsRef.current.polling);
     setNewProxy(groupDefaultsRef.current.proxy);
+    setNewProvider("");
     setShowNew(true);
   };
 
   const counts = useMemo(() => {
-    const cardEmails: UsableEmail[] = emails.filter((email: UsableEmail) => email.kind !== "alias");
-    const map: Record<number | "all", number> = { all: cardEmails.length };
+    // 与中间列表的默认可见性保持一致: 别名永远隐藏, 临时邮箱仅在 showTemp 时计数
+    const cardEmails: UsableEmail[] = emails.filter(
+      (email: UsableEmail) => email.kind !== "alias" && (showTemp || email.kind !== "temp"),
+    );
+    const map: Record<number | "all" | "ungrouped", number> = {
+      all: cardEmails.length,
+      ungrouped: cardEmails.filter((e: UsableEmail) => e.group == null).length,
+    };
     groups.forEach((g) => {
       map[g.id] = cardEmails.filter((e: UsableEmail) => e.group?.id === g.id).length;
     });
     return map;
-  }, [groups, emails]);
+  }, [groups, emails, showTemp]);
+
+  // token 索引: 每个分组的总账号数 + 有效 token 数; 未分组单列
+  const tokenCounts = useMemo(() => {
+    const byGroup: Record<number, { total: number; valid: number }> = {};
+    (groupTokenStatus?.groups ?? []).forEach((g) => {
+      byGroup[g.id] = { total: g.account_count, valid: g.valid_token_count };
+    });
+    const ungrouped = groupTokenStatus?.ungrouped ?? {
+      account_count: 0,
+      valid_token_count: 0,
+    };
+    return {
+      byGroup,
+      ungrouped: { total: ungrouped.account_count, valid: ungrouped.valid_token_count },
+    };
+  }, [groupTokenStatus]);
+
+  // 巡查: 按分组批量刷新 token (SSE 流式), 完成后刷新索引与列表
+  const runPatrol = async (target: number | "ungrouped"): Promise<void> => {
+    setPatrollingTarget(target);
+    try {
+      const url =
+        target === "ungrouped"
+          ? "/email-accounts/refresh/ungrouped"
+          : `/email-accounts/refresh/group/${target}`;
+      await streamRefresh(url, {}, (e: SSERefreshEvent) => {
+        if (e.type === "complete") {
+          toast(
+            `巡查完成: 成功 ${e.success ?? 0}, 失败 ${e.failed ?? 0}`,
+            (e.failed ?? 0) > 0 ? "error" : "success",
+          );
+        }
+      });
+      await Promise.all([refreshAccounts(), refreshEmails(), refreshGroupTokenStatus()]);
+    } catch (err: any) {
+      toast(err.message, "error");
+    } finally {
+      setPatrollingTarget(null);
+    }
+  };
 
   const handleCreate = async () => {
     if (!newName.trim()) return;
     try {
-      await createGroup(newName.trim(), newColor, newProxy, newNotify, newPolling);
+      await createGroup(newName.trim(), newColor, newProxy, newNotify, newPolling, newProvider);
       toast("分组已创建", "success");
       setNewName("");
       setShowNew(false);
@@ -322,6 +395,8 @@ const GroupSidebar: React.FC<{
               key={g.id}
               group={g}
               count={counts[g.id] || 0}
+              tokenCount={tokenCounts.byGroup[g.id]}
+              patrolling={patrollingTarget === g.id}
               selected={selectedGroupId === g.id}
               selectionMode={selectionMode}
               isSelected={selectedGroupIds.has(g.id)}
@@ -329,9 +404,43 @@ const GroupSidebar: React.FC<{
               onToggleSelect={() => toggleSelectGroup(g.id)}
               onEdit={() => setEditingGroup(g.id)}
               onDelete={() => handleDelete(g.id)}
+              onPatrol={() => void runPatrol(g.id)}
             />
           ))}
         </Reorder.Group>
+
+        {/* 未分组: 不属于任何分组的账号 */}
+        <button
+          onClick={() => onSelect(UNGROUPED_GROUP_ID)}
+          className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-colors ${
+            selectedGroupId === UNGROUPED_GROUP_ID
+              ? "bg-gh-accent/10 text-gh-accent"
+              : "text-gh-text-muted hover:text-gh-text hover:bg-gh-border/40"
+          }`}
+        >
+          <IconTag size={14} />
+          <span className="flex-1 text-left">未分组</span>
+          <span className="text-xs tabular-nums">{counts.ungrouped}</span>
+          {tokenCounts.ungrouped.valid > 0 && (
+            <span className="text-[10px] text-gh-success tabular-nums">
+              {tokenCounts.ungrouped.valid}✓
+            </span>
+          )}
+          {patrollingTarget === "ungrouped" ? (
+            <IconRefresh size={12} className="text-gh-accent animate-spin" />
+          ) : (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                void runPatrol("ungrouped");
+              }}
+              className="p-0.5 rounded text-gh-text-muted/50 hover:text-gh-accent transition-colors"
+              title="巡查未分组账号的 Token"
+            >
+              <IconRefresh size={12} />
+            </button>
+          )}
+        </button>
       </div>
 
       {/* 多选操作栏 */}
@@ -405,6 +514,12 @@ const GroupSidebar: React.FC<{
             onChange={(e) => setNewProxy(e.target.value)}
             placeholder="例如: 127.0.0.1:7890 或 http://host:port"
           />
+          <Select
+            label="限定渠道（可选）"
+            value={newProvider}
+            onChange={(v) => setNewProvider(v)}
+            options={PROVIDER_CHANNEL_OPTIONS}
+          />
           <Checkbox label="自动轮询组内邮箱" checked={newPolling} onChange={setNewPolling} />
           <Checkbox label="发送新邮件通知与转发" checked={newNotify} onChange={setNewNotify} />
         </div>
@@ -444,6 +559,8 @@ const GroupSidebar: React.FC<{
 const GroupItem: React.FC<{
   group: Group;
   count: number;
+  tokenCount?: { total: number; valid: number };
+  patrolling?: boolean;
   selected: boolean;
   selectionMode: boolean;
   isSelected: boolean;
@@ -451,9 +568,12 @@ const GroupItem: React.FC<{
   onToggleSelect: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onPatrol: () => void;
 }> = ({
   group,
   count,
+  tokenCount,
+  patrolling = false,
   selected,
   selectionMode,
   isSelected,
@@ -461,8 +581,10 @@ const GroupItem: React.FC<{
   onToggleSelect,
   onEdit,
   onDelete,
+  onPatrol,
 }) => {
   const dragControls = useDragControls();
+  const validCount = tokenCount?.valid ?? 0;
   return (
     <Reorder.Item
       value={group}
@@ -528,10 +650,29 @@ const GroupItem: React.FC<{
           />
           <span className="flex-1 text-left truncate">{group.name}</span>
           <span className="text-xs tabular-nums opacity-70">{count}</span>
+          {validCount > 0 && (
+            <span
+              className="text-[10px] text-gh-success tabular-nums"
+              title={`${tokenCount?.total ?? count} 个账号, ${validCount} 个 token 有效`}
+            >
+              {validCount}✓
+            </span>
+          )}
         </button>
-        {/* 编辑 / 删除 — hover 时直接显示，无需二次点击下拉菜单 */}
+        {/* 编辑 / 删除 / 巡查 — hover 时直接显示，无需二次点击下拉菜单 */}
         {!selectionMode && (
           <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onPatrol();
+              }}
+              disabled={patrolling}
+              className="p-1 rounded-md text-gh-text-muted hover:text-gh-accent hover:bg-gh-accent/10 transition-colors disabled:opacity-50"
+              title="巡查本组账号 Token（批量刷新）"
+            >
+              <IconRefresh size={13} className={patrolling ? "animate-spin" : ""} />
+            </button>
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -569,6 +710,7 @@ const EditGroupModal: React.FC<{
     proxy_url?: string,
     notify_enabled?: boolean,
     polling_enabled?: boolean,
+    allowed_provider?: string,
   ) => Promise<any>;
   onDelete: (id: number) => Promise<any>;
 }> = ({ groupId, onClose, onUpdate, onDelete }) => {
@@ -580,6 +722,7 @@ const EditGroupModal: React.FC<{
   const [proxyUrl, setProxyUrl] = useState(g?.proxy_url || "");
   const [notifyEnabled, setNotifyEnabled] = useState(g?.notify_enabled !== false);
   const [pollingEnabled, setPollingEnabled] = useState(g?.polling_enabled !== false);
+  const [allowedProvider, setAllowedProvider] = useState(g?.allowed_provider || "");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [testLoading, setTestLoading] = useState(false);
@@ -595,6 +738,7 @@ const EditGroupModal: React.FC<{
       setProxyUrl(current.proxy_url || "");
       setNotifyEnabled(current.notify_enabled !== false);
       setPollingEnabled(current.polling_enabled !== false);
+      setAllowedProvider(current.allowed_provider || "");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupId]);
@@ -602,7 +746,15 @@ const EditGroupModal: React.FC<{
   const handleSave = async () => {
     if (!g || !name.trim()) return;
     try {
-      await onUpdate(g.id, name.trim(), color, proxyUrl, notifyEnabled, pollingEnabled);
+      await onUpdate(
+        g.id,
+        name.trim(),
+        color,
+        proxyUrl,
+        notifyEnabled,
+        pollingEnabled,
+        allowedProvider,
+      );
       toast("分组已更新", "success");
       onClose();
     } catch (err: any) {
@@ -737,6 +889,12 @@ const EditGroupModal: React.FC<{
               </div>
             )}
           </div>
+          <Select
+            label="限定渠道（可选）"
+            value={allowedProvider}
+            onChange={(value) => setAllowedProvider(value)}
+            options={PROVIDER_CHANNEL_OPTIONS}
+          />
           <Checkbox
             label="自动轮询组内邮箱"
             checked={pollingEnabled}
@@ -790,6 +948,8 @@ const EmailList: React.FC<{
   onToggleEmailSelect: (emailId: number) => void;
   onRefreshAccount: () => void;
   onPoolChanged: () => void | Promise<void>;
+  showTemp: boolean;
+  onToggleShowTemp: () => void;
 }> = ({
   groupId,
   selectedEmailId,
@@ -799,19 +959,28 @@ const EmailList: React.FC<{
   onToggleEmailSelect,
   onRefreshAccount,
   onPoolChanged,
+  showTemp,
+  onToggleShowTemp,
 }) => {
   const { emails, groups, accounts, refreshEmails, refreshAccounts } = useApp();
   const [showAdd, setShowAdd] = useState(false);
   const [showSettings, setShowSettings] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   const [sortOrder, setSortOrder] = useState<EmailSortOrder>("desc");
-  const [showTemp, setShowTemp] = useState(false);
+  // 懒加载窗口: 默认只渲染前 EMAIL_PAGE_SIZE 条, 滚动到底部时再加载更多
+  const [visibleCount, setVisibleCount] = useState(EMAIL_PAGE_SIZE);
+  const scrollRef = React.useRef<HTMLDivElement | null>(null);
 
   const filtered = useMemo(() => {
     let list: UsableEmail[] = emails.filter((email: UsableEmail) => email.kind !== "alias");
     if (!showTemp) list = list.filter((email: UsableEmail) => email.kind !== "temp");
     const normalizedQuery: string = query.trim().toLowerCase();
-    if (groupId !== null) list = list.filter((e) => e.group?.id === groupId);
+    if (groupId === UNGROUPED_GROUP_ID) {
+      // 未分组: 不属于任何分组的邮箱
+      list = list.filter((e) => e.group == null);
+    } else if (groupId !== null) {
+      list = list.filter((e) => e.group?.id === groupId);
+    }
     if (normalizedQuery) {
       list = list.filter((e: UsableEmail) => {
         const account: EmailAccount | undefined = accounts.find(
@@ -832,6 +1001,35 @@ const EmailList: React.FC<{
     }
     return list.sort((left, right) => compareEmailCreatedAt(left, right, sortOrder));
   }, [accounts, emails, groupId, query, showTemp, sortOrder]);
+
+  // 查询/分组/排序/临时邮箱可见性变化时, 重置懒加载窗口回到第一页
+  useEffect(() => {
+    setVisibleCount(EMAIL_PAGE_SIZE);
+  }, [groupId, query, sortOrder, showTemp, filtered.length]);
+
+  const visibleEmails = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
+  const hasMore = visibleCount < filtered.length;
+
+  const loadMore = React.useCallback(() => {
+    setVisibleCount((count) => Math.min(count + EMAIL_PAGE_SIZE, filtered.length));
+  }, [filtered.length]);
+
+  // 滚动接近底部时自动加载下一批 (IntersectionObserver 观察底部哨兵)
+  useEffect(() => {
+    const sentinel = scrollRef.current;
+    if (!sentinel || !hasMore) return;
+    if (typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          loadMore();
+        }
+      },
+      { root: null, rootMargin: "400px" },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore, loadMore, visibleCount]);
 
   const group = groups.find((g) => g.id === groupId);
 
@@ -872,12 +1070,12 @@ const EmailList: React.FC<{
               <div className="w-2 h-2 rounded-full shrink-0" style={{ background: group.color }} />
             )}
             <span className="text-sm font-semibold text-gh-text truncate">
-              {group ? group.name : "全部邮箱"}
+              {groupId === UNGROUPED_GROUP_ID ? "未分组邮箱" : group ? group.name : "全部邮箱"}
             </span>
             <span className="text-xs text-gh-text-secondary tabular-nums">{filtered.length}</span>
           </div>
           <button
-            onClick={() => setShowTemp((value) => !value)}
+            onClick={onToggleShowTemp}
             className={`p-1.5 rounded-md transition-colors ${
               showTemp
                 ? "text-gh-accent bg-gh-accent/10"
@@ -952,7 +1150,7 @@ const EmailList: React.FC<{
 
       <div className="flex-1 overflow-y-auto p-3 space-y-2">
         <AnimatePresence>
-          {filtered.map((e) => (
+          {visibleEmails.map((e) => (
             <EmailCard
               key={e.id}
               email={e}
@@ -975,12 +1173,26 @@ const EmailList: React.FC<{
             </div>
           </div>
         )}
+        {hasMore && (
+          <div
+            ref={scrollRef}
+            className="flex items-center justify-center gap-2 py-3 text-xs text-gh-text-secondary"
+          >
+            <span className="text-gh-accent animate-spin inline-block w-3 h-3 border-2 border-gh-accent/40 border-t-gh-accent rounded-full" />
+            正在加载更多…
+          </div>
+        )}
+        {!hasMore && filtered.length > 0 && (
+          <div className="text-center py-3 text-[11px] text-gh-text-muted">
+            共 {filtered.length} 个邮箱
+          </div>
+        )}
       </div>
 
       <AddEmailModal
         open={showAdd}
         onClose={() => setShowAdd(false)}
-        defaultGroupId={groupId}
+        defaultGroupId={groupId === UNGROUPED_GROUP_ID ? null : groupId}
         onPoolChanged={onPoolChanged}
       />
       <EmailSettingsModal
@@ -3755,9 +3967,14 @@ export const Accounts: React.FC = () => {
   const [refreshConfirm, setRefreshConfirm] = useState<"all" | "failed" | null>(null);
   const [refreshPreviewAccounts, setRefreshPreviewAccounts] = useState<RefreshPreviewItem[]>([]);
   const [refreshPreviewLoading, setRefreshPreviewLoading] = useState(false);
+  const [showTemp, setShowTemp] = useState(false); // 临时邮箱可见性: 侧边栏计数与列表共用
   const { emails, accounts, groups, refreshAccounts, refreshEmails } = useApp();
   const { toast } = useToast();
   const refreshTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 轻量轮询分组 token 索引: 页面可见时定时刷新, 隐藏时暂停;
+  // 本页的增删改会通过 context 立即触发刷新, 这里只兜底外部变化
+  useGroupTokenStatusPolling(20000);
 
   const selectedEmails = useMemo(
     () => emails.filter((email) => selectedEmailIds.has(email.id)),
@@ -4021,7 +4238,11 @@ export const Accounts: React.FC = () => {
                   variant="secondary"
                   size="sm"
                   onClick={() => {
-                    setBulkGroupId(selectedGroupId ?? "");
+                    setBulkGroupId(
+                      selectedGroupId === UNGROUPED_GROUP_ID || selectedGroupId == null
+                        ? ""
+                        : selectedGroupId,
+                    );
                     setBulkGroupOpen(true);
                   }}
                   disabled={bulkLoading}
@@ -4113,6 +4334,7 @@ export const Accounts: React.FC = () => {
             setSelectedGroupId(id);
             setSelectedEmail(null);
           }}
+          showTemp={showTemp}
         />
         <EmailList
           groupId={selectedGroupId}
@@ -4123,6 +4345,8 @@ export const Accounts: React.FC = () => {
           onToggleEmailSelect={toggleSelectEmail}
           onRefreshAccount={handleRefreshAccountDone}
           onPoolChanged={refreshPoolEmailIds}
+          showTemp={showTemp}
+          onToggleShowTemp={() => setShowTemp((value) => !value)}
         />
         <EmailDetail email={selectedEmail} />
       </div>

@@ -28,6 +28,10 @@ from hx_email.server.external_api.impl.temp_mail_service import (
     apply_temp_email,
     finish_temp_email,
 )
+from hx_email.server.external_api.impl.token_service import (
+    get_token_status,
+    refresh_group_tokens,
+)
 
 __all__ = [
     "apply_temp_email",
@@ -47,6 +51,8 @@ __all__ = [
     "get_messages",
     "get_pool_stats",
     "get_probe_status",
+    "get_token_status",
+    "refresh_group_tokens",
     "require_api_key",
     "validate_api_key",
     "wait_for_message",

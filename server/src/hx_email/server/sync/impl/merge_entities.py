@@ -27,12 +27,13 @@ def merge_groups(
             if overwrite:
                 connection.execute(
                     "UPDATE groups SET color = ?, proxy_url = ?, notify_enabled = ?,"
-                    " polling_enabled = ? WHERE id = ?",
+                    " polling_enabled = ?, allowed_provider = ? WHERE id = ?",
                     (
                         row["color"],
                         row["proxy_url"],
                         int(bool(row["notify_enabled"])),
                         int(bool(row["polling_enabled"])),
+                        row.get("allowed_provider", ""),
                         existing[0],
                     ),
                 )
@@ -40,7 +41,7 @@ def merge_groups(
         else:
             cursor = connection.execute(
                 "INSERT INTO groups (user_id, name, color, proxy_url, notify_enabled,"
-                " polling_enabled) VALUES (?, ?, ?, ?, ?, ?)",
+                " polling_enabled, allowed_provider) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (
                     user_id,
                     row["name"],
@@ -48,6 +49,7 @@ def merge_groups(
                     row["proxy_url"],
                     int(bool(row["notify_enabled"])),
                     int(bool(row["polling_enabled"])),
+                    row.get("allowed_provider", ""),
                 ),
             )
             ids[int(row["id"])] = inserted_id(cursor)

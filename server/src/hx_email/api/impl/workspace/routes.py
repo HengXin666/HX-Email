@@ -7,16 +7,25 @@ from pydantic import BaseModel
 
 from hx_email.api.dependencies import require_user
 from hx_email.api.impl.workspace.proxy import ProxyTestRequest, test_proxy_connect
+from hx_email.api.impl.workspace.token_status_routes import (
+    register_group_token_status_routes,
+)
 from hx_email.api.schemas import GroupCreate, TagCreate, UsableEmailOrganization
 from hx_email.api.serializers import serialize_workbench_email, serialize_workbench_overview
 from hx_email.config import Settings
 from hx_email.server.mail.imap.impl.address_guard import validate_proxy_endpoint
+from hx_email.server.mail.impl.patrol.index import (
+    export_group_accounts_text as _export_group_accounts_text,
+)
+from hx_email.server.mail.impl.patrol.index import get_group_token_index
+from hx_email.server.mail.impl.patrol.options import (
+    validate_allowed_provider as _validate_allowed_provider,
+)
 from hx_email.server.workspace.groups import (
     create_group,
     create_tag,
     delete_group,
     delete_groups,
-    export_group_accounts_text,
     list_groups,
     list_tags,
     reorder_groups,
@@ -34,6 +43,8 @@ class _GroupIdsRequest(BaseModel):
 
 
 def register_workspace_routes(router: APIRouter, settings: Settings) -> None:
+    register_group_token_status_routes(router, settings)
+
     @router.get("/workbench/overview")
     def get_overview(
         authorization: Annotated[str | None, Header()] = None,
@@ -52,6 +63,10 @@ def register_workspace_routes(router: APIRouter, settings: Settings) -> None:
                 validate_proxy_endpoint(payload.proxy_url)
             except ValueError as error:
                 raise HTTPException(status_code=400, detail=str(error)) from error
+        try:
+            allowed_provider: str = _validate_allowed_provider(payload.allowed_provider)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
         group = create_group(
             settings,
             user.id,
@@ -60,6 +75,7 @@ def register_workspace_routes(router: APIRouter, settings: Settings) -> None:
             payload.proxy_url,
             payload.notify_enabled,
             payload.polling_enabled,
+            allowed_provider,
         )
         return {
             "id": group.id,
@@ -68,6 +84,7 @@ def register_workspace_routes(router: APIRouter, settings: Settings) -> None:
             "proxy_url": group.proxy_url,
             "notify_enabled": group.notify_enabled,
             "polling_enabled": group.polling_enabled,
+            "allowed_provider": group.allowed_provider,
         }
 
     @router.get("/groups")
@@ -75,6 +92,8 @@ def register_workspace_routes(router: APIRouter, settings: Settings) -> None:
         authorization: Annotated[str | None, Header()] = None,
     ) -> list[dict[str, object]]:
         user = require_user(settings, authorization)
+        index = get_group_token_index(settings, user.id)
+        counts = {group.id: group.bucket for group in index.groups}
         return [
             {
                 "id": group.id,
@@ -83,6 +102,9 @@ def register_workspace_routes(router: APIRouter, settings: Settings) -> None:
                 "proxy_url": group.proxy_url,
                 "notify_enabled": group.notify_enabled,
                 "polling_enabled": group.polling_enabled,
+                "allowed_provider": group.allowed_provider,
+                "account_count": counts[group.id].account_count,
+                "valid_token_count": counts[group.id].valid_token_count,
             }
             for group in list_groups(settings, user.id)
         ]
@@ -99,6 +121,10 @@ def register_workspace_routes(router: APIRouter, settings: Settings) -> None:
                 validate_proxy_endpoint(payload.proxy_url)
             except ValueError as error:
                 raise HTTPException(status_code=400, detail=str(error)) from error
+        try:
+            allowed_provider: str = _validate_allowed_provider(payload.allowed_provider)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
         group = update_group(
             settings,
             user.id,
@@ -108,6 +134,7 @@ def register_workspace_routes(router: APIRouter, settings: Settings) -> None:
             payload.proxy_url,
             payload.notify_enabled,
             payload.polling_enabled,
+            allowed_provider,
         )
         if group is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
@@ -118,6 +145,7 @@ def register_workspace_routes(router: APIRouter, settings: Settings) -> None:
             "proxy_url": group.proxy_url,
             "notify_enabled": group.notify_enabled,
             "polling_enabled": group.polling_enabled,
+            "allowed_provider": group.allowed_provider,
         }
 
     @router.delete("/groups/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -159,7 +187,7 @@ def register_workspace_routes(router: APIRouter, settings: Settings) -> None:
         authorization: Annotated[str | None, Header()] = None,
     ) -> Response:
         user = require_user(settings, authorization)
-        text = export_group_accounts_text(settings, user.id, group_id)
+        text = _export_group_accounts_text(settings, user.id, group_id)
         if text is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
         headers: dict[str, str] = {
@@ -238,14 +266,17 @@ def register_workspace_routes(router: APIRouter, settings: Settings) -> None:
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
         user = require_user(settings, authorization)
-        usable_email = organize_usable_email(
-            settings,
-            user.id,
-            usable_email_id,
-            payload.label,
-            payload.group_id,
-            payload.tag_ids,
-        )
+        try:
+            usable_email = organize_usable_email(
+                settings,
+                user.id,
+                usable_email_id,
+                payload.label,
+                payload.group_id,
+                payload.tag_ids,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
         if usable_email is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Usable email not found"

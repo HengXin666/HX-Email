@@ -23,7 +23,7 @@ export type {
   UsableEmailStatus,
   WorkbenchEmail,
 } from "./types/email";
-export type { Group, Tag } from "./types/group";
+export type { Group, GroupTokenStatus, Tag } from "./types/group";
 export type {
   EmailMessagesPage,
   LatestMailMessage,

@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 from hx_email.config import Settings
 from hx_email.database import connect
 from hx_email.security import decrypt_secret, verify_password
+from hx_email.server.mail.impl.patrol.options import assert_group_allows_provider
 
 EXPORT_TOKEN_TTL_MINUTES: int = 5
 
@@ -26,6 +27,14 @@ def batch_update_group(
         return 0
     with connect(settings) as connection:
         placeholders = ",".join("?" for _ in account_ids)
+        account_rows = connection.execute(
+            f"SELECT provider FROM email_accounts WHERE user_id = ? AND id IN ({placeholders})",
+            (user_id, *account_ids),
+        ).fetchall()
+        for account_row in account_rows:
+            assert_group_allows_provider(
+                settings, user_id, group_id, str(account_row["provider"]), connection
+            )
         cursor = connection.execute(
             f"""UPDATE email_accounts SET group_id = ?
                 WHERE user_id = ? AND id IN ({placeholders})""",

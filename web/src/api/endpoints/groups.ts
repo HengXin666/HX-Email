@@ -1,4 +1,4 @@
-import type { Group, Tag } from "../../types";
+import type { Group, GroupTokenStatus, Tag } from "../../types";
 import { request } from "../core";
 
 export const groupsApi = {
@@ -8,10 +8,18 @@ export const groupsApi = {
     proxy_url = "",
     notify_enabled?: boolean,
     polling_enabled?: boolean,
+    allowed_provider = "",
   ) =>
     request<Group>("/groups", {
       method: "POST",
-      body: JSON.stringify({ name, color, proxy_url, notify_enabled, polling_enabled }),
+      body: JSON.stringify({
+        name,
+        color,
+        proxy_url,
+        notify_enabled,
+        polling_enabled,
+        allowed_provider,
+      }),
     }),
 
   updateGroup: (
@@ -21,10 +29,18 @@ export const groupsApi = {
     proxy_url = "",
     notify_enabled?: boolean,
     polling_enabled?: boolean,
+    allowed_provider = "",
   ) =>
     request<Group>(`/groups/${id}`, {
       method: "PUT",
-      body: JSON.stringify({ name, color, proxy_url, notify_enabled, polling_enabled }),
+      body: JSON.stringify({
+        name,
+        color,
+        proxy_url,
+        notify_enabled,
+        polling_enabled,
+        allowed_provider,
+      }),
     }),
 
   deleteGroup: (id: number) => request<void>(`/groups/${id}`, { method: "DELETE" }),
@@ -54,6 +70,8 @@ export const groupsApi = {
     }),
 
   listGroups: () => request<Group[]>("/groups"),
+
+  getGroupTokenStatus: () => request<GroupTokenStatus>("/groups/token-status"),
 
   testProxy: (proxy_url: string) =>
     request<{ success: boolean; latency_ms: number; message: string }>("/groups/proxy-test", {

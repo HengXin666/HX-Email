@@ -59,6 +59,7 @@ class GroupCreate(BaseModel):
     proxy_url: str = ""
     notify_enabled: bool | None = None
     polling_enabled: bool | None = None
+    allowed_provider: str = ""
 
 
 class TagCreate(BaseModel):

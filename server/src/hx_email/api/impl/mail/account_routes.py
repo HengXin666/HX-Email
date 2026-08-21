@@ -29,6 +29,7 @@ from hx_email.server.mail.impl.accounts import (
     update_email_account,
 )
 from hx_email.server.mail.impl.accounts.account_helpers import InvalidPrimaryAddressError
+from hx_email.server.mail.impl.patrol.options import assert_group_allows_provider
 
 
 def register_email_account_routes(router: APIRouter, settings: Settings) -> None:
@@ -178,6 +179,19 @@ def register_email_account_routes(router: APIRouter, settings: Settings) -> None
         if payload.imap_host is not None and payload.imap_host.strip():
             try:
                 validate_proxy_host(payload.imap_host)
+            except ValueError as error:
+                raise HTTPException(status_code=422, detail=str(error)) from error
+        if payload.group_id is not None:
+            existing = get_email_account(settings, user.id, account_id)
+            if existing is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND, detail="Email account not found"
+                )
+            effective_provider: str = payload.provider or existing.provider
+            try:
+                assert_group_allows_provider(
+                    settings, user.id, payload.group_id, effective_provider
+                )
             except ValueError as error:
                 raise HTTPException(status_code=422, detail=str(error)) from error
         try:

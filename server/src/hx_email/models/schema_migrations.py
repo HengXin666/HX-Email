@@ -30,6 +30,7 @@ COLUMN_MIGRATIONS: tuple[tuple[str, str, str], ...] = (
     ("groups", "proxy_url", "TEXT NOT NULL DEFAULT ''"),
     ("groups", "notify_enabled", "INTEGER NOT NULL DEFAULT 1"),
     ("groups", "sort_order", "INTEGER NOT NULL DEFAULT 0"),
+    ("groups", "allowed_provider", "TEXT NOT NULL DEFAULT ''"),
     ("fetched_messages", "message_id", "TEXT NOT NULL DEFAULT ''"),
     ("fetched_messages", "body_html", "TEXT NOT NULL DEFAULT ''"),
     ("fetched_messages", "from_email", "TEXT NOT NULL DEFAULT ''"),
