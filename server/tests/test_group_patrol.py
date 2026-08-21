@@ -200,6 +200,75 @@ def test_group_refresh_sync_skips_non_oauth_accounts(tmp_path: Path, monkeypatch
     assert result["summary"]["total"] == 0
 
 
+def test_group_refresh_sse_yields_start_before_any_refresh(tmp_path: Path, monkeypatch) -> None:
+    """The SSE stream must emit `start` before touching any account refresh,
+    so consumers receive headers immediately (regression: batch-first
+    generator delayed the first byte until the whole group finished)."""
+    settings = make_settings(tmp_path)
+    group = create_group(settings, 1, "gmail 号", "#3fb950")
+    add_gmail_account(settings, 1, "a@gmail.com", group.id)
+    add_gmail_account(settings, 1, "b@gmail.com", group.id)
+
+    import hx_email.server.mail.impl.patrol.refresh as patrol_refresh
+    from hx_email.server.mail.verification import EmptyMailboxProvider
+
+    calls: list[str] = []
+
+    def fake_refresh(*args, **kwargs) -> dict[str, object]:
+        calls.append("refresh")
+        return {"success": True, "message": "mocked", "error_detail": ""}
+
+    monkeypatch.setattr(patrol_refresh, "try_refresh_provider_oauth_token", fake_refresh)
+
+    stream = patrol_refresh.refresh_group_accounts(settings, 1, group.id, EmptyMailboxProvider())
+    first_event = next(stream)
+    assert first_event.startswith("event: start")
+    assert calls == []
+
+    events = [first_event, *stream]
+    assert len(calls) == 2
+    assert events[-1].startswith("event: complete")
+    assert sum(1 for event in events if event.startswith("event: progress")) == 2
+
+
+def test_group_refresh_sse_matches_sync_output(tmp_path: Path, monkeypatch) -> None:
+    """SSE progress payloads and sync JSON must describe the same run."""
+    settings = make_settings(tmp_path)
+    group = create_group(settings, 1, "gmail 号", "#3fb950")
+    add_gmail_account(settings, 1, "a@gmail.com", group.id)
+    add_gmail_account(settings, 1, "b@gmail.com", group.id)
+
+    import json
+
+    import hx_email.server.mail.impl.patrol.refresh as patrol_refresh
+    from hx_email.server.mail.verification import EmptyMailboxProvider
+
+    def fake_refresh(*args, **kwargs) -> dict[str, object]:
+        return {"success": True, "message": "mocked", "error_detail": ""}
+
+    monkeypatch.setattr(patrol_refresh, "try_refresh_provider_oauth_token", fake_refresh)
+
+    events = list(
+        patrol_refresh.refresh_group_accounts(settings, 1, group.id, EmptyMailboxProvider())
+    )
+    progress_payloads: list[dict[str, object]] = []
+    complete_summary: dict[str, object] = {}
+    for event in events:
+        body = json.loads(event.split("data: ", 1)[1].strip())
+        if event.startswith("event: progress"):
+            progress_payloads.append(body)
+        elif event.startswith("event: complete"):
+            complete_summary = body
+
+    sync_result = patrol_refresh.refresh_group_accounts_sync(settings, 1, group.id)
+    sync_results = [
+        {key: value for key, value in payload.items() if key not in ("current", "total")}
+        for payload in progress_payloads
+    ]
+    assert sync_results == sync_result["results"]
+    assert complete_summary == sync_result["summary"]
+
+
 def test_ungrouped_refresh_only_touches_unassigned(tmp_path: Path, monkeypatch) -> None:
     settings = make_settings(tmp_path)
     group = create_group(settings, 1, "gmail 号", "#3fb950")

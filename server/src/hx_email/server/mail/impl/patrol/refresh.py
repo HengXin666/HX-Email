@@ -100,34 +100,58 @@ def _refresh_account(settings: Settings, account: dict[str, object]) -> dict[str
     }
 
 
+def _group_account_scope(group_id: int) -> tuple[int | None, bool]:
+    """Map a group id to the account selection (group id / ungrouped flag)."""
+    if group_id == UNGROUPED_GROUP_ID:
+        return None, True
+    return group_id, False
+
+
+def _refresh_group_accounts_stream(
+    settings: Settings,
+    user_id: int,
+    group_id: int,
+) -> Generator[tuple[str, dict[str, object]], None, None]:
+    """Streaming core: yields (event, payload) as work progresses.
+
+    ``start`` is emitted right after the fast account-list query so SSE
+    consumers receive response headers immediately; each account refresh
+    then yields a ``progress`` payload and the run ends with ``complete``.
+    """
+    group_filter, ungrouped = _group_account_scope(group_id)
+    accounts = _fetch_group_accounts(settings, user_id, group_filter, ungrouped=ungrouped)
+    total = len(accounts)
+    yield "start", {"total": total}
+    success_count = 0
+    for index, account in enumerate(accounts):
+        result = _refresh_account(settings, account)
+        if bool(result["success"]):
+            success_count += 1
+        progress: dict[str, object] = {
+            "current": index + 1,
+            "total": total,
+            **result,
+        }
+        yield "progress", progress
+    yield "complete", {"total": total, "success": success_count, "failed": total - success_count}
+
+
 def refresh_group_accounts_sync(
     settings: Settings,
     user_id: int,
     group_id: int,
 ) -> dict[str, object]:
     """Refresh all OAuth accounts of a group (0 = ungrouped); returns JSON."""
-    accounts = _fetch_group_accounts(
-        settings,
-        user_id,
-        group_id if group_id > 0 else None,
-        ungrouped=group_id == UNGROUPED_GROUP_ID,
-    )
     results: list[dict[str, object]] = []
-    success_count = 0
-    for account in accounts:
-        result = _refresh_account(settings, account)
-        results.append(result)
-        if bool(result["success"]):
-            success_count += 1
-    total = len(accounts)
-    return {
-        "summary": {
-            "total": total,
-            "success": success_count,
-            "failed": total - success_count,
-        },
-        "results": results,
-    }
+    summary: dict[str, int] = {"total": 0, "success": 0, "failed": 0}
+    for event, payload in _refresh_group_accounts_stream(settings, user_id, group_id):
+        if event == "progress":
+            results.append(
+                {key: value for key, value in payload.items() if key not in ("current", "total")}
+            )
+        elif event == "complete":
+            summary = cast(dict[str, int], payload)
+    return {"summary": summary, "results": results}
 
 
 def refresh_group_accounts(
@@ -136,19 +160,8 @@ def refresh_group_accounts(
     group_id: int,
     mailbox_provider: MailboxProvider,
 ) -> Generator[str, None, None]:
-    payload = refresh_group_accounts_sync(settings, user_id, group_id)
-    summary = cast(dict[str, int], payload["summary"])
-    results = cast(list[dict[str, object]], payload["results"])
-    total: int = summary["total"]
-    yield sse_event("start", {"total": total})
-    for index, result in enumerate(results):
-        progress: dict[str, object] = {
-            "current": index + 1,
-            "total": total,
-            **result,
-        }
-        yield sse_event("progress", progress)
-    yield sse_event("complete", summary)
+    for event, payload in _refresh_group_accounts_stream(settings, user_id, group_id):
+        yield sse_event(event, payload)
 
 
 def refresh_ungrouped_accounts(
