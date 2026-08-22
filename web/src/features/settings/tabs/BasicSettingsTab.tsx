@@ -303,6 +303,26 @@ export const BasicSettingsTab: React.FC<SettingsTabProps> = ({
             value={settings.refresh_stagger_max_seconds ?? "20"}
             onChange={(event) => setSetting("refresh_stagger_max_seconds", event.target.value)}
           />
+          <div className="flex items-center justify-between rounded-md border border-gh-border bg-gh-canvas-inset p-3">
+            <div>
+              <div className="text-sm text-gh-text">后台定时随机刷新</div>
+              <div className="text-xs text-gh-text-secondary">
+                平台按周期自动刷新全部账号 token（错峰执行），巡检只读状态
+              </div>
+            </div>
+            <SettingsToggle
+              enabled={settings.refresh_schedule_enabled === "true"}
+              onChange={(value) => setSetting("refresh_schedule_enabled", value ? "true" : "false")}
+            />
+          </div>
+          <Input
+            label="定时刷新间隔（秒，60..86400，默认 3600）"
+            type="number"
+            value={settings.refresh_schedule_interval_seconds ?? "3600"}
+            onChange={(event) =>
+              setSetting("refresh_schedule_interval_seconds", event.target.value)
+            }
+          />
           <div>
             <div className="mb-2 text-sm text-gh-text">最近刷新时间（按最近刷新排序）</div>
             <div className="max-h-60 divide-y divide-gh-border overflow-y-auto rounded-md border border-gh-border">

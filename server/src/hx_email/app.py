@@ -9,6 +9,7 @@ from hx_email.database import migrate
 from hx_email.server.mail.graph.fallback_provider import FallbackMailProvider
 from hx_email.server.mail.imap.impl.address_guard import set_private_proxy_policy
 from hx_email.server.mail.impl.fetch.scheduler import MailPollingScheduler
+from hx_email.server.mail.impl.refresh.scheduler import TokenRefreshScheduler
 from hx_email.server.mail.impl.temp_mail import CFWorkerTempMailProvider
 from hx_email.server.mail.temp_mail import TempMailProvider
 from hx_email.server.mail.verification import MailboxProvider
@@ -105,6 +106,7 @@ def create_app(
     )
     app = FastAPI(title="HX Email", version="1.0.0", description=API_DESCRIPTION)
     polling_scheduler = MailPollingScheduler(resolved_settings, resolved_mailbox_provider)
+    refresh_scheduler = TokenRefreshScheduler(resolved_settings, resolved_mailbox_provider)
     sync_scheduler = SyncScheduler(resolved_settings)
     register_routes(
         app,
@@ -124,11 +126,13 @@ def create_app(
         seed_sync_config_from_env(resolved_settings)
         reload_sync_settings(resolved_settings)
         polling_scheduler.start()
+        refresh_scheduler.start()
         sync_scheduler.start()
 
     @app.on_event("shutdown")
     def _stop_bg_fetch() -> None:
         polling_scheduler.stop()
+        refresh_scheduler.stop()
         sync_scheduler.stop()
 
     return app

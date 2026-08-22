@@ -1,15 +1,15 @@
 """Settings service: domain logic for reading and writing system settings."""
 
 import base64
-import json
 import os
 import secrets
 from typing import Any
-from urllib.parse import urlparse
 
 from hx_email.config import Settings
 from hx_email.database import connect
 from hx_email.security import ENCRYPTED_PREFIX, decrypt_secret, encrypt_secret
+from hx_email.server.settings.utils import normalize_external_api_keys
+from hx_email.server.settings.validation import validate_callback_url
 
 VERSION: str = os.environ.get("HX_EMAIL_APP_VERSION", "0.8.0")
 PROJECT_REPOSITORY_URL: str = "https://github.com/HengXin666/HX-Email"
@@ -95,25 +95,6 @@ def decode_value(value: str) -> str:
         return value
 
 
-def normalize_external_api_keys(value: object) -> str:
-    """Validate and serialize external API keys, migrating legacy maps."""
-    api_keys: object = value
-    if isinstance(value, str):
-        try:
-            api_keys = json.loads(value)
-        except json.JSONDecodeError as error:
-            raise ValueError("external_api_keys must be a JSON array") from error
-    if isinstance(api_keys, dict):
-        if not all(
-            isinstance(name, str) and isinstance(key, str) for name, key in api_keys.items()
-        ):
-            raise ValueError("external_api_keys must be a JSON array of strings")
-        api_keys = list(api_keys.values())
-    if not isinstance(api_keys, list) or not all(isinstance(key, str) for key in api_keys):
-        raise ValueError("external_api_keys must be a JSON array of strings")
-    return json.dumps(api_keys, ensure_ascii=False)
-
-
 def get_setting(settings: Settings, key: str, default: str = "") -> str:
     """Read a single setting, decoding sensitive values transparently."""
     with connect(settings) as connection:
@@ -178,6 +159,7 @@ BOOLEAN_SETTING_KEYS: frozenset[str] = frozenset(
         "external_api_disable_wait_message",
         "pool_external_enabled",
         "enable_auto_polling",
+        "refresh_schedule_enabled",
         "group_default_notify_enabled",
         "group_default_polling_enabled",
         "email_notification_enabled",
@@ -190,6 +172,7 @@ BOOLEAN_SETTING_KEYS: frozenset[str] = frozenset(
 INTEGER_SETTING_RANGES: dict[str, tuple[int, int]] = {
     "external_api_rate_limit_per_minute": (0, 100_000),
     "polling_interval": (3, 86_400),
+    "refresh_schedule_interval_seconds": (60, 86_400),
     "email_notification_smtp_port": (1, 65_535),
     "script_notification_timeout": (1, 300),
 }
@@ -202,13 +185,6 @@ def stringify_setting_value(value: object) -> str:
     if value is None:
         return ""
     return str(value).strip() if not isinstance(value, str) else value.strip()
-
-
-def validate_callback_url(value: str, field_name: str) -> None:
-    """Require an explicit HTTP(S) callback URL."""
-    parsed = urlparse(value)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        raise ValueError(f"{field_name} must be an http:// or https:// URL")
 
 
 def normalize_settings_updates(
@@ -297,3 +273,7 @@ def update_settings(
         from hx_email.server.mail.impl.fetch.scheduler import wake_polling_scheduler
 
         wake_polling_scheduler(settings)
+    if {"refresh_schedule_enabled", "refresh_schedule_interval_seconds"}.intersection(normalized):
+        from hx_email.server.mail.impl.refresh.settings import wake_refresh_scheduler
+
+        wake_refresh_scheduler(settings)

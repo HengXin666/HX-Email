@@ -13,6 +13,7 @@ from hx_email.config import Settings
 from hx_email.server.external_api import get_pool_stats
 from hx_email.server.mail.email_accounts import has_active_email_account
 from hx_email.server.mail.impl.fetch.scheduler import get_polling_status
+from hx_email.server.mail.impl.refresh.settings import get_refresh_scheduler_status
 from hx_email.server.notifications import get_delivery_status
 from hx_email.server.settings_service import (
     VERSION,
@@ -100,6 +101,7 @@ def register_settings_routes(router: APIRouter, settings: Settings) -> None:
         require_user(settings, authorization)
         return {
             "polling": get_polling_status(settings),
+            "token_refresh": get_refresh_scheduler_status(settings),
             "deliveries": get_delivery_status(settings),
             "pool": {
                 "enabled": get_setting(settings, "pool_external_enabled", "false") == "true",
