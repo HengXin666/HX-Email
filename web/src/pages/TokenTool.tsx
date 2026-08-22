@@ -724,7 +724,7 @@ Authorization: Bearer <token>
           ) : activeTab === "api-doc" ? (
             renderApiDoc()
           ) : (
-            <AccountStatsTab />
+            <AccountStatsTab provider={provider} />
           )}
         </div>
       </div>

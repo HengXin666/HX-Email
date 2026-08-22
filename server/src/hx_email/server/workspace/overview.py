@@ -81,11 +81,15 @@ def day_key(value: str) -> str:
     return value[:10]
 
 
-def get_account_stats(settings: Settings, user_id: int) -> dict[str, object]:
+def get_account_stats(
+    settings: Settings,
+    user_id: int,
+    provider: str | None = None,
+) -> dict[str, object]:
     """账号统计聚合: 仅统计持有授权 token 的 OAuth 账号 (outlook/gmail)。
 
-    含凭证状态/服务商/分组/存活分布/每日新增/每日刷新, 以及按错误码分类的
-    刷新失败原因分布 (微软至少区分令牌失效/应用配置/账号访问三类)。
+    可指定 provider (outlook/gmail) 只统计单一服务商; 含凭证状态/分组/存活分布/
+    每日新增/每日刷新, 以及按错误码分类的刷新失败原因 (按账号去重)。
     """
     from datetime import UTC, datetime, timedelta
 
@@ -96,9 +100,14 @@ def get_account_stats(settings: Settings, user_id: int) -> dict[str, object]:
         .isoformat(timespec="milliseconds")
         .replace("+00:00", "Z")
     )
+    provider_filter: str = ""
+    provider_params: list[object] = []
+    if provider:
+        provider_filter = " AND ea.provider = ?"
+        provider_params.append(provider)
     with connect(settings) as connection:
         rows = connection.execute(
-            """
+            f"""
             SELECT ea.provider, ea.created_at, ea.refresh_token, ea.refresh_failed_at,
                    ea.last_refresh_at, ea.group_id, g.name AS group_name, g.color AS group_color
             FROM email_accounts ea
@@ -106,18 +115,37 @@ def get_account_stats(settings: Settings, user_id: int) -> dict[str, object]:
             WHERE ea.user_id = ?
               AND ea.provider IN ('outlook', 'gmail')
               AND ea.refresh_token != ''
+              {provider_filter}
             """,
-            (user_id,),
+            (user_id, *provider_params),
         ).fetchall()
         refresh_rows = connection.execute(
-            """
+            f"""
             SELECT rl.status, substr(rl.completed_at, 1, 10) AS day, rl.error_detail,
                    ea.provider
             FROM refresh_logs rl
             JOIN email_accounts ea ON ea.id = rl.account_id AND ea.user_id = ?
             WHERE rl.completed_at >= ?
+              {provider_filter}
             """,
-            (user_id, cutoff_iso),
+            (user_id, cutoff_iso, *provider_params),
+        ).fetchall()
+        # 错误分类: 取每个账号在窗口内最新一条刷新日志 (按账号去重, 而非日志条数)
+        error_rows = connection.execute(
+            f"""
+            SELECT ea.provider, rl.error_detail
+            FROM refresh_logs rl
+            JOIN email_accounts ea ON ea.id = rl.account_id AND ea.user_id = ?
+            JOIN (
+                SELECT account_id, MAX(id) AS max_id
+                FROM refresh_logs
+                WHERE completed_at >= ?
+                GROUP BY account_id
+            ) latest ON latest.account_id = rl.account_id AND latest.max_id = rl.id
+            WHERE rl.status = 'failed'
+              {provider_filter}
+            """,
+            (user_id, cutoff_iso, *provider_params),
         ).fetchall()
         group_rows = connection.execute(
             "SELECT id, name, color FROM groups WHERE user_id = ? ORDER BY sort_order, id",
@@ -141,11 +169,11 @@ def get_account_stats(settings: Settings, user_id: int) -> dict[str, object]:
     now: datetime = datetime.now(UTC)
     for row in rows:
         total += 1
-        provider: str = row["provider"] or ""
-        provider_counts[provider] = provider_counts.get(provider, 0) + 1
-        if provider == "outlook":
+        provider_name: str = row["provider"] or ""
+        provider_counts[provider_name] = provider_counts.get(provider_name, 0) + 1
+        if provider_name == "outlook":
             microsoft += 1
-        elif provider == "gmail":
+        elif provider_name == "gmail":
             google += 1
         is_valid: bool = row["refresh_failed_at"] is None and row["last_refresh_at"] is not None
         is_invalid: bool = row["refresh_failed_at"] is not None
@@ -202,17 +230,19 @@ def get_account_stats(settings: Settings, user_id: int) -> dict[str, object]:
                 daily_refresh[day_val]["success"] += 1
             elif status_v == "failed":
                 daily_refresh[day_val]["failed"] += 1
-        if (row["status"] or "") == "failed":
-            provider_v: str = row["provider"] or ""
-            category, label = classify_refresh_error(provider_v, row["error_detail"] or "")
-            key = (provider_v, category)
-            error_counts[key] = error_counts.get(key, 0) + 1
-            error_labels[key] = label
+    for row in error_rows:
+        provider_v: str = row["provider"] or ""
+        category, label = classify_refresh_error(provider_v, row["error_detail"] or "")
+        key = (provider_v, category)
+        error_counts[key] = error_counts.get(key, 0) + 1
+        error_labels[key] = label
 
     groups_out: list[dict[str, object]] = []
     for group_row in group_rows:
         gid: int = int(group_row["id"])
         bucket = group_counts.get(gid, {"total": 0, "valid": 0, "invalid": 0})
+        if bucket["total"] == 0:
+            continue  # 空分组不展示
         groups_out.append(
             {
                 "group_id": gid,

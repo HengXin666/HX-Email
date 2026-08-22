@@ -281,6 +281,17 @@ def test_account_stats_includes_groups_and_error_categories(tmp_path: Path) -> N
             client_id="cid",
             refresh_token="rt",
         )
+    add_email_account(
+        settings,
+        1,
+        "gmail",
+        "g@gmail.com",
+        "g",
+        imap_host="imap.gmail.com",
+        imap_port=993,
+        client_id="gcid",
+        refresh_token="grt",
+    )
     client = TestClient(create_app(settings))
     session = client.post(
         "/api/v1/auth/login",
@@ -330,19 +341,48 @@ def test_account_stats_includes_groups_and_error_categories(tmp_path: Path) -> N
                 .replace("+00:00", "Z"),
             ),
         )
+        # 同一账号再失败一次: 应按账号去重, 错误分类计数仍为 1
+        connection.execute(
+            "INSERT INTO refresh_logs (account_id, email, status, message,"
+            " error_detail, completed_at)"
+            " VALUES (?, ?, 'failed', 'x', 'AADSTS700082: refresh token expired again', ?)",
+            (
+                account_ids[0],
+                "a@x.com",
+                (datetime.now(UTC) - timedelta(hours=1))
+                .isoformat(timespec="milliseconds")
+                .replace("+00:00", "Z"),
+            ),
+        )
 
     data = client.get("/api/v1/overview/account-stats", headers=headers).json()
 
     # 仅统计有 token 的 OAuth 账号
-    assert data["total"] == 3
-    assert data["oauth"] == 3
-    assert data["valid"] + data["invalid"] + data["unknown"] == 3
-    # 分组拆分
+    assert data["total"] == 4
+    assert data["oauth"] == 4
+    assert data["valid"] + data["invalid"] + data["unknown"] == 4
+    # 分组拆分: 空分组不输出
     assert len(data["by_group"]) == 1
     assert data["by_group"][0]["name"] == "微软号"
     assert data["by_group"][0]["total"] == 2
-    assert data["ungrouped"]["total"] == 1
-    # 错误码分类: 令牌失效 + 应用配置
+    assert data["ungrouped"]["total"] == 2
+    # 错误码分类: 令牌失效 + 应用配置 (重复失败日志按账号去重)
     categories = {(c["category"], c["label"]) for c in data["error_categories"]}
     assert ("token_expired", "令牌失效/过期") in categories
     assert ("app_config", "应用配置错误") in categories
+    token_expired_count = next(
+        c["count"] for c in data["error_categories"] if c["category"] == "token_expired"
+    )
+    assert token_expired_count == 1
+
+    # provider 筛选: outlook=3, gmail=1
+    outlook = client.get(
+        "/api/v1/overview/account-stats", params={"provider": "microsoft"}, headers=headers
+    ).json()
+    assert outlook["total"] == 3
+    assert outlook["microsoft"] == 3
+    gmail_only = client.get(
+        "/api/v1/overview/account-stats", params={"provider": "google"}, headers=headers
+    ).json()
+    assert gmail_only["total"] == 1
+    assert gmail_only["google"] == 1

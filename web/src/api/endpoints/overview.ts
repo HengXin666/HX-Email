@@ -21,7 +21,12 @@ export const overviewApi = {
 
   getActivityStats: () => request<ActivityStats>("/overview/activity"),
 
-  getAccountStats: () => request<AccountStats>("/overview/account-stats"),
+  getAccountStats: (provider?: string) =>
+    request<AccountStats>(
+      provider
+        ? `/overview/account-stats?provider=${encodeURIComponent(provider)}`
+        : "/overview/account-stats",
+    ),
 
   getLatestMessages: (limit = 20) =>
     request<{ messages: LatestMailMessage[] }>(`/overview/latest-messages?limit=${limit}`).then(

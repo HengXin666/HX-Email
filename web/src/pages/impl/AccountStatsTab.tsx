@@ -55,8 +55,13 @@ const StatCard: React.FC<{
   );
 };
 
-/** Token 工具页「账号统计」Tab: 仅统计持有授权 token 的 OAuth 账号 (微软/谷歌)。 */
-export const AccountStatsTab: React.FC = () => {
+const PROVIDER_DISPLAY: Record<string, string> = {
+  microsoft: "Microsoft (Outlook)",
+  google: "Google (Gmail)",
+};
+
+/** Token 工具页「账号统计」Tab: 跟随顶部服务商下拉筛选, 仅统计该服务商的授权 Token 账号。 */
+export const AccountStatsTab: React.FC<{ provider: "microsoft" | "google" }> = ({ provider }) => {
   const { toast } = useToast();
   const [stats, setStats] = useState<AccountStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -64,16 +69,18 @@ export const AccountStatsTab: React.FC = () => {
   const [maxDays, setMaxDays] = useState("");
   const [picked, setPicked] = useState<EmailAccount[] | null>(null);
   const [picking, setPicking] = useState(false);
+  const providerName = provider === "microsoft" ? "outlook" : "gmail";
 
   const loadStats = useCallback(async (): Promise<void> => {
+    setLoading(true);
     try {
-      setStats(await api.getAccountStats());
+      setStats(await api.getAccountStats(provider));
     } catch (err: any) {
       toast(err.message, "error");
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [provider, toast]);
 
   useEffect(() => {
     void loadStats();
@@ -136,7 +143,8 @@ export const AccountStatsTab: React.FC = () => {
     }
     setPicking(true);
     try {
-      setPicked(await api.listEmailAccounts({ min_age_days: min, max_age_days: max }));
+      const accounts = await api.listEmailAccounts({ min_age_days: min, max_age_days: max });
+      setPicked(accounts.filter((a) => (a.provider || "").toLowerCase() === providerName));
     } catch (err: any) {
       toast(err.message, "error");
       setPicked(null);
@@ -160,7 +168,6 @@ export const AccountStatsTab: React.FC = () => {
   );
   const pickedValid = picked?.filter((a) => accountCredentialState(a) === "valid").length ?? 0;
   const pickedInvalid = picked?.filter((a) => accountCredentialState(a) === "invalid").length ?? 0;
-  const maxProviderCount = Math.max(1, ...(stats?.by_provider.map((p) => p.count) ?? [1]));
   const maxGroupTotal = Math.max(
     1,
     ...(stats?.by_group.map((g) => g.total) ?? [1]),
@@ -181,7 +188,7 @@ export const AccountStatsTab: React.FC = () => {
             <h3 className="text-sm font-semibold text-gh-text">
               凭证概览
               <span className="ml-2 text-[11px] font-normal text-gh-text-muted">
-                仅统计持有授权 Token 的账号（Microsoft / Google）
+                {PROVIDER_DISPLAY[provider]} · 仅统计持有授权 Token 的账号
               </span>
             </h3>
             <button
@@ -343,31 +350,6 @@ export const AccountStatsTab: React.FC = () => {
                   )}
                 </div>
               </Card>
-
-              <Card className="p-4">
-                <h3 className="text-sm font-semibold text-gh-text mb-1">服务商分布</h3>
-                <div className="text-[11px] text-gh-text-muted mb-3">
-                  仅 Microsoft（Outlook）与 Google（Gmail）
-                </div>
-                <div className="space-y-2">
-                  {stats.by_provider.map((entry) => (
-                    <div key={entry.provider} className="flex items-center gap-2">
-                      <span className="w-20 shrink-0 truncate text-[11px] text-gh-text-secondary">
-                        {entry.provider === "outlook" ? "Microsoft" : entry.provider}
-                      </span>
-                      <div className="flex-1 h-2 rounded-full bg-gh-canvas-inset overflow-hidden">
-                        <div
-                          className="h-full rounded-full bg-gh-accent/70 transition-all duration-300"
-                          style={{ width: `${(entry.count / maxProviderCount) * 100}%` }}
-                        />
-                      </div>
-                      <span className="w-10 shrink-0 text-right text-[11px] text-gh-text tabular-nums">
-                        {entry.count}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </Card>
             </div>
           </div>
 
@@ -377,48 +359,37 @@ export const AccountStatsTab: React.FC = () => {
               刷新失败原因分布（近 30 天，按错误码分类）
             </h3>
             <div className="text-[11px] text-gh-text-muted mb-3">
-              不同错误码含义不同：令牌失效、应用配置、账号权限、网络等；微软侧至少区分三种
+              {PROVIDER_DISPLAY[provider]} ·
+              不同错误码含义不同：令牌失效、应用配置、账号权限、网络等
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {errorByProvider.map((group) => (
-                <div key={group.provider}>
-                  <div className="text-xs font-medium text-gh-text mb-2">
-                    {group.provider === "outlook" ? "Microsoft (Outlook)" : "Google (Gmail)"}
+            <div className="space-y-2">
+              {(errorByProvider[0]?.items ?? []).map((entry) => {
+                const color = ERROR_CATEGORY_COLORS[entry.category] ?? "#6e7681";
+                return (
+                  <div key={entry.category} className="flex items-center gap-2">
+                    <span
+                      className="inline-block w-2 h-2 rounded-full shrink-0"
+                      style={{ background: color }}
+                    />
+                    <span className="w-24 shrink-0 truncate text-[11px] text-gh-text-secondary">
+                      {entry.label}
+                    </span>
+                    <div className="flex-1 h-2 rounded-full bg-gh-canvas-inset overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-300"
+                        style={{
+                          width: `${(entry.count / maxErrorCount) * 100}%`,
+                          background: color,
+                        }}
+                      />
+                    </div>
+                    <span className="w-8 shrink-0 text-right text-[11px] text-gh-text tabular-nums">
+                      {entry.count}
+                    </span>
                   </div>
-                  <div className="space-y-2">
-                    {group.items.map((entry) => {
-                      const color = ERROR_CATEGORY_COLORS[entry.category] ?? "#6e7681";
-                      return (
-                        <div key={entry.category} className="flex items-center gap-2">
-                          <span
-                            className="inline-block w-2 h-2 rounded-full shrink-0"
-                            style={{ background: color }}
-                          />
-                          <span className="w-24 shrink-0 truncate text-[11px] text-gh-text-secondary">
-                            {entry.label}
-                          </span>
-                          <div className="flex-1 h-2 rounded-full bg-gh-canvas-inset overflow-hidden">
-                            <div
-                              className="h-full rounded-full transition-all duration-300"
-                              style={{
-                                width: `${(entry.count / maxErrorCount) * 100}%`,
-                                background: color,
-                              }}
-                            />
-                          </div>
-                          <span className="w-8 shrink-0 text-right text-[11px] text-gh-text tabular-nums">
-                            {entry.count}
-                          </span>
-                        </div>
-                      );
-                    })}
-                    {group.items.length === 0 && (
-                      <div className="text-[11px] text-gh-text-muted">近 30 天无刷新失败</div>
-                    )}
-                  </div>
-                </div>
-              ))}
-              {errorByProvider.length === 0 && (
+                );
+              })}
+              {(errorByProvider[0]?.items ?? []).length === 0 && (
                 <div className="text-[11px] text-gh-text-muted py-2">近 30 天无刷新失败</div>
               )}
             </div>

@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Header, HTTPException
 
 from hx_email.api.dependencies import require_user
 from hx_email.config import Settings
@@ -20,9 +20,18 @@ def register_overview_routes(router: APIRouter, settings: Settings) -> None:
     @router.get("/overview/account-stats")
     def account_stats(
         authorization: Annotated[str | None, Header()] = None,
+        provider: str | None = None,
     ) -> dict[str, object]:
         user = require_user(settings, authorization)
-        return get_account_stats(settings, user.id)
+        # UI 侧使用 microsoft/google, 后端账号表使用 outlook/gmail
+        provider_map: dict[str, str] = {"microsoft": "outlook", "google": "gmail"}
+        backend_provider: str | None = provider_map.get(provider or "", provider)
+        if backend_provider is not None and backend_provider not in ("outlook", "gmail"):
+            raise HTTPException(
+                status_code=422,
+                detail="provider must be microsoft/google/outlook/gmail",
+            )
+        return get_account_stats(settings, user.id, provider=backend_provider)
 
     @router.get("/overview/summary")
     def overview_summary(

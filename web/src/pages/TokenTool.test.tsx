@@ -183,7 +183,8 @@ test("creating a Gmail account authorizes without typing an email and refreshes 
   expect(refreshEmails).toHaveBeenCalledOnce();
 });
 
-test("account-stats tab shows OAuth-only credential overview and error categories", async () => {
+test("account-stats tab follows the selected provider from the dropdown", async () => {
+  window.localStorage.setItem("hx_token_tool_provider", "microsoft");
   window.localStorage.setItem("hx_token_tool_active_tab", "guide");
   render(
     <ToastProvider>
@@ -193,10 +194,10 @@ test("account-stats tab shows OAuth-only credential overview and error categorie
 
   fireEvent.click(screen.getByText("账号统计"));
   expect(await screen.findByText("凭证概览")).toBeInTheDocument();
-  expect(getAccountStats).toHaveBeenCalled();
-  expect(screen.getAllByText("Microsoft").length).toBeGreaterThan(0);
-  expect(screen.getAllByText("Google").length).toBeGreaterThan(0);
+  // 统计请求带上当前服务商 (microsoft)
+  await waitFor(() => expect(getAccountStats).toHaveBeenCalledWith("microsoft"));
+  // 卡片标题标注当前服务商
+  expect(screen.getAllByText(/Microsoft \(Outlook\)/).length).toBeGreaterThan(0);
   expect(screen.getByText("刷新失败原因分布（近 30 天，按错误码分类）")).toBeInTheDocument();
   expect(screen.getByText("令牌失效/过期")).toBeInTheDocument();
-  expect(screen.getByText("Microsoft (Outlook)")).toBeInTheDocument();
 });
