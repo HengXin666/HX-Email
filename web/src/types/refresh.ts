@@ -33,4 +33,33 @@ export interface SSERefreshEvent {
   status?: string;
   success?: boolean | number;
   failed?: number;
+  stopped?: boolean;
+  error?: string;
 }
+
+type PatrolStatus =
+  | "idle"
+  | "starting"
+  | "running"
+  | "paused"
+  | "stopping"
+  | "done"
+  | "error"
+  | "stopped";
+
+export interface PatrolSnapshot {
+  status: PatrolStatus;
+  mode: string;
+  mode_label: string;
+  group_id: number | null;
+  total: number;
+  current: number;
+  success: number;
+  failed: number;
+  email: string;
+  started_at: string | null;
+  finished_at: string | null;
+  error: string;
+}
+
+export type PatrolStreamEvent = ({ type: "status" } & PatrolSnapshot) | SSERefreshEvent;

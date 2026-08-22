@@ -47,6 +47,7 @@ export type {
   MessagingPluginInfo,
 } from "./types/messaging";
 export type {
+  AccountStats,
   ActivityStats,
   Overview,
   OverviewSummary,
@@ -73,6 +74,8 @@ export type {
 } from "./types/pool";
 export type {
   InvalidTokenCandidate,
+  PatrolSnapshot,
+  PatrolStreamEvent,
   RefreshLog,
   RefreshStats,
   SSERefreshEvent,

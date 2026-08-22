@@ -1,4 +1,5 @@
 import type {
+  AccountStats,
   ActivityStats,
   LatestMailMessage,
   MailNotification,
@@ -19,6 +20,8 @@ export const overviewApi = {
   getPoolStats: () => request<PoolStats>("/overview/pool-stats"),
 
   getActivityStats: () => request<ActivityStats>("/overview/activity"),
+
+  getAccountStats: () => request<AccountStats>("/overview/account-stats"),
 
   getLatestMessages: (limit = 20) =>
     request<{ messages: LatestMailMessage[] }>(`/overview/latest-messages?limit=${limit}`).then(

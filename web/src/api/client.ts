@@ -1,7 +1,7 @@
 // Backward-compatible API barrel — assembles all endpoint modules into a single `api` object.
 // Pages can continue to `import { api } from '../api/client'` without changes.
 
-export { streamRefresh } from "./core";
+export { streamRefresh, subscribePatrol } from "./core";
 
 import { auditApi } from "./endpoints/audit";
 import { authApi } from "./endpoints/auth";

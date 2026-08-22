@@ -44,7 +44,13 @@ export type {
   MessagingMessage,
   MessagingPluginInfo,
 } from "./messaging";
-export type { ActivityStats, Overview, OverviewSummary, VerificationStats } from "./overview";
+export type {
+  AccountStats,
+  ActivityStats,
+  Overview,
+  OverviewSummary,
+  VerificationStats,
+} from "./overview";
 export type {
   AnalyzeEmailResult,
   BindingStatus,
@@ -59,4 +65,11 @@ export type {
   ScanAcceptResult,
 } from "./platform";
 export type { MailPoolEntry, MailPoolStatus, PoolAdminAccount, PoolStats } from "./pool";
-export type { InvalidTokenCandidate, RefreshLog, RefreshStats, SSERefreshEvent } from "./refresh";
+export type {
+  InvalidTokenCandidate,
+  PatrolSnapshot,
+  PatrolStreamEvent,
+  RefreshLog,
+  RefreshStats,
+  SSERefreshEvent,
+} from "./refresh";

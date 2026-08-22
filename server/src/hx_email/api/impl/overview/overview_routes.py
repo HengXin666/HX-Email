@@ -13,9 +13,17 @@ from hx_email.server.workspace.impl.overview_service import (
     get_pool_stats,
     get_verification_stats,
 )
+from hx_email.server.workspace.overview import get_account_stats
 
 
 def register_overview_routes(router: APIRouter, settings: Settings) -> None:
+    @router.get("/overview/account-stats")
+    def account_stats(
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        user = require_user(settings, authorization)
+        return get_account_stats(settings, user.id)
+
     @router.get("/overview/summary")
     def overview_summary(
         authorization: Annotated[str | None, Header()] = None,

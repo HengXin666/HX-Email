@@ -11,6 +11,7 @@ from fastapi import APIRouter, Header, HTTPException, status
 from fastapi.responses import StreamingResponse
 
 from hx_email.api.dependencies import require_user
+from hx_email.api.impl.mail.refresh.patrol_routes import register_patrol_routes
 from hx_email.api.schemas import RefreshSelectedRequest
 from hx_email.config import Settings
 from hx_email.server.mail.impl.patrol.refresh import (
@@ -31,6 +32,8 @@ def register_refresh_routes(
     settings: Settings,
     mailbox_provider: MailboxProvider,
 ) -> None:
+    register_patrol_routes(router, settings)
+
     @router.post("/email-accounts/{account_id}/refresh")
     def refresh_account(
         account_id: int,

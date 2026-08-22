@@ -340,3 +340,22 @@ export const IconArchive: React.FC<IconProps> = (p) => (
     <line x1="10" y1="12" x2="14" y2="12" />
   </Svg>
 );
+
+export const IconPause: React.FC<IconProps> = (p) => (
+  <Svg {...p}>
+    <rect x="6" y="4" width="4" height="16" rx="1" />
+    <rect x="14" y="4" width="4" height="16" rx="1" />
+  </Svg>
+);
+
+export const IconPlay: React.FC<IconProps> = (p) => (
+  <Svg {...p}>
+    <polygon points="6 3 20 12 6 21 6 3" />
+  </Svg>
+);
+
+export const IconSquare: React.FC<IconProps> = (p) => (
+  <Svg {...p}>
+    <rect x="4" y="4" width="16" height="16" rx="2" />
+  </Svg>
+);

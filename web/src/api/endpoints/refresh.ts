@@ -1,4 +1,4 @@
-import type { InvalidTokenCandidate, RefreshLog, RefreshStats } from "../../types";
+import type { InvalidTokenCandidate, PatrolSnapshot, RefreshLog, RefreshStats } from "../../types";
 import { request } from "../core";
 
 export const refreshApi = {
@@ -35,4 +35,32 @@ export const refreshApi = {
     ),
 
   getRefreshStats: () => request<RefreshStats>("/email-accounts/refresh-stats"),
+
+  // ===== 持久化巡检 (后台线程, 刷新/切页不丢, 可暂停/恢复/终止) =====
+  patrolStart: (payload: {
+    mode: "all" | "failed" | "group" | "ungrouped" | "selected";
+    group_id?: number;
+    account_ids?: number[];
+  }) =>
+    request<{ success: boolean; snapshot: PatrolSnapshot }>("/email-accounts/patrol/start", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  patrolStatus: () => request<PatrolSnapshot>("/email-accounts/patrol/status"),
+
+  patrolPause: () =>
+    request<{ success: boolean; snapshot: PatrolSnapshot }>("/email-accounts/patrol/pause", {
+      method: "POST",
+    }),
+
+  patrolResume: () =>
+    request<{ success: boolean; snapshot: PatrolSnapshot }>("/email-accounts/patrol/resume", {
+      method: "POST",
+    }),
+
+  patrolStop: () =>
+    request<{ success: boolean; snapshot: PatrolSnapshot }>("/email-accounts/patrol/stop", {
+      method: "POST",
+    }),
 };

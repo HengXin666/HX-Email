@@ -1,4 +1,4 @@
-import type { SSERefreshEvent } from "../types";
+import type { PatrolStreamEvent, SSERefreshEvent } from "../types";
 
 let _sessionExpiredHandled = false;
 
@@ -181,4 +181,85 @@ async function streamRefresh(
   }
 }
 
-export { API_BASE, request, requestBlob, requestText, streamRefresh };
+function parsePatrolEvent(record: string): PatrolStreamEvent | null {
+  const lines: string[] = record.split("\n");
+  const eventLine: string | undefined = lines.find((line: string) => line.startsWith("event:"));
+  const eventType: string = eventLine?.slice(6).trim() ?? "";
+  if (
+    eventType !== "start" &&
+    eventType !== "progress" &&
+    eventType !== "complete" &&
+    eventType !== "status"
+  ) {
+    return null;
+  }
+  const dataText: string = lines
+    .filter((line: string) => line.startsWith("data:"))
+    .map((line: string) => line.slice(5).trimStart())
+    .join("\n");
+  if (!dataText) return null;
+  try {
+    const data: unknown = JSON.parse(dataText);
+    if (typeof data !== "object" || data === null || Array.isArray(data)) return null;
+    return { ...(data as Record<string, unknown>), type: eventType } as PatrolStreamEvent;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 订阅持久化巡检事件流 (SSE)。
+ *
+ * 巡检在服务端后台线程执行, 本订阅在连接断开 (页面刷新/网络抖动) 后自动重连,
+ * 服务端会回放缓冲事件补全进度; 巡检进入终态后服务端关闭流, 订阅随之结束。
+ */
+async function subscribePatrol(onEvent: (event: PatrolStreamEvent) => void): Promise<void> {
+  let retries = 0;
+  for (;;) {
+    const token = getStoredToken();
+    const res = await apiFetch("/email-accounts/patrol/stream", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.status === 401 && token) {
+      handleSessionExpired();
+      throw new Error("登录已过期，请重新登录");
+    }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      const msg = typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail);
+      throw new Error(msg || "请求失败");
+    }
+    const reader = res.body?.getReader();
+    if (!reader) throw new Error("No response body");
+    const decoder = new TextDecoder();
+    let buffer = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (value) {
+        buffer += decoder.decode(value, { stream: true });
+      }
+      if (done) {
+        buffer += decoder.decode();
+      }
+      buffer = buffer.replace(/\r\n/g, "\n");
+      const records: string[] = buffer.split("\n\n");
+      buffer = records.pop() ?? "";
+      for (const record of records) {
+        const event: PatrolStreamEvent | null = parsePatrolEvent(record);
+        if (event) onEvent(event);
+      }
+      if (!done) continue;
+      const finalEvent: PatrolStreamEvent | null = parsePatrolEvent(buffer.trim());
+      if (finalEvent) onEvent(finalEvent);
+      break;
+    }
+    // 流被服务端关闭: 巡检应已终态; 若仍是运行中 (异常断开) 则稍后重连
+    const snapshot = await request<{ status: string }>("/email-accounts/patrol/status");
+    const runningStates = new Set(["starting", "running", "paused", "stopping"]);
+    if (!runningStates.has(snapshot.status)) return;
+    retries += 1;
+    await new Promise((resolve) => setTimeout(resolve, Math.min(1000 * retries, 3000)));
+  }
+}
+
+export { API_BASE, request, requestBlob, requestText, streamRefresh, subscribePatrol };

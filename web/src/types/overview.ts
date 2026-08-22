@@ -37,3 +37,26 @@ export interface ActivityStats {
   today_actions: number;
   total_actions: number;
 }
+
+export interface AccountStats {
+  total: number;
+  oauth: number;
+  microsoft: number;
+  google: number;
+  valid: number;
+  invalid: number;
+  unknown: number;
+  failed_refresh: number;
+  last_refresh: string | null;
+  by_provider: Array<{ provider: string; count: number }>;
+  age_buckets: Array<{
+    label: string;
+    min: number;
+    max: number | null;
+    valid: number;
+    invalid: number;
+    unknown: number;
+  }>;
+  daily_new: Array<{ date: string; count: number }>;
+  daily_refresh: Array<{ date: string; success: number; failed: number }>;
+}

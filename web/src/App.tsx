@@ -4,6 +4,7 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Sidebar } from "./components/layout";
 import { useBrowserNotifications } from "./hooks/useBrowserNotifications";
 import { Accounts } from "./pages/Accounts";
+import { AccountsStats } from "./pages/AccountsStats";
 import { ApiAccess } from "./pages/ApiAccess";
 import { AuditLog } from "./pages/AuditLog";
 import { Home } from "./pages/Home";
@@ -81,6 +82,14 @@ const App: React.FC = () => {
         element={
           <RequireAuth>
             <Accounts />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/account-stats"
+        element={
+          <RequireAuth>
+            <AccountsStats />
           </RequireAuth>
         }
       />

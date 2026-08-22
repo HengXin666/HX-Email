@@ -102,14 +102,26 @@ export const emailsApi = {
     }),
 
   // Email Accounts
-  listEmailAccounts: (params: { min_age_days?: number; max_age_days?: number } = {}) => {
+  listEmailAccounts: async (params: { min_age_days?: number; max_age_days?: number } = {}) => {
     const qs = new URLSearchParams();
     if (params.min_age_days != null) qs.append("min_age_days", String(params.min_age_days));
     if (params.max_age_days != null) qs.append("max_age_days", String(params.max_age_days));
-    const suffix: string = qs.toString() ? `?${qs.toString()}` : "";
-    return request<{ accounts: EmailAccount[] }>(`/email-accounts${suffix}`).then(
-      (r) => r.accounts,
-    );
+    const base = `/email-accounts${qs.toString() ? `?${qs.toString()}` : ""}`;
+    // 列表默认 page_size=50, 服务端上限 200: 分页循环拉取全量, 避免统计只看到前 50 个
+    const pageSize = 200;
+    const all: EmailAccount[] = [];
+    let page = 1;
+    while (true) {
+      const sep = base.includes("?") ? "&" : "?";
+      const resp = await request<{
+        accounts: EmailAccount[];
+        pagination: { total_count: number };
+      }>(`${base}${sep}page=${page}&page_size=${pageSize}`);
+      all.push(...resp.accounts);
+      if (resp.accounts.length === 0 || all.length >= resp.pagination.total_count) break;
+      page += 1;
+    }
+    return all;
   },
 
   createEmailAccount: (data: {
