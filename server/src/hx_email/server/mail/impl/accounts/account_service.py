@@ -6,10 +6,7 @@ from hx_email.config import Settings
 from hx_email.database import connect
 from hx_email.security import encrypt_secret
 from hx_email.server.mail.imap.message_store import delete_messages_for_email
-from hx_email.server.mail.impl.accounts.account_helpers import (
-    AccountPage,
-    update_primary_usable_email,
-)
+from hx_email.server.mail.impl.accounts.account_helpers import update_primary_usable_email
 
 if TYPE_CHECKING:
     from hx_email.server.mail.email_accounts import EmailAccount
@@ -158,134 +155,6 @@ def update_account_remark(
     if cursor.rowcount == 0:
         return None
     return _get_email_account(settings, user_id, account_id)
-
-
-def search_email_accounts(
-    settings: Settings,
-    user_id: int,
-    query: str,
-) -> tuple[EmailAccount, ...]:
-    """Full-text search across email addresses, remarks, and provider names."""
-    with connect(settings) as connection:
-        like = f"%{query}%"
-        rows = connection.execute(
-            """
-            SELECT id
-            FROM email_accounts
-            WHERE user_id = ?
-              AND (primary_address LIKE ?
-                   OR remark LIKE ?
-                   OR provider LIKE ?)
-            ORDER BY id
-            """,
-            (user_id, like, like, like),
-        ).fetchall()
-    accounts = (_get_email_account(settings, user_id, row["id"]) for row in rows)
-    return tuple(account for account in accounts if account is not None)
-
-
-def _build_enhanced_query(
-    user_id: int,
-    group_id: int | None = None,
-    search: str | None = None,
-    tag_id: int | None = None,
-    tag_ids: list[int] | None = None,
-    sort_by: str | None = None,
-    sort_order: str | None = None,
-) -> tuple[str, list[object]]:
-    where = ["ea.user_id = ?"]
-    params: list[object] = [user_id]
-    joins: list[str] = []
-    if group_id is not None:
-        where.append("ea.group_id = ?")
-        params.append(group_id)
-    if search:
-        like = f"%{search}%"
-        where.append("(ea.primary_address LIKE ? OR ea.remark LIKE ? OR ea.provider LIKE ?)")
-        params.extend([like, like, like])
-    if tag_id is not None:
-        joins.append(
-            """JOIN usable_emails ue_filter
-               ON ue_filter.email_account_id = ea.id
-              AND ue_filter.user_id = ea.user_id"""
-        )
-        joins.append("JOIN usable_email_tags ut_filter ON ut_filter.usable_email_id = ue_filter.id")
-        where.append("ut_filter.tag_id = ?")
-        params.append(tag_id)
-    if tag_ids:
-        tag_set = list(dict.fromkeys(tag_ids))
-        placeholders = ",".join("?" for _ in tag_set)
-        joins.append(
-            """JOIN usable_emails ue_multi
-               ON ue_multi.email_account_id = ea.id
-              AND ue_multi.user_id = ea.user_id"""
-        )
-        joins.append(
-            f"""JOIN usable_email_tags ut_multi
-               ON ut_multi.usable_email_id = ue_multi.id
-              AND ut_multi.tag_id IN ({placeholders})"""
-        )
-        params.extend(tag_set)
-    where_sql, join_sql = " AND ".join(where), " ".join(joins)
-    allowed_sort = {"id", "primary_address", "provider", "status", "created_at", "remark"}
-    order = "DESC" if sort_order and sort_order.upper() == "DESC" else "ASC"
-    sort_expr: str = "(SELECT MIN(created_at) FROM usable_emails WHERE email_account_id=ea.id)"
-    if sort_by != "created_at":
-        sort_expr = f"ea.{sort_by if sort_by in allowed_sort else 'id'}"
-    return (
-        f"""
-        SELECT DISTINCT ea.id
-        FROM email_accounts ea
-        {join_sql}
-        WHERE {where_sql}
-        ORDER BY {sort_expr} {order}, ea.id {order}
-        """,
-        params,
-    )
-
-
-def list_email_accounts_enhanced(
-    settings: Settings,
-    user_id: int,
-    *,
-    group_id: int | None = None,
-    page: int = 1,
-    page_size: int = 50,
-    search: str | None = None,
-    sort_by: str | None = None,
-    sort_order: str | None = None,
-    tag_id: int | None = None,
-    tag_ids: list[int] | None = None,
-) -> AccountPage:
-    """Enhanced listing with pagination, filtering, and sorting."""
-    page = max(page, 1)
-    page_size = min(max(page_size, 1), 200)
-    query, params = _build_enhanced_query(
-        user_id,
-        group_id=group_id,
-        search=search,
-        tag_id=tag_id,
-        tag_ids=tag_ids,
-        sort_by=sort_by,
-        sort_order=sort_order,
-    )
-    with connect(settings) as connection:
-        total = connection.execute(
-            f"SELECT COUNT(*) FROM ({query}) AS _cnt",
-            params,
-        ).fetchone()[0]
-        offset = (page - 1) * page_size
-        rows = connection.execute(
-            f"{query} LIMIT ? OFFSET ?",
-            (*params, page_size, offset),
-        ).fetchall()
-    accounts = (_get_email_account(settings, user_id, row["id"]) for row in rows)
-    return AccountPage(
-        accounts=tuple(account for account in accounts if account is not None),
-        total_count=total,
-        page=page,
-        page_size=page_size,
-    )
 
 
 def toggle_telegram_notification(

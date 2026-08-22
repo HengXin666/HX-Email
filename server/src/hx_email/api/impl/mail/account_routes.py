@@ -86,8 +86,18 @@ def register_email_account_routes(router: APIRouter, settings: Settings) -> None
         sort_order: str | None = None,
         tag_id: int | None = None,
         tag_ids: str | None = None,
+        min_age_days: int | None = None,
+        max_age_days: int | None = None,
     ) -> dict[str, object]:
         user = require_user(settings, authorization)
+        if (min_age_days is not None and min_age_days < 0) or (
+            max_age_days is not None and max_age_days < 0
+        ):
+            raise HTTPException(
+                status_code=422, detail="min_age_days/max_age_days must be non-negative"
+            )
+        if min_age_days is not None and max_age_days is not None and min_age_days > max_age_days:
+            raise HTTPException(status_code=422, detail="min_age_days must not exceed max_age_days")
         parsed_tag_ids: list[int] | None = None
         if tag_ids:
             try:
@@ -105,6 +115,8 @@ def register_email_account_routes(router: APIRouter, settings: Settings) -> None
             sort_order=sort_order,
             tag_id=tag_id,
             tag_ids=parsed_tag_ids,
+            min_age_days=min_age_days,
+            max_age_days=max_age_days,
         )
         total_pages = max(1, (result.total_count + result.page_size - 1) // result.page_size)
         return {

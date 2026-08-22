@@ -21,6 +21,7 @@ import type {
 } from "../types";
 import { GoogleTokenApiGuide, GoogleTokenGuide } from "./impl/GoogleTokenGuides";
 import { GoogleTokenWorkspace } from "./impl/GoogleTokenWorkspace";
+import { TokenAccountStats } from "./impl/TokenAccountStats";
 
 const SCOPE_PRESETS = {
   graph: [
@@ -671,49 +672,52 @@ Authorization: Bearer <token>
           provider === "google" ? "Google OAuth 一键授权与持久化" : "Microsoft Token 获取与写入"
         }
       />
-      <div className="flex-1 overflow-auto">
-        <div className="max-w-5xl mx-auto p-6 space-y-5">
-          <Card className="p-4">
-            <Select
-              label="OAuth 服务商"
-              value={provider}
-              onChange={(value) => setProvider(value as TokenProvider)}
-              options={[
-                { value: "microsoft", label: "Microsoft Outlook" },
-                { value: "google", label: "Google Gmail" },
-              ]}
-            />
-          </Card>
-          <div className="rounded-xl border border-gh-border bg-gh-canvas-subtle p-1 flex flex-wrap gap-1">
-            {TABS.map((tab) => {
-              const Icon = tab.icon;
-              const active = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex-1 min-w-44 rounded-lg px-3 py-2.5 text-left transition-all ${
-                    active
-                      ? "bg-gh-accent/10 text-gh-accent border border-gh-accent/25 shadow-sm shadow-gh-accent/10"
-                      : "text-gh-text-muted border border-transparent hover:text-gh-text hover:bg-gh-border/30"
-                  }`}
-                >
-                  <div className="flex items-center gap-2 text-sm font-semibold">
-                    <Icon size={14} />
-                    {tab.label}
-                  </div>
-                  <div className="mt-0.5 text-xs opacity-75">{tab.description}</div>
-                </button>
-              );
-            })}
-          </div>
+      <div className="flex-1 flex min-h-0 overflow-hidden">
+        <TokenAccountStats />
+        <div className="flex-1 overflow-auto">
+          <div className="max-w-4xl mx-auto p-6 space-y-5">
+            <Card className="p-4">
+              <Select
+                label="OAuth 服务商"
+                value={provider}
+                onChange={(value) => setProvider(value as TokenProvider)}
+                options={[
+                  { value: "microsoft", label: "Microsoft Outlook" },
+                  { value: "google", label: "Google Gmail" },
+                ]}
+              />
+            </Card>
+            <div className="rounded-xl border border-gh-border bg-gh-canvas-subtle p-1 flex flex-wrap gap-1">
+              {TABS.map((tab) => {
+                const Icon = tab.icon;
+                const active = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`flex-1 min-w-44 rounded-lg px-3 py-2.5 text-left transition-all ${
+                      active
+                        ? "bg-gh-accent/10 text-gh-accent border border-gh-accent/25 shadow-sm shadow-gh-accent/10"
+                        : "text-gh-text-muted border border-transparent hover:text-gh-text hover:bg-gh-border/30"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 text-sm font-semibold">
+                      <Icon size={14} />
+                      {tab.label}
+                    </div>
+                    <div className="mt-0.5 text-xs opacity-75">{tab.description}</div>
+                  </button>
+                );
+              })}
+            </div>
 
-          {activeTab === "guide"
-            ? renderGuide()
-            : activeTab === "page-token"
-              ? renderPageToken()
-              : renderApiDoc()}
+            {activeTab === "guide"
+              ? renderGuide()
+              : activeTab === "page-token"
+                ? renderPageToken()
+                : renderApiDoc()}
+          </div>
         </div>
       </div>
     </div>

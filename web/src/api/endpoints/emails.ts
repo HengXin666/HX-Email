@@ -102,8 +102,15 @@ export const emailsApi = {
     }),
 
   // Email Accounts
-  listEmailAccounts: () =>
-    request<{ accounts: EmailAccount[] }>("/email-accounts").then((r) => r.accounts),
+  listEmailAccounts: (params: { min_age_days?: number; max_age_days?: number } = {}) => {
+    const qs = new URLSearchParams();
+    if (params.min_age_days != null) qs.append("min_age_days", String(params.min_age_days));
+    if (params.max_age_days != null) qs.append("max_age_days", String(params.max_age_days));
+    const suffix: string = qs.toString() ? `?${qs.toString()}` : "";
+    return request<{ accounts: EmailAccount[] }>(`/email-accounts${suffix}`).then(
+      (r) => r.accounts,
+    );
+  },
 
   createEmailAccount: (data: {
     provider: string;

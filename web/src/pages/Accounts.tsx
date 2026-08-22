@@ -55,6 +55,7 @@ import type {
   VerificationMatch,
 } from "../types";
 import { copyToClipboard } from "../utils/clipboard";
+import { accountCredentialState, type CredentialState } from "../utils/credential";
 import { looksLikeHtml, sanitizeHtml } from "../utils/html";
 import { formatDateTimeFull, formatRelativeTime } from "../utils/time";
 import { mergeCodeBaseline, waitForFreshCode } from "../utils/verification";
@@ -959,19 +960,6 @@ const EditGroupModal: React.FC<{
 const getAccountAliases = (account: EmailAccount | undefined): UsableEmail[] => {
   return account?.usable_emails.filter((email: UsableEmail) => email.kind === "alias") || [];
 };
-
-/** 凭证状态: valid=已通过至少一次刷新校验, invalid=最近刷新失败, none=无凭证/未刷新过 */
-type CredentialState = "valid" | "invalid" | "none";
-
-function accountCredentialState(account: EmailAccount | undefined): CredentialState {
-  if (!account) return "none";
-  const hasCredential: boolean =
-    !!account.has_refresh_token || !!account.has_imap_password || !!account.imap_password;
-  if (!hasCredential) return "none";
-  if (account.refresh_failed_at) return "invalid";
-  if (account.last_refresh_at) return "valid";
-  return "none";
-}
 
 const copyText = async (
   text: string,

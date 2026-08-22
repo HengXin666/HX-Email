@@ -593,3 +593,85 @@ def test_outlook_mode_rejects_imap_format_lines_instead_of_corrupting_credential
     assert all("IMAP-format line" in e["error"] for e in imported.json()["errors"])
     accounts = client.get("/api/v1/email-accounts", headers=headers)
     assert accounts.json()["accounts"] == []
+
+
+def test_email_accounts_can_filter_by_age_since_import(tmp_path):
+    from datetime import UTC, datetime, timedelta
+
+    settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
+    migrate(settings)
+    client = TestClient(create_app(settings))
+    session = client.post(
+        "/api/v1/auth/login",
+        json={"username": "admin", "password": "admin"},
+    ).json()
+    headers = {"Authorization": f"Bearer {session['access_token']}"}
+
+    old = client.post(
+        "/api/v1/email-accounts",
+        json={
+            "provider": "outlook",
+            "primary_address": "old@outlook.com",
+            "display_name": "Old",
+        },
+        headers=headers,
+    ).json()
+    fresh = client.post(
+        "/api/v1/email-accounts",
+        json={
+            "provider": "outlook",
+            "primary_address": "fresh@outlook.com",
+            "display_name": "Fresh",
+        },
+        headers=headers,
+    ).json()
+
+    # 改写 created_at 模拟存活 40 天 / 5 天的账号 (与 utc_now_iso 同格式)
+    def iso_days_ago(days: int) -> str:
+        return (
+            (datetime.now(UTC) - timedelta(days=days))
+            .isoformat(timespec="milliseconds")
+            .replace("+00:00", "Z")
+        )
+
+    with connect(settings) as connection:
+        connection.execute(
+            "UPDATE email_accounts SET created_at = ? WHERE id = ?",
+            (iso_days_ago(40), old["id"]),
+        )
+        connection.execute(
+            "UPDATE email_accounts SET created_at = ? WHERE id = ?",
+            (iso_days_ago(5), fresh["id"]),
+        )
+
+    # 满 30 天 -> 只有旧账号
+    old_only = client.get(
+        "/api/v1/email-accounts", params={"min_age_days": 30}, headers=headers
+    ).json()
+    assert [a["primary_address"] for a in old_only["accounts"]] == ["old@outlook.com"]
+
+    # 不足 10 天 -> 只有新账号
+    fresh_only = client.get(
+        "/api/v1/email-accounts", params={"max_age_days": 10}, headers=headers
+    ).json()
+    assert [a["primary_address"] for a in fresh_only["accounts"]] == ["fresh@outlook.com"]
+
+    # 区间 10~30 天 -> 无命中
+    middle = client.get(
+        "/api/v1/email-accounts",
+        params={"min_age_days": 10, "max_age_days": 30},
+        headers=headers,
+    ).json()
+    assert middle["accounts"] == []
+
+    # 非法参数 -> 422
+    bad_range = client.get(
+        "/api/v1/email-accounts",
+        params={"min_age_days": 30, "max_age_days": 10},
+        headers=headers,
+    )
+    assert bad_range.status_code == 422
+    bad_negative = client.get(
+        "/api/v1/email-accounts", params={"min_age_days": -1}, headers=headers
+    )
+    assert bad_negative.status_code == 422

@@ -1,9 +1,11 @@
-from hx_email.server.mail.impl.accounts.account_helpers import AccountPage
+from hx_email.server.mail.impl.accounts.account_helpers import (
+    AccountPage,
+    list_email_accounts_enhanced,
+    search_email_accounts,
+)
 from hx_email.server.mail.impl.accounts.account_service import (
     delete_email_account,
     delete_email_account_by_email,
-    list_email_accounts_enhanced,
-    search_email_accounts,
     toggle_telegram_notification,
     update_account_remark,
     update_email_account,
