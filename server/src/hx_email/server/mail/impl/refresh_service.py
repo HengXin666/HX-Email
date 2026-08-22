@@ -14,6 +14,7 @@ from hx_email.server.mail.impl.refresh_log_service import (
     now_iso as _now_iso,
 )
 from hx_email.server.mail.verification import MailboxProvider
+from hx_email.server.settings_service import get_setting
 
 
 def sse_event(event: str, data: object) -> str:
@@ -138,6 +139,24 @@ def _fetch_active_accounts(
     ]
 
 
+def _stagger_sleep(settings: Settings) -> None:
+    """批量刷新错峰: 每账号随机延迟 1..max 秒(默认 20).
+
+    20260823 实测根因: 同批账号秒级连刷, 微软风控引擎把该簇账号一起标为
+    compromised(security-interrupt for collecting proof), 随机错峰打散聚类特征.
+    """
+    import random
+    import time
+
+    try:
+        max_seconds = int(str(get_setting(settings, "refresh_stagger_max_seconds", "20") or "20"))
+    except ValueError:
+        max_seconds = 20
+    if max_seconds <= 0:
+        return
+    time.sleep(random.uniform(1.0, float(max(1, max_seconds))))
+
+
 def _refresh_account_batch(
     settings: Settings,
     accounts: list[dict[str, object]],
@@ -147,6 +166,8 @@ def _refresh_account_batch(
     success_count = 0
     fail_count = 0
     for index, account in enumerate(accounts):
+        if index > 0:
+            _stagger_sleep(settings)
         account_id: int = cast(Any, account["id"])
         email: str = cast(Any, account["email"])
         started_at = _now_iso()

@@ -19,7 +19,7 @@ from hx_email.server.mail.impl.refresh_log_service import (
     insert_refresh_log as _insert_refresh_log,
 )
 from hx_email.server.mail.impl.refresh_log_service import now_iso as _now_iso
-from hx_email.server.mail.impl.refresh_service import sse_event
+from hx_email.server.mail.impl.refresh_service import _stagger_sleep, sse_event
 from hx_email.server.mail.verification import MailboxProvider
 
 # Sentinel group id meaning "accounts without a group".
@@ -124,6 +124,8 @@ def _refresh_group_accounts_stream(
     yield "start", {"total": total}
     success_count = 0
     for index, account in enumerate(accounts):
+        if index > 0:
+            _stagger_sleep(settings)
         result = _refresh_account(settings, account)
         if bool(result["success"]):
             success_count += 1

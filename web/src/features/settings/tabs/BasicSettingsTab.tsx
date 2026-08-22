@@ -15,6 +15,7 @@ import { ConfirmModal } from "../../../components/ui/ConfirmModal";
 import { Button, Card, Input } from "../../../components/ui/Primitives";
 import { Spinner } from "../../../components/ui/Spinner";
 import { useApp } from "../../../store/AppContext";
+import { formatRelativeTime } from "../../../utils/time";
 import { SectionHeader, SettingsTabFrame, SettingsToggle, TestResult } from "../SettingsControls";
 import type { SettingsTabProps, TestOutcome } from "../types";
 import { GoogleVerificationCard } from "./GoogleVerificationCard";
@@ -71,6 +72,7 @@ export const BasicSettingsTab: React.FC<SettingsTabProps> = ({
   setSetting,
   toast,
   user,
+  accounts,
 }) => {
   const { updateCredentials } = useApp();
   const [newPassword, setNewPassword] = useState("");
@@ -286,6 +288,59 @@ export const BasicSettingsTab: React.FC<SettingsTabProps> = ({
           </div>
         </Card>
       )}
+
+      <Card className="p-5">
+        <SectionHeader>凭证刷新（OAuth token）</SectionHeader>
+        <div className="max-w-lg space-y-3">
+          <div className="rounded-md border border-gh-border bg-gh-canvas-inset p-3 text-xs text-gh-text-secondary">
+            批量刷新（全部/失败/分组/快速巡查）按账号<b>随机错峰</b>：每账号随机延迟 1..N
+            秒后再刷新，避免同批秒级连刷被微软风控引擎聚类标记为 compromised（security interrupt for
+            collecting proof，20260823 实测： 4 个账号同一刷新批次 3 秒内同时被标）。
+          </div>
+          <Input
+            label="批量刷新错峰上限（秒，0 = 关闭错峰）"
+            type="number"
+            value={settings.refresh_stagger_max_seconds ?? "20"}
+            onChange={(event) => setSetting("refresh_stagger_max_seconds", event.target.value)}
+          />
+          <div>
+            <div className="mb-2 text-sm text-gh-text">最近刷新时间（按最近刷新排序）</div>
+            <div className="max-h-60 divide-y divide-gh-border overflow-y-auto rounded-md border border-gh-border">
+              {[...(accounts || [])]
+                .filter((a) => a.last_refresh_at || a.refresh_failed_at)
+                .sort((a, b) =>
+                  (b.last_refresh_at || b.refresh_failed_at || "").localeCompare(
+                    a.last_refresh_at || a.refresh_failed_at || "",
+                  ),
+                )
+                .slice(0, 12)
+                .map((a) => (
+                  <div
+                    key={a.id}
+                    className="flex items-center justify-between gap-2 px-3 py-1.5 text-xs"
+                  >
+                    <span className="truncate font-mono text-gh-text">{a.primary_address}</span>
+                    <span
+                      className={
+                        a.refresh_failed_at
+                          ? "shrink-0 text-gh-warning"
+                          : "shrink-0 text-gh-success"
+                      }
+                    >
+                      {a.refresh_failed_at
+                        ? `失败于 ${formatRelativeTime(a.refresh_failed_at)}`
+                        : a.last_refresh_at
+                          ? `刷新于 ${formatRelativeTime(a.last_refresh_at)}`
+                          : "从未刷新"}
+                    </span>
+                  </div>
+                ))}
+              {(accounts || []).filter((a) => a.last_refresh_at || a.refresh_failed_at).length ===
+                0 && <div className="px-3 py-2 text-xs text-gh-text-secondary">暂无刷新记录</div>}
+            </div>
+          </div>
+        </div>
+      </Card>
 
       <Card className="p-5">
         <SectionHeader>系统状态</SectionHeader>
