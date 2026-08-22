@@ -36,6 +36,9 @@ SETTINGS_DEFAULTS: dict[str, str] = {
     "pool_external_enabled": "false",
     "enable_auto_polling": "false",
     "polling_interval": "30",
+    "refresh_stagger_max_seconds": "20",  # 批量刷新错峰上限(秒)
+    "refresh_schedule_enabled": "true",  # 后台定时随机刷新
+    "refresh_schedule_interval_seconds": "3600",  # 定时刷新间隔(秒)
     "group_default_proxy_url": "",
     "group_default_notify_enabled": "true",
     "group_default_polling_enabled": "true",
