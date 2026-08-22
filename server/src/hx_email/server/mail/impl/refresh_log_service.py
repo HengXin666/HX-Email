@@ -188,6 +188,11 @@ def get_refresh_stats(settings: Settings, user_id: int) -> dict[str, object]:
 #   令牌失效: 700082/50173/700081 (refresh token 过期/不活跃), invalid_grant
 #   应用配置: 700016 (应用不存在), 7000215/7000218/7000222 (client secret 问题), 70011 (scope 无效)
 #   账号访问: 50057 (账号被禁用), 50076/50079 (MFA), 65001 (未同意授权), 50034 (用户不存在)
+#   密码错误: 50126 (凭据无效)
+#   账号锁定/密码过期: 50053 (已锁定), 50055 (密码过期)
+#   20260822 风控细分: AADSTS70000 按错误描述拆「服务滥用」(service abuse mode)
+#     与「安全验证中断/疑似泄露」(security interrupt / compromised), 同一错误码
+#     两种触发, 分布必须分开 (abuse 无法密保取件恢复, compromised 可以)。
 MICROSOFT_TOKEN_EXPIRED_CODES: tuple[str, ...] = (
     "invalid_grant",
     "aadsts700082",
@@ -208,6 +213,22 @@ MICROSOFT_ACCOUNT_ACCESS_CODES: tuple[str, ...] = (
     "aadsts50079",
     "aadsts65001",
     "aadsts50034",
+    "aadsts70000",
+)
+MICROSOFT_PASSWORD_CODES: tuple[str, ...] = ("aadsts50126",)
+MICROSOFT_LOCKED_CODES: tuple[str, ...] = (
+    "aadsts50053",
+    "aadsts50055",
+)
+# AADSTS70000 内部细分 (按错误描述文本, 20260822 实测两类触发)
+ABUSE_HINTS: tuple[str, ...] = (
+    "service abuse",
+    "abuse mode",
+)
+COMPROMISED_HINTS: tuple[str, ...] = (
+    "compromised",
+    "security interrupt",
+    "collecting proof",
 )
 NETWORK_HINTS: tuple[str, ...] = (
     "httpsconnectionpool",
@@ -222,8 +243,9 @@ NETWORK_HINTS: tuple[str, ...] = (
 def classify_refresh_error(provider: str, error_detail: str) -> tuple[str, str]:
     """将刷新失败的错误详情归类为 (category, label)。
 
-    至少覆盖微软三种常见错误: 令牌失效 / 应用配置错误 / 账号访问被拒,
-    外加网络与兜底其他; 谷歌区分令牌失效与网络。
+    至少覆盖微软五种常见错误: 令牌失效 / 应用配置错误 / 账号访问被拒 /
+    密码错误 / 账号锁定, 外加风控细分 (AADSTS70000 服务滥用 vs 安全中断)、
+    网络与兜底其他; 谷歌区分令牌失效与网络。
     """
     detail: str = (error_detail or "").lower()
     if any(hint in detail for hint in NETWORK_HINTS):
@@ -233,10 +255,20 @@ def classify_refresh_error(provider: str, error_detail: str) -> tuple[str, str]:
             return "token_expired", "令牌失效/已撤销"
         return "other", "其他错误"
     # Microsoft (outlook)
+    if "aadsts70000" in detail:
+        if any(hint in detail for hint in ABUSE_HINTS):
+            return "account_abuse", "风控-服务滥用"
+        if any(hint in detail for hint in COMPROMISED_HINTS):
+            return "account_compromised", "风控-安全验证中断"
+        return "account_access", "账号/权限被拒"
     if any(code in detail for code in MICROSOFT_TOKEN_EXPIRED_CODES):
         return "token_expired", "令牌失效/过期"
     if any(code in detail for code in MICROSOFT_APP_CONFIG_CODES):
         return "app_config", "应用配置错误"
+    if any(code in detail for code in MICROSOFT_PASSWORD_CODES):
+        return "password", "密码错误"
+    if any(code in detail for code in MICROSOFT_LOCKED_CODES):
+        return "account_locked", "账号锁定/密码过期"
     if any(code in detail for code in MICROSOFT_ACCOUNT_ACCESS_CODES):
         return "account_access", "账号/权限被拒"
     return "other", "其他错误"
