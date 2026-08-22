@@ -373,15 +373,15 @@ const GroupSidebar: React.FC<{
       <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
         <button
           onClick={() => onSelect(null)}
-          className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-colors ${
+          className={`w-full flex items-center gap-2 px-1.5 py-1.5 rounded-md text-sm transition-colors ${
             selectedGroupId === null
               ? "bg-gh-accent/10 text-gh-accent"
               : "text-gh-text-muted hover:text-gh-text hover:bg-gh-border/40"
           }`}
         >
-          <IconMail size={14} />
-          <span className="flex-1 text-left">全部</span>
-          <span className="text-xs tabular-nums">{counts.all}</span>
+          <IconMail size={13} className="shrink-0" />
+          <span className="flex-1 text-left truncate">全部</span>
+          <span className="text-xs tabular-nums shrink-0">{counts.all}</span>
         </button>
 
         <Reorder.Group
@@ -410,37 +410,50 @@ const GroupSidebar: React.FC<{
         </Reorder.Group>
 
         {/* 未分组: 不属于任何分组的账号 */}
-        <button
-          onClick={() => onSelect(UNGROUPED_GROUP_ID)}
-          className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-colors ${
+        <div
+          className={`group w-full flex items-center gap-1.5 rounded-md px-1.5 py-1.5 text-sm transition-colors ${
             selectedGroupId === UNGROUPED_GROUP_ID
               ? "bg-gh-accent/10 text-gh-accent"
               : "text-gh-text-muted hover:text-gh-text hover:bg-gh-border/40"
           }`}
         >
-          <IconTag size={14} />
-          <span className="flex-1 text-left">未分组</span>
-          <span className="text-xs tabular-nums">{counts.ungrouped}</span>
-          {tokenCounts.ungrouped.valid > 0 && (
-            <span className="text-[10px] text-gh-success tabular-nums">
-              {tokenCounts.ungrouped.valid}✓
-            </span>
-          )}
-          {patrollingTarget === "ungrouped" ? (
-            <IconRefresh size={12} className="text-gh-accent animate-spin" />
-          ) : (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                void runPatrol("ungrouped");
-              }}
-              className="p-0.5 rounded text-gh-text-muted/50 hover:text-gh-accent transition-colors"
-              title="巡查未分组账号的 Token"
-            >
-              <IconRefresh size={12} />
-            </button>
-          )}
-        </button>
+          <IconTag size={13} className="shrink-0 ml-0.5" />
+          <button onClick={() => onSelect(UNGROUPED_GROUP_ID)} className="flex-1 min-w-0 text-left">
+            <span className="block truncate">未分组</span>
+          </button>
+          {/* 计数: 悬浮时淡出收起, 让位给操作按钮 */}
+          <span className="flex items-center gap-1 shrink-0 overflow-hidden max-w-[48px] transition-all duration-200 group-hover:max-w-0 group-hover:opacity-0">
+            <span className="text-xs tabular-nums">{counts.ungrouped}</span>
+            {tokenCounts.ungrouped.valid > 0 && (
+              <span className="text-[10px] text-gh-success tabular-nums">
+                {tokenCounts.ungrouped.valid}✓
+              </span>
+            )}
+          </span>
+          {/* 悬浮操作: 巡查按钮 */}
+          <span
+            className={`flex items-center shrink-0 overflow-hidden transition-all duration-200 ${
+              patrollingTarget === "ungrouped"
+                ? "max-w-[20px] opacity-100"
+                : "max-w-0 opacity-0 group-hover:max-w-[20px] group-hover:opacity-100"
+            }`}
+          >
+            {patrollingTarget === "ungrouped" ? (
+              <IconRefresh size={12} className="text-gh-accent animate-spin shrink-0" />
+            ) : (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void runPatrol("ungrouped");
+                }}
+                className="p-0.5 rounded text-gh-text-muted/60 hover:text-gh-accent transition-colors shrink-0"
+                title="巡查未分组账号的 Token"
+              >
+                <IconRefresh size={12} />
+              </button>
+            )}
+          </span>
+        </div>
       </div>
 
       {/* 多选操作栏 */}
@@ -592,12 +605,18 @@ const GroupItem: React.FC<{
       dragControls={dragControls}
       className="relative"
     >
-      <div className="group flex items-center gap-0.5">
+      <div
+        className={`group flex items-center gap-0.5 rounded-md px-1.5 py-1.5 transition-colors ${
+          selected
+            ? "bg-gh-accent/10 text-gh-accent"
+            : "text-gh-text-muted hover:text-gh-text hover:bg-gh-border/40"
+        }`}
+      >
         {/* 拖拽手柄 — 仅从此处可拖动排序 */}
         <button
           type="button"
           onPointerDown={(e) => dragControls.start(e)}
-          className="shrink-0 p-1 rounded text-gh-text-muted/40 hover:text-gh-text cursor-grab active:cursor-grabbing transition-colors"
+          className="shrink-0 p-0.5 rounded text-gh-text-muted/40 hover:text-gh-text cursor-grab active:cursor-grabbing transition-colors"
           title="拖拽排序"
         >
           <IconGripVertical size={12} />
@@ -635,11 +654,7 @@ const GroupItem: React.FC<{
         )}
         <button
           onClick={onClick}
-          className={`flex-1 min-w-0 flex items-center gap-2 px-2 py-2 rounded-md text-sm transition-colors ${
-            selected
-              ? "bg-gh-accent/10 text-gh-accent"
-              : "text-gh-text-muted hover:text-gh-text hover:bg-gh-border/40"
-          }`}
+          className="flex-1 min-w-0 flex items-center gap-2 text-left text-sm"
         >
           <div
             className="w-2.5 h-2.5 rounded-sm shrink-0"
@@ -649,7 +664,14 @@ const GroupItem: React.FC<{
             }}
           />
           <span className="flex-1 text-left truncate">{group.name}</span>
-          <span className="text-xs tabular-nums opacity-70">{count}</span>
+        </button>
+        {/* 计数徽章: 悬浮时淡出收起, 让位给操作按钮 (不再重叠) */}
+        <span
+          className={`flex items-center gap-1 shrink-0 overflow-hidden transition-all duration-200 ${
+            selectionMode ? "" : "max-w-[56px] group-hover:max-w-0 group-hover:opacity-0"
+          }`}
+        >
+          <span className="text-xs tabular-nums">{count}</span>
           {validCount > 0 && (
             <span
               className="text-[10px] text-gh-success tabular-nums"
@@ -658,42 +680,54 @@ const GroupItem: React.FC<{
               {validCount}✓
             </span>
           )}
-        </button>
-        {/* 编辑 / 删除 / 巡查 — hover 时直接显示，无需二次点击下拉菜单 */}
+        </span>
+        {/* 编辑 / 删除 / 巡查 — 悬浮时展开淡入, 与计数徽章交叉过渡 */}
         {!selectionMode && (
-          <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onPatrol();
-              }}
-              disabled={patrolling}
-              className="p-1 rounded-md text-gh-text-muted hover:text-gh-accent hover:bg-gh-accent/10 transition-colors disabled:opacity-50"
-              title="巡查本组账号 Token（批量刷新）"
-            >
-              <IconRefresh size={13} className={patrolling ? "animate-spin" : ""} />
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onEdit();
-              }}
-              className="p-1 rounded-md text-gh-text-muted hover:text-gh-accent hover:bg-gh-accent/10 transition-colors"
-              title="编辑分组"
-            >
-              <IconEdit size={13} />
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete();
-              }}
-              className="p-1 rounded-md text-gh-text-muted hover:text-red-400 hover:bg-red-400/10 transition-colors"
-              title="删除分组"
-            >
-              <IconTrash size={13} />
-            </button>
-          </div>
+          <span
+            className={`flex items-center gap-0.5 shrink-0 overflow-hidden transition-all duration-200 ${
+              patrolling
+                ? "max-w-[20px] opacity-100"
+                : "max-w-0 opacity-0 group-hover:max-w-[56px] group-hover:opacity-100"
+            }`}
+          >
+            {patrolling ? (
+              <IconRefresh size={12} className="text-gh-accent animate-spin shrink-0" />
+            ) : (
+              <>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onPatrol();
+                  }}
+                  disabled={patrolling}
+                  className="p-0.5 rounded-md text-gh-text-muted hover:text-gh-accent hover:bg-gh-accent/10 transition-colors disabled:opacity-50 shrink-0"
+                  title="巡查本组账号 Token（批量刷新）"
+                >
+                  <IconRefresh size={12} />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEdit();
+                  }}
+                  className="p-0.5 rounded-md text-gh-text-muted hover:text-gh-accent hover:bg-gh-accent/10 transition-colors shrink-0"
+                  title="编辑分组"
+                >
+                  <IconEdit size={12} />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete();
+                  }}
+                  className="p-0.5 rounded-md text-gh-text-muted hover:text-red-400 hover:bg-red-400/10 transition-colors shrink-0"
+                  title="删除分组"
+                >
+                  <IconTrash size={12} />
+                </button>
+              </>
+            )}
+          </span>
         )}
       </div>
     </Reorder.Item>
@@ -926,6 +960,19 @@ const getAccountAliases = (account: EmailAccount | undefined): UsableEmail[] => 
   return account?.usable_emails.filter((email: UsableEmail) => email.kind === "alias") || [];
 };
 
+/** 凭证状态: valid=已通过至少一次刷新校验, invalid=最近刷新失败, none=无凭证/未刷新过 */
+type CredentialState = "valid" | "invalid" | "none";
+
+function accountCredentialState(account: EmailAccount | undefined): CredentialState {
+  if (!account) return "none";
+  const hasCredential: boolean =
+    !!account.has_refresh_token || !!account.has_imap_password || !!account.imap_password;
+  if (!hasCredential) return "none";
+  if (account.refresh_failed_at) return "invalid";
+  if (account.last_refresh_at) return "valid";
+  return "none";
+}
+
 const copyText = async (
   text: string,
   onCopied: () => void,
@@ -937,6 +984,34 @@ const copyText = async (
     return;
   }
   onFailed?.();
+};
+
+const CredFilterChip: React.FC<{
+  active: boolean;
+  onClick: () => void;
+  tone?: "neutral" | "success" | "danger";
+  children: React.ReactNode;
+}> = ({ active, onClick, tone = "neutral", children }) => {
+  const toneClasses =
+    tone === "success"
+      ? active
+        ? "text-gh-success border-gh-success/60 bg-gh-success/10"
+        : "text-gh-text-muted border-gh-border hover:text-gh-success hover:border-gh-success/40"
+      : tone === "danger"
+        ? active
+          ? "text-gh-danger border-gh-danger/60 bg-gh-danger/10"
+          : "text-gh-text-muted border-gh-border hover:text-gh-danger hover:border-gh-danger/40"
+        : active
+          ? "text-gh-accent border-gh-accent/60 bg-gh-accent/10"
+          : "text-gh-text-muted border-gh-border hover:text-gh-text hover:border-gh-text-muted";
+  return (
+    <button
+      onClick={onClick}
+      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[11px] tabular-nums transition-all duration-150 ${toneClasses}`}
+    >
+      {children}
+    </button>
+  );
 };
 
 const EmailList: React.FC<{
@@ -967,6 +1042,8 @@ const EmailList: React.FC<{
   const [showSettings, setShowSettings] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   const [sortOrder, setSortOrder] = useState<EmailSortOrder>("desc");
+  // 凭证状态筛选: all=不筛选, valid=仅凭证有效, invalid=仅凭证失效
+  const [credFilter, setCredFilter] = useState<"all" | CredentialState>("all");
   // 懒加载窗口: 默认只渲染前 EMAIL_PAGE_SIZE 条, 滚动到底部时再加载更多
   const [visibleCount, setVisibleCount] = useState(EMAIL_PAGE_SIZE);
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
@@ -1002,17 +1079,44 @@ const EmailList: React.FC<{
     return list.sort((left, right) => compareEmailCreatedAt(left, right, sortOrder));
   }, [accounts, emails, groupId, query, showTemp, sortOrder]);
 
-  // 查询/分组/排序/临时邮箱可见性变化时, 重置懒加载窗口回到第一页
+  // 凭证状态计数 (基于当前分组/搜索范围, 未叠加凭证筛选)
+  const credCounts = useMemo(() => {
+    let valid = 0;
+    let invalid = 0;
+    for (const e of filtered) {
+      const state: CredentialState = accountCredentialState(
+        accounts.find((a: EmailAccount) => a.id === e.email_account_id),
+      );
+      if (state === "valid") valid += 1;
+      else if (state === "invalid") invalid += 1;
+    }
+    return { valid, invalid };
+  }, [accounts, filtered]);
+
+  // 凭证筛选后的列表
+  const credFiltered = useMemo(() => {
+    if (credFilter === "all") return filtered;
+    return filtered.filter(
+      (e: UsableEmail) =>
+        accountCredentialState(accounts.find((a: EmailAccount) => a.id === e.email_account_id)) ===
+        credFilter,
+    );
+  }, [accounts, credFilter, filtered]);
+
+  // 查询/分组/排序/临时邮箱可见性/凭证筛选变化时, 重置懒加载窗口回到第一页
   useEffect(() => {
     setVisibleCount(EMAIL_PAGE_SIZE);
-  }, [groupId, query, sortOrder, showTemp, filtered.length]);
+  }, [groupId, query, sortOrder, showTemp, credFilter, credFiltered.length]);
 
-  const visibleEmails = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
-  const hasMore = visibleCount < filtered.length;
+  const visibleEmails = useMemo(
+    () => credFiltered.slice(0, visibleCount),
+    [credFiltered, visibleCount],
+  );
+  const hasMore = visibleCount < credFiltered.length;
 
   const loadMore = React.useCallback(() => {
-    setVisibleCount((count) => Math.min(count + EMAIL_PAGE_SIZE, filtered.length));
-  }, [filtered.length]);
+    setVisibleCount((count) => Math.min(count + EMAIL_PAGE_SIZE, credFiltered.length));
+  }, [credFiltered.length]);
 
   // 滚动接近底部时自动加载下一批 (IntersectionObserver 观察底部哨兵)
   useEffect(() => {
@@ -1035,7 +1139,9 @@ const EmailList: React.FC<{
 
   // Compute latest sync (mailbox fetch / token refresh) time across the filtered view
   const latestRefreshAt = useMemo(() => {
-    const accountIds = new Set(filtered.map((e) => e.email_account_id).filter(Boolean) as number[]);
+    const accountIds = new Set(
+      credFiltered.map((e) => e.email_account_id).filter(Boolean) as number[],
+    );
     let latest: string | null = null;
     for (const a of accounts || []) {
       const syncTime: string | null = accountSyncTime(a);
@@ -1044,7 +1150,7 @@ const EmailList: React.FC<{
       }
     }
     return latest;
-  }, [accounts, filtered]);
+  }, [accounts, credFiltered]);
 
   const refreshTimeLabel = useMemo(() => {
     if (!latestRefreshAt) return "";
@@ -1072,7 +1178,9 @@ const EmailList: React.FC<{
             <span className="text-sm font-semibold text-gh-text truncate">
               {groupId === UNGROUPED_GROUP_ID ? "未分组邮箱" : group ? group.name : "全部邮箱"}
             </span>
-            <span className="text-xs text-gh-text-secondary tabular-nums">{filtered.length}</span>
+            <span className="text-xs text-gh-text-secondary tabular-nums">
+              {credFiltered.length}
+            </span>
           </div>
           <button
             onClick={onToggleShowTemp}
@@ -1146,6 +1254,28 @@ const EmailList: React.FC<{
             selectClassName="px-2 py-1.5 text-xs"
           />
         </div>
+        {/* 凭证状态筛选 */}
+        <div className="flex items-center gap-1.5 mt-2">
+          <CredFilterChip active={credFilter === "all"} onClick={() => setCredFilter("all")}>
+            全部
+          </CredFilterChip>
+          <CredFilterChip
+            tone="success"
+            active={credFilter === "valid"}
+            onClick={() => setCredFilter("valid")}
+          >
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-gh-success" />
+            凭证有效 {credCounts.valid}
+          </CredFilterChip>
+          <CredFilterChip
+            tone="danger"
+            active={credFilter === "invalid"}
+            onClick={() => setCredFilter("invalid")}
+          >
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-gh-danger" />
+            凭证失效 {credCounts.invalid}
+          </CredFilterChip>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-3 space-y-2">
@@ -1163,14 +1293,16 @@ const EmailList: React.FC<{
             />
           ))}
         </AnimatePresence>
-        {filtered.length === 0 && (
+        {credFiltered.length === 0 && (
           <div className="text-center py-12 text-sm text-gh-text-secondary">
-            暂无邮箱
-            <div className="mt-2">
-              <Button variant="ghost" size="sm" onClick={() => setShowAdd(true)}>
-                <IconPlus size={12} /> 添加
-              </Button>
-            </div>
+            {filtered.length === 0 ? "暂无邮箱" : "没有符合筛选条件的邮箱"}
+            {filtered.length === 0 && (
+              <div className="mt-2">
+                <Button variant="ghost" size="sm" onClick={() => setShowAdd(true)}>
+                  <IconPlus size={12} /> 添加
+                </Button>
+              </div>
+            )}
           </div>
         )}
         {hasMore && (
@@ -1182,9 +1314,9 @@ const EmailList: React.FC<{
             正在加载更多…
           </div>
         )}
-        {!hasMore && filtered.length > 0 && (
+        {!hasMore && credFiltered.length > 0 && (
           <div className="text-center py-3 text-[11px] text-gh-text-muted">
-            共 {filtered.length} 个邮箱
+            共 {credFiltered.length} 个邮箱
           </div>
         )}
       </div>
@@ -1228,6 +1360,7 @@ const EmailCard: React.FC<{
 
   const account = (accounts || []).find((a) => a.id === email.email_account_id);
   const aliases: UsableEmail[] = getAccountAliases(account);
+  const credState: CredentialState = accountCredentialState(account);
   const cardName: string = email.label || account?.display_name || email.address;
   const kindLabel: string =
     email.kind === "primary" ? "主邮箱" : email.kind === "temp" ? "临时邮箱" : "自定义邮箱";
@@ -1512,6 +1645,42 @@ const EmailCard: React.FC<{
             </button>
           </div>
         </div>
+
+        {/* 凭证状态: 引用块样式 (左竖线 + 底色), 有效绿 / 失效红; 失效可点击直接刷新 */}
+        {credState !== "none" && (
+          <motion.div
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            onClick={credState === "invalid" && hasAccount ? handleRefresh : undefined}
+            className={`mt-2 flex items-center gap-1.5 rounded-r-md border-l-2 py-1 pl-2 pr-1.5 text-[11px] font-medium ${
+              credState === "valid"
+                ? "border-gh-success bg-gh-success/5 text-gh-success"
+                : "border-gh-danger bg-gh-danger/5 text-gh-danger"
+            } ${credState === "invalid" && hasAccount ? "cursor-pointer hover:bg-gh-danger/10" : ""}`}
+            title={
+              credState === "valid"
+                ? `凭证有效 — 最近刷新 ${account?.last_refresh_at || "—"}`
+                : `凭证失效 — 刷新失败于 ${account?.refresh_failed_at || "—"}，点击可重新刷新`
+            }
+          >
+            <span
+              className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${
+                credState === "valid" ? "bg-gh-success" : "bg-gh-danger"
+              }`}
+            />
+            <span className="shrink-0">{credState === "valid" ? "凭证有效" : "凭证失效"}</span>
+            <span className="ml-auto truncate text-[10px] font-normal opacity-70">
+              {credState === "valid"
+                ? account?.last_refresh_at
+                  ? `刷新于 ${formatRelativeTime(account.last_refresh_at)}`
+                  : ""
+                : account?.refresh_failed_at
+                  ? `失败于 ${formatRelativeTime(account.refresh_failed_at)}`
+                  : "点击刷新"}
+            </span>
+          </motion.div>
+        )}
 
         {aliases.length > 0 && (
           <div className="mt-2 pl-11">

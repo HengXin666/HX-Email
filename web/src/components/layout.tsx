@@ -46,7 +46,7 @@ export const Sidebar: React.FC = () => {
   };
 
   return (
-    <aside className="sticky top-0 flex h-screen w-16 shrink-0 flex-col border-r border-gh-border bg-gh-canvas-subtle/60 backdrop-blur-xl transition-all duration-200 md:w-[180px]">
+    <aside className="sticky top-0 flex h-screen w-16 shrink-0 flex-col border-r border-gh-border bg-gh-canvas-subtle/60 backdrop-blur-xl transition-all duration-200 md:w-[160px]">
       {/* Logo */}
       <div className="flex h-14 items-center justify-center gap-3 border-b border-gh-border px-3 md:justify-start md:px-5">
         <img
