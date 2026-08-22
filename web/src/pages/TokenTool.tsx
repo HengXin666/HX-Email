@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import {
+  IconActivity,
   IconCheck,
   IconCode,
   IconCopy,
@@ -19,6 +20,7 @@ import type {
   TokenPrepareResult,
   TokenToolAccount,
 } from "../types";
+import { AccountStatsTab } from "./impl/AccountStatsTab";
 import { GoogleTokenApiGuide, GoogleTokenGuide } from "./impl/GoogleTokenGuides";
 import { GoogleTokenWorkspace } from "./impl/GoogleTokenWorkspace";
 
@@ -40,7 +42,7 @@ const DEFAULT_CONFIG: TokenConfig = {
   mode: "graph",
 };
 
-type TokenToolTab = "guide" | "page-token" | "api-doc";
+type TokenToolTab = "guide" | "page-token" | "api-doc" | "account-stats";
 type TokenProvider = "microsoft" | "google";
 
 const TAB_STORAGE_KEY = "hx_token_tool_active_tab";
@@ -64,6 +66,12 @@ const TABS: Array<{
     label: "API 说明",
     description: "通过 API 换取 token 并添加账号",
     icon: IconCode,
+  },
+  {
+    id: "account-stats",
+    label: "账号统计",
+    description: "凭证状态、存活分布与刷新巡检",
+    icon: IconActivity,
   },
 ];
 
@@ -709,11 +717,15 @@ Authorization: Bearer <token>
             })}
           </div>
 
-          {activeTab === "guide"
-            ? renderGuide()
-            : activeTab === "page-token"
-              ? renderPageToken()
-              : renderApiDoc()}
+          {activeTab === "guide" ? (
+            renderGuide()
+          ) : activeTab === "page-token" ? (
+            renderPageToken()
+          ) : activeTab === "api-doc" ? (
+            renderApiDoc()
+          ) : (
+            <AccountStatsTab />
+          )}
         </div>
       </div>
     </div>

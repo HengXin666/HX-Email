@@ -82,11 +82,14 @@ def day_key(value: str) -> str:
 
 
 def get_account_stats(settings: Settings, user_id: int) -> dict[str, object]:
-    """账号统计聚合: 总数/凭证状态/服务商分布/存活分布/每日新增/每日刷新。
+    """账号统计聚合: 仅统计持有授权 token 的 OAuth 账号 (outlook/gmail)。
 
-    供账号统计页 (折线图 + 分布图) 使用, 一次性返回全部聚合, 避免客户端分页遗漏。
+    含凭证状态/服务商/分组/存活分布/每日新增/每日刷新, 以及按错误码分类的
+    刷新失败原因分布 (微软至少区分令牌失效/应用配置/账号访问三类)。
     """
     from datetime import UTC, datetime, timedelta
+
+    from hx_email.server.mail.impl.refresh_log_service import classify_refresh_error
 
     cutoff_iso: str = (
         (datetime.now(UTC) - timedelta(days=STATS_DAYS))
@@ -96,24 +99,32 @@ def get_account_stats(settings: Settings, user_id: int) -> dict[str, object]:
     with connect(settings) as connection:
         rows = connection.execute(
             """
-            SELECT provider, created_at, refresh_token, refresh_failed_at, last_refresh_at
-            FROM email_accounts
-            WHERE user_id = ?
+            SELECT ea.provider, ea.created_at, ea.refresh_token, ea.refresh_failed_at,
+                   ea.last_refresh_at, ea.group_id, g.name AS group_name, g.color AS group_color
+            FROM email_accounts ea
+            LEFT JOIN groups g ON g.id = ea.group_id
+            WHERE ea.user_id = ?
+              AND ea.provider IN ('outlook', 'gmail')
+              AND ea.refresh_token != ''
             """,
             (user_id,),
         ).fetchall()
         refresh_rows = connection.execute(
             """
-            SELECT rl.status, substr(rl.completed_at, 1, 10) AS day
+            SELECT rl.status, substr(rl.completed_at, 1, 10) AS day, rl.error_detail,
+                   ea.provider
             FROM refresh_logs rl
             JOIN email_accounts ea ON ea.id = rl.account_id AND ea.user_id = ?
             WHERE rl.completed_at >= ?
             """,
             (user_id, cutoff_iso),
         ).fetchall()
+        group_rows = connection.execute(
+            "SELECT id, name, color FROM groups WHERE user_id = ? ORDER BY sort_order, id",
+            (user_id,),
+        ).fetchall()
 
     total = 0
-    oauth = 0
     microsoft = 0
     google = 0
     valid = 0
@@ -125,6 +136,7 @@ def get_account_stats(settings: Settings, user_id: int) -> dict[str, object]:
         {"valid": 0, "invalid": 0, "unknown": 0} for _ in AGE_BUCKETS
     ]
     provider_counts: dict[str, int] = {}
+    group_counts: dict[int | None, dict[str, int]] = {}
     daily_new: dict[str, int] = {}
     now: datetime = datetime.now(UTC)
     for row in rows:
@@ -135,18 +147,8 @@ def get_account_stats(settings: Settings, user_id: int) -> dict[str, object]:
             microsoft += 1
         elif provider == "gmail":
             google += 1
-        if provider in OAUTH_PROVIDERS:
-            oauth += 1
-        has_token: bool = bool(row["refresh_token"])
-        is_valid: bool = (
-            provider in OAUTH_PROVIDERS
-            and has_token
-            and row["refresh_failed_at"] is None
-            and row["last_refresh_at"] is not None
-        )
-        is_invalid: bool = (
-            provider in OAUTH_PROVIDERS and has_token and row["refresh_failed_at"] is not None
-        )
+        is_valid: bool = row["refresh_failed_at"] is None and row["last_refresh_at"] is not None
+        is_invalid: bool = row["refresh_failed_at"] is not None
         if is_valid:
             valid += 1
         elif is_invalid:
@@ -159,6 +161,13 @@ def get_account_stats(settings: Settings, user_id: int) -> dict[str, object]:
             last_refresh is None or row["last_refresh_at"] > last_refresh
         ):
             last_refresh = row["last_refresh_at"]
+        group_id: int | None = row["group_id"]
+        bucket = group_counts.setdefault(group_id, {"total": 0, "valid": 0, "invalid": 0})
+        bucket["total"] += 1
+        if is_valid:
+            bucket["valid"] += 1
+        elif is_invalid:
+            bucket["invalid"] += 1
         created_at: str = row["created_at"] or ""
         if created_at:
             day: str = day_key(created_at)
@@ -183,6 +192,8 @@ def get_account_stats(settings: Settings, user_id: int) -> dict[str, object]:
     for offset in range(STATS_DAYS - 1, -1, -1):
         days.append((now - timedelta(days=offset)).strftime("%Y-%m-%d"))
     daily_refresh: dict[str, dict[str, int]] = {day: {"success": 0, "failed": 0} for day in days}
+    error_counts: dict[tuple[str, str], int] = {}
+    error_labels: dict[tuple[str, str], str] = {}
     for row in refresh_rows:
         day_val: str = row["day"] or ""
         if day_val in daily_refresh:
@@ -191,10 +202,30 @@ def get_account_stats(settings: Settings, user_id: int) -> dict[str, object]:
                 daily_refresh[day_val]["success"] += 1
             elif status_v == "failed":
                 daily_refresh[day_val]["failed"] += 1
+        if (row["status"] or "") == "failed":
+            provider_v: str = row["provider"] or ""
+            category, label = classify_refresh_error(provider_v, row["error_detail"] or "")
+            key = (provider_v, category)
+            error_counts[key] = error_counts.get(key, 0) + 1
+            error_labels[key] = label
+
+    groups_out: list[dict[str, object]] = []
+    for group_row in group_rows:
+        gid: int = int(group_row["id"])
+        bucket = group_counts.get(gid, {"total": 0, "valid": 0, "invalid": 0})
+        groups_out.append(
+            {
+                "group_id": gid,
+                "name": group_row["name"],
+                "color": group_row["color"],
+                **bucket,
+            }
+        )
+    ungrouped = group_counts.get(None, {"total": 0, "valid": 0, "invalid": 0})
 
     return {
         "total": total,
-        "oauth": oauth,
+        "oauth": total,
         "microsoft": microsoft,
         "google": google,
         "valid": valid,
@@ -205,6 +236,12 @@ def get_account_stats(settings: Settings, user_id: int) -> dict[str, object]:
         "by_provider": [
             {"provider": provider, "count": count}
             for provider, count in sorted(provider_counts.items(), key=lambda item: -item[1])
+        ],
+        "by_group": groups_out,
+        "ungrouped": ungrouped,
+        "error_categories": [
+            {"provider": key[0], "category": key[1], "label": error_labels[key], "count": count}
+            for key, count in sorted(error_counts.items(), key=lambda item: -item[1])
         ],
         "age_buckets": [
             {

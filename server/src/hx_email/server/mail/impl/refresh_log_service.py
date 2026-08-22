@@ -181,3 +181,62 @@ def get_refresh_stats(settings: Settings, user_id: int) -> dict[str, object]:
         "pending": (counts_row["pending"] or 0) if counts_row is not None else 0,
         "last_refresh": last_row["completed_at"] if last_row is not None else "",
     }
+
+
+# 刷新失败错误码分类 (OAuth 错误文本 => 可读分类)。
+# 微软 AADSTS 错误码含义参考 Microsoft Entra 文档:
+#   令牌失效: 700082/50173/700081 (refresh token 过期/不活跃), invalid_grant
+#   应用配置: 700016 (应用不存在), 7000215/7000218/7000222 (client secret 问题), 70011 (scope 无效)
+#   账号访问: 50057 (账号被禁用), 50076/50079 (MFA), 65001 (未同意授权), 50034 (用户不存在)
+MICROSOFT_TOKEN_EXPIRED_CODES: tuple[str, ...] = (
+    "invalid_grant",
+    "aadsts700082",
+    "aadsts50173",
+    "aadsts700081",
+    "aadsts54005",
+)
+MICROSOFT_APP_CONFIG_CODES: tuple[str, ...] = (
+    "aadsts700016",
+    "aadsts7000215",
+    "aadsts7000218",
+    "aadsts7000222",
+    "aadsts70011",
+)
+MICROSOFT_ACCOUNT_ACCESS_CODES: tuple[str, ...] = (
+    "aadsts50057",
+    "aadsts50076",
+    "aadsts50079",
+    "aadsts65001",
+    "aadsts50034",
+)
+NETWORK_HINTS: tuple[str, ...] = (
+    "httpsconnectionpool",
+    "connection",
+    "timeout",
+    "network error",
+    "max retries",
+    "proxyerror",
+)
+
+
+def classify_refresh_error(provider: str, error_detail: str) -> tuple[str, str]:
+    """将刷新失败的错误详情归类为 (category, label)。
+
+    至少覆盖微软三种常见错误: 令牌失效 / 应用配置错误 / 账号访问被拒,
+    外加网络与兜底其他; 谷歌区分令牌失效与网络。
+    """
+    detail: str = (error_detail or "").lower()
+    if any(hint in detail for hint in NETWORK_HINTS):
+        return "network", "网络/超时"
+    if provider == "gmail":
+        if "invalid_grant" in detail or "expired" in detail or "revoked" in detail:
+            return "token_expired", "令牌失效/已撤销"
+        return "other", "其他错误"
+    # Microsoft (outlook)
+    if any(code in detail for code in MICROSOFT_TOKEN_EXPIRED_CODES):
+        return "token_expired", "令牌失效/过期"
+    if any(code in detail for code in MICROSOFT_APP_CONFIG_CODES):
+        return "app_config", "应用配置错误"
+    if any(code in detail for code in MICROSOFT_ACCOUNT_ACCESS_CODES):
+        return "account_access", "账号/权限被拒"
+    return "other", "其他错误"

@@ -49,6 +49,21 @@ export interface AccountStats {
   failed_refresh: number;
   last_refresh: string | null;
   by_provider: Array<{ provider: string; count: number }>;
+  by_group: Array<{
+    group_id: number;
+    name: string;
+    color: string;
+    total: number;
+    valid: number;
+    invalid: number;
+  }>;
+  ungrouped: { total: number; valid: number; invalid: number };
+  error_categories: Array<{
+    provider: string;
+    category: string;
+    label: string;
+    count: number;
+  }>;
   age_buckets: Array<{
     label: string;
     min: number;

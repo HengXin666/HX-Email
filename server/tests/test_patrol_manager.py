@@ -228,3 +228,121 @@ def test_account_stats_endpoint_aggregates_counts_and_series(tmp_path: Path) -> 
     assert len(data["daily_new"]) == 30
     assert len(data["daily_refresh"]) == 30
     assert data["by_provider"][0]["provider"] == "gmail"
+
+
+def test_classify_refresh_error_distinguishes_microsoft_codes() -> None:
+    from hx_email.server.mail.impl.refresh_log_service import classify_refresh_error
+
+    # 微软: 令牌失效
+    category, _label = classify_refresh_error(
+        "outlook",
+        '{"error":"invalid_grant","error_description":"AADSTS700082: refresh token expired"}',
+    )
+    assert category == "token_expired"
+    # 微软: 应用配置错误 (client secret)
+    category, _label = classify_refresh_error(
+        "outlook", "AADSTS7000215: Invalid client secret is provided"
+    )
+    assert category == "app_config"
+    # 微软: 账号被禁用
+    category, _label = classify_refresh_error("outlook", "AADSTS50057: User account is disabled")
+    assert category == "account_access"
+    # 网络
+    category, _label = classify_refresh_error(
+        "outlook", "HTTPSConnectionPool(host='login.microsoftonline.com')"
+    )
+    assert category == "network"
+    # 谷歌: 令牌失效
+    category, _label = classify_refresh_error(
+        "gmail", "invalid_grant: Token has been expired or revoked"
+    )
+    assert category == "token_expired"
+    # 兜底
+    category, _label = classify_refresh_error("outlook", "something unexpected")
+    assert category == "other"
+
+
+def test_account_stats_includes_groups_and_error_categories(tmp_path: Path) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from hx_email.server.workspace.groups import create_group
+
+    settings = make_settings(tmp_path)
+    group = create_group(settings, 1, "微软号", "#3fb950")
+    for index in range(3):
+        add_email_account(
+            settings,
+            1,
+            "outlook",
+            f"ms{index}@outlook.com",
+            f"ms{index}",
+            imap_host="outlook.office365.com",
+            imap_port=993,
+            client_id="cid",
+            refresh_token="rt",
+        )
+    client = TestClient(create_app(settings))
+    session = client.post(
+        "/api/v1/auth/login",
+        json={"username": "admin", "password": "admin"},
+    ).json()
+    headers = {"Authorization": f"Bearer {session['access_token']}"}
+
+    with connect(settings) as connection:
+        connection.execute(
+            "UPDATE email_accounts SET group_id = ?, refresh_failed_at = ? WHERE id IN"
+            " (SELECT id FROM email_accounts WHERE user_id = 1 ORDER BY id LIMIT 2)",
+            (
+                group.id,
+                (datetime.now(UTC) - timedelta(hours=1))
+                .isoformat(timespec="milliseconds")
+                .replace("+00:00", "Z"),
+            ),
+        )
+        # 两条失败日志: 微软令牌过期 + 应用配置错误
+        account_ids = [
+            row["id"]
+            for row in connection.execute(
+                "SELECT id FROM email_accounts WHERE user_id = 1 ORDER BY id LIMIT 2"
+            ).fetchall()
+        ]
+        connection.execute(
+            "INSERT INTO refresh_logs (account_id, email, status, message,"
+            " error_detail, completed_at)"
+            " VALUES (?, ?, 'failed', 'x', 'AADSTS700082: refresh token expired', ?)",
+            (
+                account_ids[0],
+                "a@x.com",
+                (datetime.now(UTC) - timedelta(hours=2))
+                .isoformat(timespec="milliseconds")
+                .replace("+00:00", "Z"),
+            ),
+        )
+        connection.execute(
+            "INSERT INTO refresh_logs (account_id, email, status, message,"
+            " error_detail, completed_at)"
+            " VALUES (?, ?, 'failed', 'x', 'AADSTS7000215: invalid client secret', ?)",
+            (
+                account_ids[1],
+                "b@x.com",
+                (datetime.now(UTC) - timedelta(hours=3))
+                .isoformat(timespec="milliseconds")
+                .replace("+00:00", "Z"),
+            ),
+        )
+
+    data = client.get("/api/v1/overview/account-stats", headers=headers).json()
+
+    # 仅统计有 token 的 OAuth 账号
+    assert data["total"] == 3
+    assert data["oauth"] == 3
+    assert data["valid"] + data["invalid"] + data["unknown"] == 3
+    # 分组拆分
+    assert len(data["by_group"]) == 1
+    assert data["by_group"][0]["name"] == "微软号"
+    assert data["by_group"][0]["total"] == 2
+    assert data["ungrouped"]["total"] == 1
+    # 错误码分类: 令牌失效 + 应用配置
+    categories = {(c["category"], c["label"]) for c in data["error_categories"]}
+    assert ("token_expired", "令牌失效/过期") in categories
+    assert ("app_config", "应用配置错误") in categories

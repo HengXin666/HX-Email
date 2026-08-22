@@ -10,6 +10,14 @@ const listTokenToolAccounts = vi.fn();
 const prepareGoogleOAuthNew = vi.fn();
 const getGoogleOAuthFlowStatus = vi.fn();
 const createEmailAccount = vi.fn();
+const getAccountStats = vi.fn();
+const listEmailAccounts = vi.fn();
+const patrolStatus = vi.fn();
+const patrolStart = vi.fn();
+const patrolPause = vi.fn();
+const patrolResume = vi.fn();
+const patrolStop = vi.fn();
+const subscribePatrol = vi.fn();
 const refreshAccounts = vi.fn();
 const refreshEmails = vi.fn();
 
@@ -21,7 +29,15 @@ vi.mock("../api/client", () => ({
     prepareGoogleOAuthNew: (...args: unknown[]) => prepareGoogleOAuthNew(...args),
     getGoogleOAuthFlowStatus: (...args: unknown[]) => getGoogleOAuthFlowStatus(...args),
     createEmailAccount: (...args: unknown[]) => createEmailAccount(...args),
+    getAccountStats: (...args: unknown[]) => getAccountStats(...args),
+    listEmailAccounts: (...args: unknown[]) => listEmailAccounts(...args),
+    patrolStatus: (...args: unknown[]) => patrolStatus(...args),
+    patrolStart: (...args: unknown[]) => patrolStart(...args),
+    patrolPause: (...args: unknown[]) => patrolPause(...args),
+    patrolResume: (...args: unknown[]) => patrolResume(...args),
+    patrolStop: (...args: unknown[]) => patrolStop(...args),
   },
+  subscribePatrol: (...args: unknown[]) => subscribePatrol(...args),
 }));
 
 vi.mock("../store/AppContext", () => ({
@@ -62,6 +78,60 @@ beforeEach(() => {
     status: "active",
     usable_emails: [],
   });
+  getAccountStats.mockResolvedValue({
+    total: 2,
+    oauth: 2,
+    microsoft: 1,
+    google: 1,
+    valid: 1,
+    invalid: 1,
+    unknown: 0,
+    failed_refresh: 1,
+    last_refresh: null,
+    by_provider: [
+      { provider: "outlook", count: 1 },
+      { provider: "gmail", count: 1 },
+    ],
+    by_group: [],
+    ungrouped: { total: 2, valid: 1, invalid: 1 },
+    error_categories: [
+      { provider: "outlook", category: "token_expired", label: "令牌失效/过期", count: 1 },
+    ],
+    age_buckets: [
+      { label: "<7天", min: 0, max: 7, valid: 0, invalid: 0, unknown: 0 },
+      { label: "7-14天", min: 7, max: 14, valid: 0, invalid: 0, unknown: 0 },
+      { label: "14-30天", min: 14, max: 30, valid: 0, invalid: 0, unknown: 0 },
+      { label: "30-60天", min: 30, max: 60, valid: 1, invalid: 0, unknown: 0 },
+      { label: "60-90天", min: 60, max: 90, valid: 0, invalid: 0, unknown: 0 },
+      { label: "90-180天", min: 90, max: 180, valid: 0, invalid: 0, unknown: 0 },
+      { label: "180天+", min: 180, max: null, valid: 0, invalid: 1, unknown: 0 },
+    ],
+    daily_new: Array.from({ length: 30 }, (_, i) => ({
+      date: `2026-07-${String(i + 1).padStart(2, "0")}`,
+      count: i % 3,
+    })),
+    daily_refresh: Array.from({ length: 30 }, (_, i) => ({
+      date: `2026-07-${String(i + 1).padStart(2, "0")}`,
+      success: 2,
+      failed: i % 2,
+    })),
+  });
+  listEmailAccounts.mockResolvedValue([]);
+  patrolStatus.mockResolvedValue({
+    status: "idle",
+    mode: "",
+    mode_label: "",
+    group_id: null,
+    total: 0,
+    current: 0,
+    success: 0,
+    failed: 0,
+    email: "",
+    started_at: null,
+    finished_at: null,
+    error: "",
+  });
+  subscribePatrol.mockResolvedValue(undefined);
 });
 
 test("token tool restores Google provider and shows the aligned guide", async () => {
@@ -111,4 +181,22 @@ test("creating a Gmail account authorizes without typing an email and refreshes 
     expect(refreshAccounts).toHaveBeenCalledOnce();
   });
   expect(refreshEmails).toHaveBeenCalledOnce();
+});
+
+test("account-stats tab shows OAuth-only credential overview and error categories", async () => {
+  window.localStorage.setItem("hx_token_tool_active_tab", "guide");
+  render(
+    <ToastProvider>
+      <TokenTool />
+    </ToastProvider>,
+  );
+
+  fireEvent.click(screen.getByText("账号统计"));
+  expect(await screen.findByText("凭证概览")).toBeInTheDocument();
+  expect(getAccountStats).toHaveBeenCalled();
+  expect(screen.getAllByText("Microsoft").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("Google").length).toBeGreaterThan(0);
+  expect(screen.getByText("刷新失败原因分布（近 30 天，按错误码分类）")).toBeInTheDocument();
+  expect(screen.getByText("令牌失效/过期")).toBeInTheDocument();
+  expect(screen.getByText("Microsoft (Outlook)")).toBeInTheDocument();
 });
