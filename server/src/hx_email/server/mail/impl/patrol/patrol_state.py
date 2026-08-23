@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import random
 import threading
+import time
 from collections import deque
 from dataclasses import dataclass, field
 
 from hx_email.config import Settings
+from hx_email.server.settings_service import get_setting
 
 # 终态: 巡检结束后可查询状态, 新任务启动时自动覆盖旧任务
 TERMINAL_STATES: frozenset[str] = frozenset({"done", "error", "stopped"})
@@ -18,6 +21,9 @@ MODE_LABELS: dict[str, str] = {
     "ungrouped": "未分组",
     "selected": "选中",
 }
+
+CONCURRENT_WORKERS_DEFAULT: int = 8
+CONCURRENT_WORKERS_MAX: int = 64
 
 
 @dataclass(frozen=True)
@@ -104,3 +110,63 @@ class _Patrol:
     def events_since(self, seq: int) -> list[tuple[int, dict[str, object]]]:
         with self._lock:
             return [entry for entry in self.events if entry[0] > seq]
+
+
+class ParallelProgress:
+    """线程安全并发计数: done/success/fail 与 current 序号。"""
+
+    def __init__(self) -> None:
+        self._lock: threading.Lock = threading.Lock()
+        self._done: int = 0
+        self._success: int = 0
+        self._fail: int = 0
+
+    def advance(self, ok: bool) -> int:
+        with self._lock:
+            self._done += 1
+            if ok:
+                self._success += 1
+            else:
+                self._fail += 1
+            return self._done
+
+    @property
+    def done_count(self) -> int:
+        with self._lock:
+            return self._done
+
+    @property
+    def success_count(self) -> int:
+        with self._lock:
+            return self._success
+
+    @property
+    def fail_count(self) -> int:
+        with self._lock:
+            return self._fail
+
+
+def concurrent_workers(settings: Settings) -> int:
+    """并发刷新 worker 数 (settings 可配 refresh_concurrent_workers, 默认 8)。"""
+    try:
+        value: int = int(str(get_setting(settings, "refresh_concurrent_workers", "8") or "8"))
+    except ValueError:
+        value = CONCURRENT_WORKERS_DEFAULT
+    return max(1, min(value, CONCURRENT_WORKERS_MAX))
+
+
+def stagger_sleep(settings: Settings) -> None:
+    """批量刷新错峰: 每账号随机延迟 1..max 秒 (默认 20)。
+
+    20260823 实测根因: 同批账号秒级连刷, 微软风控引擎把该簇账号一起标为
+    compromised(security-interrupt for collecting proof), 随机错峰打散聚类特征.
+    """
+    try:
+        max_seconds: int = int(
+            str(get_setting(settings, "refresh_stagger_max_seconds", "20") or "20")
+        )
+    except ValueError:
+        max_seconds = 20
+    if max_seconds <= 0:
+        return
+    time.sleep(random.uniform(1.0, float(max(1, max_seconds))))

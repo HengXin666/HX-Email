@@ -1,9 +1,11 @@
 """持久化巡检管理器 (per-user 全局单例)。
 
-批量 Token 刷新在后台线程中执行, 与 HTTP 连接解耦:
+批量 Token 刷新在后台线程池中执行, 与 HTTP 连接解耦:
 - 页面刷新/切换后巡检继续运行, 新页面可随时查询状态或重新订阅事件流
 - 支持暂停 / 恢复 / 终止
 - 事件带自增序号缓冲在内存, 断线重连时可回放补全进度
+- 多账号并发刷新 (CONCURRENT_WORKERS, 默认 8) 显著缩短总耗时, 同时保留
+  随机错峰避免秒级连刷触发微软风控聚类标记
 
 状态模型见 patrol_state.py; 与 refresh_service 的同步 SSE 生成器并存,
 后者保留给旧端点与外部同步调用 (均有测试覆盖)。
@@ -13,79 +15,31 @@ from __future__ import annotations
 
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import cast
 
 from hx_email.config import Settings
-from hx_email.database import connect
 from hx_email.server.mail.impl.oauth_tool import try_refresh_provider_oauth_token
 from hx_email.server.mail.impl.patrol.patrol_state import (
     MODE_LABELS,
     TERMINAL_STATES,
+    ParallelProgress,
     PatrolSnapshot,
     _Patrol,
 )
+from hx_email.server.mail.impl.patrol.patrol_state import (
+    concurrent_workers as _concurrent_workers,
+)
+from hx_email.server.mail.impl.patrol.patrol_state import (
+    stagger_sleep as _stagger_sleep,
+)
+from hx_email.server.mail.impl.patrol.refresh import fetch_accounts as _fetch_accounts
 from hx_email.server.mail.impl.refresh_log_service import (
     insert_refresh_log as _insert_refresh_log,
 )
 from hx_email.server.mail.impl.refresh_log_service import now_iso as _now_iso
 
 __all__ = ["PatrolSnapshot", "manager"]
-
-
-def _fetch_accounts(
-    settings: Settings,
-    user_id: int,
-    mode: str,
-    group_id: int | None = None,
-    account_ids: list[int] | None = None,
-) -> list[dict[str, object]]:
-    """按目标拉取活跃 OAuth 账号列表 (含分组代理), 供巡检线程处理。"""
-    base_select: str = (
-        "SELECT ea.id, ea.primary_address, ea.provider, ea.client_id,"
-        " ea.refresh_token, COALESCE(g.proxy_url, '') AS proxy_url"
-        " FROM email_accounts ea LEFT JOIN groups g ON g.id = ea.group_id"
-    )
-    where: list[str] = [
-        "ea.status = 'active'",
-        "ea.user_id = ?",
-        "ea.provider IN ('outlook', 'gmail')",
-        "ea.refresh_token != ''",
-    ]
-    params: list[object] = [user_id]
-    if mode == "failed":
-        where.append(
-            "ea.id IN ("
-            " SELECT latest.account_id FROM ("
-            "  SELECT account_id, MAX(id) AS max_id FROM refresh_logs GROUP BY account_id"
-            " ) latest INNER JOIN refresh_logs rl ON rl.id = latest.max_id"
-            " WHERE rl.status = 'failed'"
-            ")"
-        )
-    elif mode == "group":
-        where.append("ea.group_id = ?")
-        params.append(group_id)
-    elif mode == "ungrouped":
-        where.append("ea.group_id IS NULL")
-    elif mode == "selected":
-        if not account_ids:
-            return []
-        placeholders = ",".join("?" for _ in account_ids)
-        where.append(f"ea.id IN ({placeholders})")
-        params.extend(account_ids)
-    sql: str = f"{base_select} WHERE {' AND '.join(where)} ORDER BY ea.id"
-    with connect(settings) as connection:
-        rows = connection.execute(sql, params).fetchall()
-    return [
-        {
-            "id": row["id"],
-            "email": row["primary_address"],
-            "provider": row["provider"],
-            "client_id": row["client_id"],
-            "refresh_token": row["refresh_token"],
-            "proxy_url": row["proxy_url"] or "",
-        }
-        for row in rows
-    ]
 
 
 class PatrolManager:
@@ -144,79 +98,122 @@ class PatrolManager:
     def _run(self, patrol: _Patrol, accounts: list[dict[str, object]]) -> None:
         total: int = len(accounts)
         try:
-            for index, account in enumerate(accounts):
-                if patrol._stop.is_set():
-                    break
-                # 暂停等待 (暂停期间停止信号可打断)
-                while patrol._pause.is_set() and not patrol._stop.is_set():
-                    time.sleep(0.3)
-                if patrol._stop.is_set():
-                    break
-                account_id: int = cast(int, account["id"])
-                email: str = cast(str, account["email"])
-                started_at: str = _now_iso()
-                result: dict[str, object] = try_refresh_provider_oauth_token(
-                    settings=patrol.settings,
-                    provider=cast(str, account["provider"]),
-                    client_id=cast(str, account["client_id"]),
-                    refresh_token=cast(str, account["refresh_token"]),
-                    proxy_url=cast(str, account.get("proxy_url", "")),
-                )
-                log_status: str = "success" if result["success"] else "failed"
-                _insert_refresh_log(
-                    patrol.settings,
-                    account_id,
-                    email,
-                    log_status,
-                    str(result.get("message", "")),
-                    str(result.get("error_detail", "")),
-                    started_at=started_at,
-                )
-                with patrol._lock:
-                    patrol.current = index + 1
-                    patrol.email = email
-                    if result["success"]:
-                        patrol.success += 1
-                    else:
-                        patrol.failed += 1
-                patrol.append_event(
-                    {
-                        "type": "progress",
-                        "current": index + 1,
-                        "total": total,
-                        "account_id": account_id,
-                        "email": email,
-                        "success": result["success"],
-                        "message": result.get("message", ""),
-                    }
-                )
-            stopped: bool = patrol._stop.is_set()
-            with patrol._lock:
-                patrol.status = "stopped" if stopped else "done"
-                patrol.finished_at = _now_iso()
-            patrol.append_event(
-                {
-                    "type": "complete",
-                    "total": total,
-                    "success": patrol.success,
-                    "failed": patrol.failed,
-                    "stopped": stopped,
-                }
-            )
+            workers: int = _concurrent_workers(patrol.settings)
+            self._run_parallel(patrol, accounts, workers)
         except Exception as error:  # 巡检兜底, 状态写入快照
-            with patrol._lock:
-                patrol.status = "error"
-                patrol.error = str(error)
-                patrol.finished_at = _now_iso()
-            patrol.append_event(
-                {
-                    "type": "complete",
-                    "total": total,
-                    "success": patrol.success,
-                    "failed": patrol.failed,
-                    "error": str(error),
-                }
-            )
+            self._finish_with_error(patrol, total, error)
+
+    def _run_parallel(
+        self,
+        patrol: _Patrol,
+        accounts: list[dict[str, object]],
+        workers: int,
+    ) -> None:
+        """并发刷新: 每个账号一个 worker, 保留随机错峰, 进度计数线程安全。
+
+        共享一个带锁的进度结构; 任一账号失败不影响其余账号 (逐个记录)。
+        workers=1 时退化为串行, 行为与旧版一致。
+        """
+        total: int = len(accounts)
+        progress = ParallelProgress()
+        try:
+            with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="patrol-w") as pool:
+                futures = [
+                    pool.submit(self._refresh_worker, patrol, account, progress)
+                    for account in accounts
+                ]
+                # 等待全部完成; 停止信号时不再启动新的, 已提交的逐个完成
+                for future in futures:
+                    if patrol._stop.is_set():
+                        break
+                    future.result(timeout=600)
+        except Exception as error:  # 任一 worker 异常不影响整体状态
+            self._finish_with_error(patrol, total, error)
+            return
+        stopped: bool = patrol._stop.is_set()
+        with patrol._lock:
+            patrol.status = "stopped" if stopped else "done"
+            patrol.finished_at = _now_iso()
+            patrol.current = progress.done_count
+            patrol.success = progress.success_count
+            patrol.failed = progress.fail_count
+        patrol.append_event(
+            {
+                "type": "complete",
+                "total": total,
+                "success": progress.success_count,
+                "failed": progress.fail_count,
+                "stopped": stopped,
+            }
+        )
+
+    def _refresh_worker(
+        self,
+        patrol: _Patrol,
+        account: dict[str, object],
+        progress: ParallelProgress,
+    ) -> None:
+        """单账号刷新 worker: 错峰 + 刷新 + 记日志 + 进度事件。"""
+        # 等待暂停 (暂停期间停止信号可打断)
+        while patrol._pause.is_set() and not patrol._stop.is_set():
+            time.sleep(0.3)
+        if patrol._stop.is_set():
+            return
+        # 错峰: 每个账号随机延迟, 打散同一簇账号的连刷特征
+        _stagger_sleep(patrol.settings)
+        account_id: int = cast(int, account["id"])
+        email: str = cast(str, account["email"])
+        started_at: str = _now_iso()
+        result: dict[str, object] = try_refresh_provider_oauth_token(
+            settings=patrol.settings,
+            provider=cast(str, account["provider"]),
+            client_id=cast(str, account["client_id"]),
+            refresh_token=cast(str, account["refresh_token"]),
+            proxy_url=cast(str, account.get("proxy_url", "")),
+            account_id=account_id,
+        )
+        log_status: str = "success" if result["success"] else "failed"
+        _insert_refresh_log(
+            patrol.settings,
+            account_id,
+            email,
+            log_status,
+            str(result.get("message", "")),
+            str(result.get("error_detail", "")),
+            started_at=started_at,
+        )
+        index: int = progress.advance(bool(result["success"]))
+        with patrol._lock:
+            patrol.current = index
+            patrol.email = email
+            patrol.success = progress.success_count
+            patrol.failed = progress.fail_count
+        patrol.append_event(
+            {
+                "type": "progress",
+                "current": index,
+                "total": patrol.total,
+                "account_id": account_id,
+                "email": email,
+                "success": result["success"],
+                "message": result.get("message", ""),
+            }
+        )
+
+    def _finish_with_error(self, patrol: _Patrol, total: int, error: BaseException) -> None:
+        with patrol._lock:
+            patrol.status = "error"
+            patrol.error = str(error)
+            patrol.finished_at = _now_iso()
+        patrol.append_event(
+            {
+                "type": "complete",
+                "total": total,
+                "success": patrol.success,
+                "failed": patrol.failed,
+                "error": str(error),
+            }
+        )
 
     def snapshot(self, user_id: int) -> PatrolSnapshot:
         patrol = self._patrols.get(user_id)

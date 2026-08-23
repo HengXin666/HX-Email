@@ -11,7 +11,7 @@ from hx_email.security import ENCRYPTED_PREFIX, decrypt_secret, encrypt_secret
 from hx_email.server.settings.utils import normalize_external_api_keys
 from hx_email.server.settings.validation import validate_callback_url
 
-VERSION: str = os.environ.get("HX_EMAIL_APP_VERSION", "0.10.1")
+VERSION: str = os.environ.get("HX_EMAIL_APP_VERSION", "0.10.2")
 PROJECT_REPOSITORY_URL: str = "https://github.com/HengXin666/HX-Email"
 _SETTING_UPSERT_SQL: str = (
     "INSERT INTO system_settings (key, value) VALUES (?, ?) "
@@ -37,6 +37,7 @@ SETTINGS_DEFAULTS: dict[str, str] = {
     "enable_auto_polling": "false",
     "polling_interval": "30",
     "refresh_stagger_max_seconds": "20",  # 批量刷新错峰上限(秒)
+    "refresh_concurrent_workers": "8",  # 全局刷新并发线程数(1..64, 默认8)
     "refresh_schedule_enabled": "true",  # 后台定时随机刷新
     "refresh_schedule_interval_seconds": "3600",  # 定时刷新间隔(秒)
     "group_default_proxy_url": "",
@@ -176,6 +177,7 @@ INTEGER_SETTING_RANGES: dict[str, tuple[int, int]] = {
     "external_api_rate_limit_per_minute": (0, 100_000),
     "polling_interval": (3, 86_400),
     "refresh_schedule_interval_seconds": (60, 86_400),
+    "refresh_concurrent_workers": (1, 64),
     "email_notification_smtp_port": (1, 65_535),
     "script_notification_timeout": (1, 300),
 }

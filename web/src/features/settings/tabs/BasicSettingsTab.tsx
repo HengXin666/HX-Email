@@ -18,6 +18,7 @@ import { useApp } from "../../../store/AppContext";
 import { formatRelativeTime } from "../../../utils/time";
 import { SectionHeader, SettingsTabFrame, SettingsToggle, TestResult } from "../SettingsControls";
 import type { SettingsTabProps, TestOutcome } from "../types";
+import { GlobalRefreshCard } from "./GlobalRefreshCard";
 import { GoogleVerificationCard } from "./GoogleVerificationCard";
 
 interface Announcement {
@@ -303,6 +304,15 @@ export const BasicSettingsTab: React.FC<SettingsTabProps> = ({
             value={settings.refresh_stagger_max_seconds ?? "20"}
             onChange={(event) => setSetting("refresh_stagger_max_seconds", event.target.value)}
           />
+          <Input
+            label="全局刷新并发数（1..64，默认 8）"
+            type="number"
+            min="1"
+            max="64"
+            value={settings.refresh_concurrent_workers ?? "8"}
+            onChange={(event) => setSetting("refresh_concurrent_workers", event.target.value)}
+          />
+          <GlobalRefreshCard toast={toast} />
           <div className="flex items-center justify-between rounded-md border border-gh-border bg-gh-canvas-inset p-3">
             <div>
               <div className="text-sm text-gh-text">后台定时随机刷新</div>

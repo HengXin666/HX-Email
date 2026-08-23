@@ -26,6 +26,65 @@ from hx_email.server.mail.verification import MailboxProvider
 UNGROUPED_GROUP_ID: int = 0
 
 
+def fetch_accounts(
+    settings: Settings,
+    user_id: int,
+    mode: str,
+    group_id: int | None = None,
+    account_ids: list[int] | None = None,
+) -> list[dict[str, object]]:
+    """按目标拉取活跃 OAuth 账号列表 (含分组代理), 供巡检线程处理。
+
+    mode: all / failed / group / ungrouped / selected.
+    """
+    base_select: str = (
+        "SELECT ea.id, ea.primary_address, ea.provider, ea.client_id,"
+        " ea.refresh_token, COALESCE(g.proxy_url, '') AS proxy_url"
+        " FROM email_accounts ea LEFT JOIN groups g ON g.id = ea.group_id"
+    )
+    where: list[str] = [
+        "ea.status = 'active'",
+        "ea.user_id = ?",
+        "ea.provider IN ('outlook', 'gmail')",
+        "ea.refresh_token != ''",
+    ]
+    params: list[object] = [user_id]
+    if mode == "failed":
+        where.append(
+            "ea.id IN ("
+            " SELECT latest.account_id FROM ("
+            "  SELECT account_id, MAX(id) AS max_id FROM refresh_logs GROUP BY account_id"
+            " ) latest INNER JOIN refresh_logs rl ON rl.id = latest.max_id"
+            " WHERE rl.status = 'failed'"
+            ")"
+        )
+    elif mode == "group":
+        where.append("ea.group_id = ?")
+        params.append(group_id)
+    elif mode == "ungrouped":
+        where.append("ea.group_id IS NULL")
+    elif mode == "selected":
+        if not account_ids:
+            return []
+        placeholders = ",".join("?" for _ in account_ids)
+        where.append(f"ea.id IN ({placeholders})")
+        params.extend(account_ids)
+    sql: str = f"{base_select} WHERE {' AND '.join(where)} ORDER BY ea.id"
+    with connect(settings) as connection:
+        rows = connection.execute(sql, params).fetchall()
+    return [
+        {
+            "id": row["id"],
+            "email": row["primary_address"],
+            "provider": row["provider"],
+            "client_id": row["client_id"],
+            "refresh_token": row["refresh_token"],
+            "proxy_url": row["proxy_url"] or "",
+        }
+        for row in rows
+    ]
+
+
 def _fetch_group_accounts(
     settings: Settings,
     user_id: int,

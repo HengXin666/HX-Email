@@ -10,11 +10,16 @@ from hx_email.config import Settings
 from hx_email.database import connect, migrate
 from hx_email.server.mail.email_accounts import add_email_account
 from hx_email.server.mail.impl.patrol.patrol_manager import manager
+from hx_email.server.settings_service import set_setting
 
 
-def make_settings(tmp_path: Path) -> Settings:
+def make_settings(tmp_path: Path, concurrent_workers: int = 1) -> Settings:
     settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
     migrate(settings)
+    # 并发刷新时每个 worker 随机错峰, 测试必须禁用错峰以免拖慢;
+    # 默认 1 worker 保持串行语义 (暂停/冻结可稳定断言), 并发路径单独测试。
+    set_setting(settings, "refresh_stagger_max_seconds", "0")
+    set_setting(settings, "refresh_concurrent_workers", str(concurrent_workers))
     return settings
 
 
@@ -45,6 +50,19 @@ def _fake_refresh(
     return {"success": True, "message": "ok"}
 
 
+def _slow_refresh(
+    settings: Settings,
+    provider: str,
+    client_id: str,
+    refresh_token: str,
+    proxy_url: str = "",
+    account_id: int | None = None,
+) -> dict[str, object]:
+    # 慢速刷新 (0.2s/账号): 保证 pause 冻结断言有足够时间窗口
+    time.sleep(0.2)
+    return {"success": True, "message": "ok"}
+
+
 def _wait_terminal(user_id: int, timeout: float = 10.0) -> None:
     deadline: float = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -63,7 +81,7 @@ def test_patrol_manager_runs_in_background_and_supports_pause_resume_stop(
 
     with patch(
         "hx_email.server.mail.impl.patrol.patrol_manager.try_refresh_provider_oauth_token",
-        side_effect=_fake_refresh,
+        side_effect=_slow_refresh,
     ):
         assert manager.start(settings, 1, "all") is True
         # 重复启动被拒
@@ -73,6 +91,11 @@ def test_patrol_manager_runs_in_background_and_supports_pause_resume_stop(
         assert snapshot.status in ("running", "starting")
         assert snapshot.total == 4
         assert snapshot.mode == "all"
+
+        # 等至少一个账号完成 (并发 worker 调度有延迟), 保证有 progress 事件
+        deadline: float = time.monotonic() + 3.0
+        while manager.snapshot(1).current < 1 and time.monotonic() < deadline:
+            time.sleep(0.05)
 
         # 暂停: 进度冻结
         assert manager.pause(1) is True
@@ -386,3 +409,40 @@ def test_account_stats_includes_groups_and_error_categories(tmp_path: Path) -> N
     ).json()
     assert gmail_only["total"] == 1
     assert gmail_only["google"] == 1
+
+
+def test_patrol_parallel_workers_complete_all_and_count(tmp_path: Path) -> None:
+    """并发 worker 刷新全部账号并正确计数 (含失败)。"""
+    settings = make_settings(tmp_path, concurrent_workers=8)
+    add_accounts(settings, 1, 12)
+
+    calls: list[str] = []
+
+    def _mixed_refresh(
+        settings: Settings,
+        provider: str,
+        client_id: str,
+        refresh_token: str,
+        proxy_url: str = "",
+        account_id: int | None = None,
+    ) -> dict[str, object]:
+        time.sleep(0.02)
+        calls.append(str(account_id))
+        # 偶数 id 失败, 验证失败计数
+        if account_id is not None and account_id % 2 == 0:
+            return {"success": False, "message": "boom"}
+        return {"success": True, "message": "ok"}
+
+    with patch(
+        "hx_email.server.mail.impl.patrol.patrol_manager.try_refresh_provider_oauth_token",
+        side_effect=_mixed_refresh,
+    ):
+        assert manager.start(settings, 1, "all") is True
+        _wait_terminal(1)
+        snapshot = manager.snapshot(1)
+        assert snapshot.status == "done"
+        assert snapshot.current == 12
+        assert snapshot.success + snapshot.failed == 12
+        assert snapshot.failed == 6
+        assert snapshot.success == 6
+        assert len(calls) == 12

@@ -13,6 +13,7 @@ from typing import Any
 
 from hx_email.config import Settings
 from hx_email.database import connect
+from hx_email.server.mail.impl.patrol.patrol_manager import manager as patrol_manager
 from hx_email.server.mail.impl.refresh.settings import (
     refresh_schedule_enabled,
     refresh_schedule_interval_seconds,
@@ -20,7 +21,6 @@ from hx_email.server.mail.impl.refresh.settings import (
     register_refresh_scheduler,
     unregister_refresh_scheduler,
 )
-from hx_email.server.mail.impl.refresh_service import refresh_all_accounts
 from hx_email.server.mail.verification import MailboxProvider
 
 logger = logging.getLogger(__name__)
@@ -87,25 +87,16 @@ class TokenRefreshScheduler:
                 ).fetchall()
             user_ids: list[int] = [int(row["user_id"]) for row in rows]
             total: int = 0
-            success: int = 0
-            failed: int = 0
             for user_id in user_ids:
-                for event in refresh_all_accounts(self.settings, user_id, self.mailbox_provider):
-                    # SSE 事件文本形如 "event: complete\ndata: {\"total\":...}"
-                    if "\ndata: " not in event:
-                        continue
-                    import json as _json
-
-                    try:
-                        payload = _json.loads(event.split("\ndata: ", 1)[1])
-                    except Exception:
-                        continue
-                    if "complete" in event:
-                        success += int(payload.get("success") or 0)
-                        failed += int(payload.get("failed") or 0)
-                    if "start" in event:
-                        total += int(payload.get("total") or 0)
-            summary: dict[str, Any] = {"total": total, "success": success, "failed": failed}
+                # 后台 patrol 并发刷新, 不阻塞调度线程; 已有任务在跑则跳过。
+                if patrol_manager.is_running(user_id):
+                    continue
+                started: bool = patrol_manager.start(self.settings, user_id, "all")
+                if not started:
+                    continue
+                snapshot = patrol_manager.snapshot(user_id)
+                total += snapshot.total
+            summary: dict[str, Any] = {"total": total, "started_users": len(user_ids)}
             with self.state_lock:
                 self.last_run = started_at
                 self.last_summary = summary

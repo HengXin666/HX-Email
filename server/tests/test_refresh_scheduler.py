@@ -10,11 +10,14 @@ from hx_email.server.mail.impl.refresh.settings import (
     get_refresh_scheduler_status,
     refresh_schedule_interval_seconds,
 )
+from hx_email.server.settings_service import set_setting
 
 
 def make_settings(tmp_path: Path) -> Settings:
     settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
     migrate(settings)
+    # 调度器经 patrol 并发刷新, 测试禁用错峰以免拖慢
+    set_setting(settings, "refresh_stagger_max_seconds", "0")
     return settings
 
 
@@ -41,17 +44,20 @@ def test_run_once_refreshes_all_users(tmp_path: Path, monkeypatch: pytest.Monkey
         )
     scheduler = TokenRefreshScheduler(settings, None)
     monkeypatch.setattr(
-        "hx_email.server.mail.impl.refresh.scheduler.refresh_all_accounts",
-        lambda *a, **k: iter(
-            [
-                'event: start\ndata: {"total": 1}',
-                'event: complete\ndata: {"total": 1, "success": 1, "failed": 0}',
-            ]
-        ),
+        "hx_email.server.mail.impl.patrol.patrol_manager.manager.start",
+        lambda *a, **k: True,
+    )
+    monkeypatch.setattr(
+        "hx_email.server.mail.impl.patrol.patrol_manager.manager.snapshot",
+        lambda *a, **k: type("S", (), {"total": 1})(),
+    )
+    monkeypatch.setattr(
+        "hx_email.server.mail.impl.patrol.patrol_manager.manager.is_running",
+        lambda *a, **k: False,
     )
     summary = scheduler.run_once()
     assert summary["total"] == 1
-    assert summary["success"] == 1
+    assert summary["started_users"] == 1
     status = get_refresh_scheduler_status(settings)
     assert status["enabled"] is True
     assert status["stagger_max_seconds"] >= 0
