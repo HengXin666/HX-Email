@@ -1,7 +1,7 @@
 import type {
-  AccountImportResult,
   EmailAccount,
   EmailMessagesPage,
+  ImportJobSnapshot,
   PaginatedEmails,
   SendDebugEmailRequest,
   SendDebugEmailResult,
@@ -162,7 +162,8 @@ export const emailsApi = {
   ) =>
     request<EmailAccount>(`/email-accounts/${id}`, { method: "PUT", body: JSON.stringify(data) }),
 
-  importEmailAccounts: (
+  /** 异步导入: 立即返回 job, 前端轮询 getImportJob 拿进度和结果. */
+  startEmailImport: (
     text: string,
     options?: {
       duplicate_strategy?: string;
@@ -173,7 +174,7 @@ export const emailsApi = {
       custom_imap_port?: number;
     },
   ) =>
-    request<AccountImportResult>("/email-accounts/import", {
+    request<ImportJobSnapshot>("/email-accounts/import", {
       method: "POST",
       body: JSON.stringify({
         text,
@@ -185,6 +186,9 @@ export const emailsApi = {
         custom_imap_port: options?.custom_imap_port ?? 993,
       }),
     }),
+
+  getImportJob: (jobId: string) =>
+    request<ImportJobSnapshot>(`/email-accounts/import/${encodeURIComponent(jobId)}`),
 
   listProviders: () =>
     request<{

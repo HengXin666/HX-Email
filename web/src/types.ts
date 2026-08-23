@@ -6,6 +6,7 @@ export type {
   GoogleOAuthConfig,
   GoogleOAuthFlowStatus,
   GoogleOAuthPrepareResult,
+  ImportJobSnapshot,
   TokenConfig,
   TokenExchangeResult,
   TokenPrepareResult,

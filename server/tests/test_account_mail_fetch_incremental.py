@@ -4,7 +4,8 @@ from hx_email.config import Settings
 from hx_email.database import connect, migrate
 from hx_email.server.mail.imap.message_store import legacy_body_hash
 from hx_email.server.mail.verification import MailboxMessage
-from test_account_mail_fetch import API, SequenceMailboxProvider, create_account, login_admin
+
+from tests.test_account_mail_fetch import API, SequenceMailboxProvider, create_account, login_admin
 
 
 def test_fetch_emails_uses_cached_latest_uid_for_next_fetch(tmp_path):

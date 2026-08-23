@@ -36,6 +36,18 @@ export interface AccountImportResult {
   duplicate_strategy: string;
 }
 
+export interface ImportJobSnapshot {
+  job_id: string;
+  status: "running" | "done" | "error";
+  total: number;
+  processed: number;
+  imported: number;
+  skipped: number;
+  failed: number;
+  error: string;
+  result: AccountImportResult | null;
+}
+
 export interface TokenConfig {
   client_id: string;
   redirect_uri: string;

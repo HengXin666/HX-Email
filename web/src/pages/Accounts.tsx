@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, Reorder, useDragControls } from "framer-motion";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Topbar } from "../components/layout";
 
 // Email body HTML rendering styles
@@ -2963,6 +2963,15 @@ const AddEmailModal: React.FC<{
   const [addToPool, setAddToPool] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AccountImportResult | null>(null);
+  const [progress, setProgress] = useState<{
+    processed: number;
+    total: number;
+    imported: number;
+    skipped: number;
+    failed: number;
+  } | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  const startedAtRef = useRef(0);
 
   useEffect(() => {
     if (open) {
@@ -2986,30 +2995,67 @@ const AddEmailModal: React.FC<{
     if (!credentialText.trim()) return;
     setLoading(true);
     setResult(null);
+    setProgress({ processed: 0, total: 0, imported: 0, skipped: 0, failed: 0 });
+    startedAtRef.current = Date.now();
+    setElapsed(0);
     try {
-      const res = await api.importEmailAccounts(credentialText, {
+      const job = await api.startEmailImport(credentialText, {
         provider,
         group_id: groupId || null,
         add_to_pool: addToPool,
         custom_imap_host: customImapHost,
         custom_imap_port: Number(customImapPort) || 993,
       });
-      await Promise.all([
-        refreshAccounts(),
-        refreshEmails(),
-        addToPool ? onPoolChanged?.() : Promise.resolve(),
-      ]);
-      setResult(res);
-      if (res.imported > 0) toast(`成功导入 ${res.imported} 个账户`, "success");
-      if (res.skipped > 0) toast(`跳过 ${res.skipped} 个重复账户`, "info");
-      if (res.failed > 0) toast(`${res.failed} 个账户导入失败`, "error");
+      await pollImport(job.job_id);
       // 不清空表单，让用户可以查看结果后继续导入或关闭
     } catch (err: any) {
       toast(err.message, "error");
     } finally {
       setLoading(false);
+      setProgress(null);
     }
   };
+
+  const pollImport = (jobId: string): Promise<void> =>
+    new Promise((resolve) => {
+      const tick = async () => {
+        setElapsed(Math.round((Date.now() - startedAtRef.current) / 1000));
+        try {
+          const snap = await api.getImportJob(jobId);
+          setProgress({
+            processed: snap.processed,
+            total: snap.total,
+            imported: snap.imported,
+            skipped: snap.skipped,
+            failed: snap.failed,
+          });
+          if (snap.status === "done") {
+            const res = snap.result;
+            if (res) {
+              setResult(res);
+              await Promise.all([
+                refreshAccounts(),
+                refreshEmails(),
+                addToPool ? onPoolChanged?.() : Promise.resolve(),
+              ]);
+              if (res.imported > 0) toast(`成功导入 ${res.imported} 个账户`, "success");
+              if (res.skipped > 0) toast(`跳过 ${res.skipped} 个重复账户`, "info");
+              if (res.failed > 0) toast(`${res.failed} 个账户导入失败`, "error");
+            }
+            resolve();
+          } else if (snap.status === "error") {
+            toast(snap.error || "导入失败", "error");
+            resolve();
+          } else {
+            setTimeout(tick, 400);
+          }
+        } catch (err: any) {
+          toast(err.message, "error");
+          resolve();
+        }
+      };
+      void tick();
+    });
 
   const handleClose = () => {
     reset();
@@ -3022,6 +3068,14 @@ const AddEmailModal: React.FC<{
   const isCustom = provider === "custom";
   const hasResult = result !== null;
   const totalProcessed = (result?.imported ?? 0) + (result?.skipped ?? 0) + (result?.failed ?? 0);
+  const lineCount = credentialText
+    .split("\n")
+    .filter((l) => l.trim() && !l.trim().startsWith("#")).length;
+  const progressTotal = progress?.total ?? lineCount;
+  const progressPct =
+    progressTotal > 0
+      ? Math.min(100, Math.round(((progress?.processed ?? 0) / progressTotal) * 100))
+      : 0;
 
   return (
     <Modal
@@ -3036,7 +3090,7 @@ const AddEmailModal: React.FC<{
           </Button>
           {!isGmailOAuth && (
             <Button variant="primary" onClick={handleSave} loading={loading} disabled={loading}>
-              {hasResult ? "继续导入" : "导入"}
+              {loading ? "导入中…" : hasResult ? "继续导入" : "导入"}
             </Button>
           )}
         </>
@@ -3099,6 +3153,39 @@ const AddEmailModal: React.FC<{
                   仅显示前 {result.errors.length} 条，共 {result.errors_total} 条错误
                 </p>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* 导入进度 (异步 job, 实时可见, 避免"卡在导入中"的焦虑) */}
+        {loading && !hasResult && (
+          <div className="rounded-lg border border-gh-border bg-gh-canvas-inset overflow-hidden">
+            <div className="px-4 py-3 border-b border-gh-border bg-gh-canvas-subtle flex items-center justify-between">
+              <span className="text-sm font-semibold text-gh-text">
+                正在导入 {lineCount} 条凭证…
+              </span>
+              <span className="text-xs text-gh-text-secondary tabular-nums">已等待 {elapsed}s</span>
+            </div>
+            <div className="px-4 py-3 space-y-2">
+              <div className="flex justify-between text-xs text-gh-text-secondary tabular-nums">
+                <span>
+                  已处理 {progress?.processed ?? 0} / {progressTotal}
+                </span>
+                <span>{progressPct}%</span>
+              </div>
+              <div className="h-2 rounded-full bg-gh-border/40 overflow-hidden">
+                <div
+                  className="h-full bg-gh-accent transition-all duration-300"
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
+              <div className="text-xs text-gh-text-secondary tabular-nums">
+                成功 {progress?.imported ?? 0} · 跳过 {progress?.skipped ?? 0} · 失败{" "}
+                {progress?.failed ?? 0}
+              </div>
+              <p className="text-[11px] text-gh-text-muted leading-relaxed">
+                导入在后台逐条写入：进度条持续前进说明一切正常；关闭弹窗不会中断导入。
+              </p>
             </div>
           </div>
         )}

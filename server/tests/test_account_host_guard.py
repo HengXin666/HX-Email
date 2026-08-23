@@ -11,6 +11,8 @@ from hx_email.app import create_app
 from hx_email.config import Settings
 from hx_email.database import migrate
 
+from tests.import_client import run_import
+
 API = "/api/v1"
 
 
@@ -178,9 +180,10 @@ def test_import_rejects_metadata_custom_host_per_line(tmp_path) -> None:
     client = TestClient(create_app(settings))
     headers = login_admin(client, settings)
 
-    response = client.post(
-        f"{API}/email-accounts/import",
-        json={
+    response = run_import(
+        client,
+        headers,
+        {
             "provider": "auto",
             "text": "\n".join(
                 [
@@ -189,13 +192,12 @@ def test_import_rejects_metadata_custom_host_per_line(tmp_path) -> None:
                 ]
             ),
         },
-        headers=headers,
     )
 
-    assert response.status_code == 201
-    assert response.json()["imported"] == 1
-    assert response.json()["failed"] == 1
-    assert "不允许" in response.json()["errors"][0]["error"]
+    assert response["status"] == "done"
+    assert response["imported"] == 1
+    assert response["failed"] == 1
+    assert "不允许" in response["errors"][0]["error"]
 
 
 def test_import_rejects_private_custom_host_per_line_in_strict_mode(tmp_path) -> None:
@@ -209,9 +211,10 @@ def test_import_rejects_private_custom_host_per_line_in_strict_mode(tmp_path) ->
     client = TestClient(create_app(settings))
     headers = login_admin(client, settings)
 
-    response = client.post(
-        f"{API}/email-accounts/import",
-        json={
+    response = run_import(
+        client,
+        headers,
+        {
             "provider": "auto",
             "text": "\n".join(
                 [
@@ -220,13 +223,12 @@ def test_import_rejects_private_custom_host_per_line_in_strict_mode(tmp_path) ->
                 ]
             ),
         },
-        headers=headers,
     )
 
-    assert response.status_code == 201
-    assert response.json()["imported"] == 1
-    assert response.json()["failed"] == 1
-    assert "不允许" in response.json()["errors"][0]["error"]
+    assert response["status"] == "done"
+    assert response["imported"] == 1
+    assert response["failed"] == 1
+    assert "不允许" in response["errors"][0]["error"]
 
 
 def test_import_rejects_metadata_fallback_custom_host(tmp_path) -> None:
@@ -235,17 +237,17 @@ def test_import_rejects_metadata_fallback_custom_host(tmp_path) -> None:
     client = TestClient(create_app(settings))
     headers = login_admin(client, settings)
 
-    response = client.post(
-        f"{API}/email-accounts/import",
-        json={
+    response = run_import(
+        client,
+        headers,
+        {
             "provider": "custom",
             "custom_imap_host": "169.254.169.254",
             "custom_imap_port": 993,
             "text": "user@unknown-domain.example----app-pass",
         },
-        headers=headers,
     )
 
-    assert response.status_code == 201
-    assert response.json()["failed"] == 1
-    assert "不允许" in response.json()["errors"][0]["error"]
+    assert response["status"] == "done"
+    assert response["failed"] == 1
+    assert "不允许" in response["errors"][0]["error"]

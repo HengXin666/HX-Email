@@ -7,6 +7,8 @@ from hx_email.database import migrate
 from hx_email.server.mail import EmailAccountMailbox, MailboxMessage
 from hx_email.server.mail.email_accounts import add_email_account
 
+from tests.import_client import run_import
+
 API = "/api/v1"
 
 
@@ -68,19 +70,19 @@ def test_gmail_provider_import_stores_app_password_as_imap_password(tmp_path) ->
     client = TestClient(create_app(settings))
     headers = login_admin(client, settings)
 
-    imported = client.post(
-        f"{API}/email-accounts/import",
-        json={
+    imported = run_import(
+        client,
+        headers,
+        {
             "provider": "gmail",
             "text": "llh282000500@gmail.com----gmail-app-pass",
         },
-        headers=headers,
     )
     accounts = client.get(f"{API}/email-accounts", headers=headers)
 
     account = accounts.json()["accounts"][0]
-    assert imported.status_code == 201
-    assert imported.json()["imported"] == 1
+    assert imported["status"] == "done"
+    assert imported["imported"] == 1
     assert account["provider"] == "gmail"
     assert account["imap_host"] == "imap.gmail.com"
     assert account["imap_port"] == 993
@@ -94,19 +96,19 @@ def test_auto_import_stores_gmail_app_password_as_imap_password(tmp_path) -> Non
     client = TestClient(create_app(settings))
     headers = login_admin(client, settings)
 
-    imported = client.post(
-        f"{API}/email-accounts/import",
-        json={
+    imported = run_import(
+        client,
+        headers,
+        {
             "provider": "auto",
             "text": "llh282000500@gmail.com----gmail-app-pass",
         },
-        headers=headers,
     )
     accounts = client.get(f"{API}/email-accounts", headers=headers)
 
     account = accounts.json()["accounts"][0]
-    assert imported.status_code == 201
-    assert imported.json()["imported"] == 1
+    assert imported["status"] == "done"
+    assert imported["imported"] == 1
     assert account["provider"] == "gmail"
     assert account["imap_password"] == "gmail-app-pass"
     assert account["refresh_token"] == ""
@@ -117,13 +119,13 @@ def test_gmail_fetch_uses_imported_imap_app_password(tmp_path) -> None:
     migrate(settings)
     client = TestClient(create_app(settings))
     headers = login_admin(client, settings)
-    client.post(
-        f"{API}/email-accounts/import",
-        json={
+    run_import(
+        client,
+        headers,
+        {
             "provider": "gmail",
             "text": "llh282000500@gmail.com----gmail-app-pass",
         },
-        headers=headers,
     )
     account = client.get(f"{API}/email-accounts", headers=headers).json()["accounts"][0]
     usable_email_id = account["primary_usable_email"]["id"]
@@ -202,13 +204,13 @@ def test_gmail_authentication_failure_returns_app_password_hint(tmp_path) -> Non
     )
     client = TestClient(create_app(settings, mailbox_provider=FailingMailboxProvider(error)))
     headers = login_admin(client, settings)
-    client.post(
-        f"{API}/email-accounts/import",
-        json={
+    run_import(
+        client,
+        headers,
+        {
             "provider": "gmail",
             "text": "llh282000500@gmail.com----gmail-app-pass",
         },
-        headers=headers,
     )
     account = client.get(f"{API}/email-accounts", headers=headers).json()["accounts"][0]
     usable_email_id = account["primary_usable_email"]["id"]
@@ -260,13 +262,13 @@ def test_gmail_import_spaced_app_password_login_normalizes(tmp_path) -> None:
     migrate(settings)
     client = TestClient(create_app(settings))
     headers = login_admin(client, settings)
-    imported = client.post(
-        f"{API}/email-accounts/import",
-        json={
+    imported = run_import(
+        client,
+        headers,
+        {
             "provider": "gmail",
             "text": "llh282000500@gmail.com----abcd efgh ijkl mnop",
         },
-        headers=headers,
     )
     account = client.get(f"{API}/email-accounts", headers=headers).json()["accounts"][0]
     usable_email_id = account["primary_usable_email"]["id"]
@@ -275,7 +277,7 @@ def test_gmail_import_spaced_app_password_login_normalizes(tmp_path) -> None:
     with patch("hx_email.server.mail.imap.imap_provider.imaplib.IMAP4_SSL", return_value=fake):
         result = client.post(f"{API}/usable-emails/{usable_email_id}/fetch-emails", headers=headers)
 
-    assert imported.status_code == 201
+    assert imported["status"] == "done"
     assert result.status_code == 200
     assert fake.login_args == ("llh282000500@gmail.com", "abcdefghijklmnop")
 
@@ -285,13 +287,13 @@ def test_gmail_update_spaced_app_password_login_normalizes(tmp_path) -> None:
     migrate(settings)
     client = TestClient(create_app(settings))
     headers = login_admin(client, settings)
-    client.post(
-        f"{API}/email-accounts/import",
-        json={
+    run_import(
+        client,
+        headers,
+        {
             "provider": "gmail",
             "text": "llh282000500@gmail.com----gmail-app-pass",
         },
-        headers=headers,
     )
     account = client.get(f"{API}/email-accounts", headers=headers).json()["accounts"][0]
     updated = client.put(
@@ -317,13 +319,13 @@ def test_non_gmail_fetch_keeps_password_verbatim(tmp_path) -> None:
     migrate(settings)
     client = TestClient(create_app(settings))
     headers = login_admin(client, settings)
-    imported = client.post(
-        f"{API}/email-accounts/import",
-        json={
+    imported = run_import(
+        client,
+        headers,
+        {
             "provider": "qq",
             "text": "user@qq.com----auth code with spaces",
         },
-        headers=headers,
     )
     account = client.get(f"{API}/email-accounts", headers=headers).json()["accounts"][0]
     usable_email_id = account["primary_usable_email"]["id"]
@@ -332,6 +334,6 @@ def test_non_gmail_fetch_keeps_password_verbatim(tmp_path) -> None:
     with patch("hx_email.server.mail.imap.imap_provider.imaplib.IMAP4_SSL", return_value=fake):
         result = client.post(f"{API}/usable-emails/{usable_email_id}/fetch-emails", headers=headers)
 
-    assert imported.status_code == 201
+    assert imported["status"] == "done"
     assert result.status_code == 200
     assert fake.login_args == ("user@qq.com", "auth code with spaces")

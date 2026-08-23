@@ -5,6 +5,8 @@ from hx_email.app import create_app
 from hx_email.config import Settings
 from hx_email.database import connect, migrate
 
+from tests.import_client import run_import
+
 
 def register_user(client: TestClient, username: str) -> dict[str, object]:
     return client.post(
@@ -313,9 +315,10 @@ def test_importing_reference_account_text_supports_imap_and_outlook(tmp_path):
     ).json()
     headers = {"Authorization": f"Bearer {session['access_token']}"}
 
-    imported = client.post(
-        "/api/v1/email-accounts/import",
-        json={
+    imported = run_import(
+        client,
+        headers,
+        {
             "text": "\n".join(
                 [
                     "person@gmail.com----gmail-app-pass",
@@ -325,13 +328,12 @@ def test_importing_reference_account_text_supports_imap_and_outlook(tmp_path):
                 ]
             )
         },
-        headers=headers,
     )
     accounts = client.get("/api/v1/email-accounts", headers=headers)
     exported = client.get("/api/v1/email-accounts/export-text", headers=headers)
 
-    assert imported.status_code == 201
-    assert imported.json()["imported"] == 4
+    assert imported["status"] == "done"
+    assert imported["imported"] == 4
     assert [account["provider"] for account in accounts.json()["accounts"]] == [
         "gmail",
         "qq",
@@ -353,16 +355,16 @@ def test_outlook_two_segment_import_is_rejected(tmp_path):
     ).json()
     headers = {"Authorization": f"Bearer {session['access_token']}"}
 
-    imported = client.post(
-        "/api/v1/email-accounts/import",
-        json={"text": "person@outlook.com----password"},
-        headers=headers,
+    imported = run_import(
+        client,
+        headers,
+        {"text": "person@outlook.com----password"},
     )
 
-    assert imported.status_code == 201
-    assert imported.json()["imported"] == 0
-    assert imported.json()["failed"] == 1
-    assert "Outlook needs 4-field OAuth" in imported.json()["errors"][0]["error"]
+    assert imported["status"] == "done"
+    assert imported["imported"] == 0
+    assert imported["failed"] == 1
+    assert "Outlook needs 4-field OAuth" in imported["errors"][0]["error"]
 
 
 def test_token_tool_prepare_and_save_updates_outlook_credentials(tmp_path):
@@ -573,9 +575,10 @@ def test_outlook_mode_rejects_imap_format_lines_instead_of_corrupting_credential
 
     # custom 5 段 IMAP 行在 outlook 模式下曾被静默解析为
     # client_id="custom", refresh_token="imap.custom.test----1993" 的损坏凭据
-    imported = client.post(
-        "/api/v1/email-accounts/import",
-        json={
+    imported = run_import(
+        client,
+        headers,
+        {
             "text": "\n".join(
                 [
                     "person@custom.test----pass----custom----8.8.8.8----1993",
@@ -584,13 +587,12 @@ def test_outlook_mode_rejects_imap_format_lines_instead_of_corrupting_credential
             ),
             "provider": "outlook",
         },
-        headers=headers,
     )
 
-    assert imported.status_code == 201
-    assert imported.json()["imported"] == 0
-    assert imported.json()["failed"] == 2
-    assert all("IMAP-format line" in e["error"] for e in imported.json()["errors"])
+    assert imported["status"] == "done"
+    assert imported["imported"] == 0
+    assert imported["failed"] == 2
+    assert all("IMAP-format line" in e["error"] for e in imported["errors"])
     accounts = client.get("/api/v1/email-accounts", headers=headers)
     assert accounts.json()["accounts"] == []
 
