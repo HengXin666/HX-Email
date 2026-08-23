@@ -11,7 +11,7 @@ from hx_email.security import ENCRYPTED_PREFIX, decrypt_secret, encrypt_secret
 from hx_email.server.settings.utils import normalize_external_api_keys
 from hx_email.server.settings.validation import validate_callback_url
 
-VERSION: str = os.environ.get("HX_EMAIL_APP_VERSION", "0.9.0")
+VERSION: str = os.environ.get("HX_EMAIL_APP_VERSION", "0.10.0")
 PROJECT_REPOSITORY_URL: str = "https://github.com/HengXin666/HX-Email"
 _SETTING_UPSERT_SQL: str = (
     "INSERT INTO system_settings (key, value) VALUES (?, ?) "
