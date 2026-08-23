@@ -43,6 +43,7 @@ from hx_email.api.impl.plugins import (
 from hx_email.api.impl.settings.cf_worker_sync import register_cf_worker_sync_route
 from hx_email.api.impl.settings.settings_routes import register_settings_routes
 from hx_email.api.impl.settings.settings_test_routes import register_settings_test_routes
+from hx_email.api.impl.settings.sync_delta_routes import register_sync_delta_routes
 from hx_email.api.impl.settings.update_routes import register_update_routes
 from hx_email.api.impl.temp_mail_routes import register_temp_mail_routes
 from hx_email.api.impl.workspace.routes import register_workspace_routes
@@ -62,7 +63,6 @@ from hx_email.server.instance_backup.archive import MAX_ARCHIVE_BYTES
 from hx_email.server.mail.impl.fetch.scheduler import get_polling_status
 from hx_email.server.mail.temp_mail import TempMailProvider
 from hx_email.server.mail.verification import MailboxProvider
-from hx_email.server.sync.scheduler import get_sync_status
 from hx_email.server.sync.service import SyncReport, apply_snapshot
 
 
@@ -97,6 +97,7 @@ def register_routes(
     register_settings_test_routes(api, settings)
     register_update_routes(api, settings)
     register_cf_worker_sync_route(api, settings)
+    register_sync_delta_routes(api, settings)
     register_data_transfer_routes(api, settings, pause_scheduler, resume_scheduler)
     register_google_verification_routes(api, settings)
     register_pool_admin_routes(api, settings)
@@ -177,13 +178,6 @@ def register_system_routes(router: APIRouter, settings: Settings) -> None:
     ) -> dict[str, object]:
         require_user(settings, authorization)
         return get_polling_status(settings)
-
-    @router.get("/sync/status")
-    def sync_status(
-        authorization: Annotated[str | None, Header()] = None,
-    ) -> dict[str, object]:
-        require_user(settings, authorization)
-        return get_sync_status(settings)
 
     @router.get("/system/diagnostics")
     def system_diagnostics(

@@ -11,6 +11,7 @@ from hx_email.config import Settings
 
 SNAPSHOT_PATH: str = "/api/v1/admin/sync/snapshot"
 PUSH_PATH: str = "/api/v1/admin/sync/push"
+DELTA_PATH: str = "/api/v1/admin/sync/delta"
 REQUEST_TIMEOUT_SECONDS: int = 300
 # Cloudflare WAF 会拦截 Python-urllib 默认 UA (403 error 1010 机器人检测),
 # 使用浏览器 UA 以通过主实例入口反代/防火墙的访问校验。
@@ -101,4 +102,55 @@ def push_snapshot_to_master(settings: Settings, archive_bytes: bytes) -> dict[st
         raise SyncClientError("Master returned an invalid push response") from error
     if not isinstance(parsed, dict):
         raise SyncClientError("Master returned an invalid push response")
+    return parsed
+
+
+def fetch_delta(settings: Settings, after_seq: int) -> dict[str, Any]:
+    """Fetch an incremental change package from the master (delta sync)."""
+    base_url: str = _master_base_url(settings)
+    request: urllib.request.Request = _authorized_request(
+        f"{base_url}{DELTA_PATH}?after={after_seq}", settings
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+            payload: bytes = response.read()
+    except urllib.error.HTTPError as error:
+        raise SyncClientError(f"Master rejected sync delta: HTTP {error.code}") from error
+    except (urllib.error.URLError, TimeoutError, OSError) as error:
+        raise SyncClientError(f"Could not reach master at {base_url}: {error}") from error
+    try:
+        parsed: object = json.loads(payload.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError) as error:
+        raise SyncClientError("Master returned an invalid delta response") from error
+    if not isinstance(parsed, dict):
+        raise SyncClientError("Master returned an invalid delta response")
+    return parsed
+
+
+def push_delta_to_master(settings: Settings, delta_payload: dict[str, Any]) -> dict[str, Any]:
+    """Push the local incremental change package to the master (delta sync)."""
+    base_url: str = _master_base_url(settings)
+    request: urllib.request.Request = urllib.request.Request(
+        f"{base_url}{DELTA_PATH}",
+        data=json.dumps(delta_payload, ensure_ascii=False).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {settings.sync_token.strip()}",
+            "Content-Type": "application/json",
+            "User-Agent": USER_AGENT,
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+            payload: bytes = response.read()
+    except urllib.error.HTTPError as error:
+        raise SyncClientError(f"Master rejected sync delta push: HTTP {error.code}") from error
+    except (urllib.error.URLError, TimeoutError, OSError) as error:
+        raise SyncClientError(f"Could not reach master at {base_url}: {error}") from error
+    try:
+        parsed: object = json.loads(payload.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError) as error:
+        raise SyncClientError("Master returned an invalid delta push response") from error
+    if not isinstance(parsed, dict):
+        raise SyncClientError("Master returned an invalid delta push response")
     return parsed

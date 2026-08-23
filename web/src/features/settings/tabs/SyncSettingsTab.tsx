@@ -106,9 +106,19 @@ export const SyncSettingsTab: React.FC<SettingsTabProps> = ({ settings, setSetti
             value={settings.sync_interval_seconds || "300"}
             onChange={(event) => setSetting("sync_interval_seconds", event.target.value)}
           />
+          <Input
+            label="全量同步间隔 (秒)"
+            type="number"
+            min="0"
+            max="2592000"
+            value={settings.sync_full_interval_seconds || "86400"}
+            onChange={(event) => setSetting("sync_full_interval_seconds", event.target.value)}
+          />
           <p className="text-xs text-gh-text-secondary">
-            间隔为 0 表示仅启动时同步一次；Token 使用主实例管理员登录 token 或主实例外部 API
-            Key，加密存储，环境变量中的初始值会在首次启动时自动写入设置。
+            常规同步按变更日志增量传输（仅交换自上次以来的变更，不整库打包）；超过「全量同步
+            间隔」才做一次全量快照作为基线纠偏，默认 24 小时。间隔为 0 表示仅启动时同步一次； Token
+            使用主实例管理员登录 token 或主实例外部 API Key，加密存储，环境变量中的初始值
+            会在首次启动时自动写入设置。
           </p>
         </div>
       </Card>

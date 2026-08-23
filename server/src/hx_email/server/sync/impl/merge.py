@@ -17,6 +17,36 @@ def load_rows(connection: sqlite3.Connection, table: str) -> list[dict[str, Any]
     return [dict(row) for row in connection.execute(f"SELECT * FROM {table}")]
 
 
+def row_dict(connection: sqlite3.Connection, table: str, row_id: int) -> dict[str, Any] | None:
+    """Read a single row by integer primary key, or None when it is gone."""
+    row = connection.execute(f"SELECT * FROM {table} WHERE id = ?", (row_id,)).fetchone()
+    return dict(row) if row is not None else None
+
+
+def reference_table(column: str) -> str:
+    """Map a foreign-key column name to its referenced table name."""
+    mapping: dict[str, str] = {
+        "user_id": "users",
+        "group_id": "groups",
+        "tag_id": "tags",
+        "email_account_id": "email_accounts",
+        "usable_email_id": "usable_emails",
+        "platform_id": "platforms",
+    }
+    return mapping.get(column, column)
+
+
+def max_changelog_seq(settings: Settings) -> int:
+    """Return the highest sync_changelog id (0 when the WAL table is empty)."""
+    from hx_email.database import connect
+
+    with connect(settings) as connection:
+        row = connection.execute(
+            "SELECT COALESCE(MAX(id), 0) AS max_id FROM sync_changelog"
+        ).fetchone()
+    return int(row["max_id"]) if row else 0
+
+
 def inserted_id(cursor: sqlite3.Cursor) -> int:
     if cursor.lastrowid is None:
         raise SyncMergeError("SQLite did not return an inserted row id")

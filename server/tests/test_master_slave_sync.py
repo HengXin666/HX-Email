@@ -617,7 +617,11 @@ def test_fetch_snapshot_sends_browser_user_agent(tmp_path: Path) -> None:
 
 
 def test_run_sync_pulls_then_pushes_and_reports_push_error(monkeypatch, tmp_path: Path) -> None:
-    settings: Settings = Settings(data_dir=tmp_path / "node")
+    settings: Settings = Settings(
+        data_dir=tmp_path / "node",
+        sync_url="http://master.example.com",
+        sync_token="secret-token",
+    )
 
     def fake_pull(settings_arg: Settings) -> SyncReport:
         return SyncReport(started_at="s", finished_at="f", tables={"users": 1})

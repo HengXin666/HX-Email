@@ -12,6 +12,7 @@ from hx_email.models import (
 from hx_email.models.schema_migrations import (
     apply_column_migrations,
     migrate_platform_rules_schema,
+    migrate_sync_wal_schema,
 )
 from hx_email.security import hash_password, migrate_stored_secrets
 
@@ -250,6 +251,7 @@ def migrate(settings: Settings) -> Path:
         migrate_account_timestamps_schema(connection)
         migrate_messaging_schema(connection)
         migrate_platform_rules_schema(connection)
+        migrate_sync_wal_schema(connection)
         connection.execute(
             """
             CREATE UNIQUE INDEX IF NOT EXISTS idx_fetched_msg_dedup

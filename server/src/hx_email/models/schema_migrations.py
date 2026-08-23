@@ -1,12 +1,31 @@
-"""Schema migrations for feature-added columns and the platform-rules table.
+"""Schema migrations for feature-added columns, platform rules and sync WAL.
 
 fetched_messages 的 HTML 正文 / 发件人邮箱列是收信 HTML 渲染与别名识别的
 数据基础; platform_rules 承载用户自定义的平台识别规则(见 workspace 平台识别)。
+sync_changelog/sync_suppress 是主从同步的增量 WAL: 业务写自动触发记录,
+merge 应用期间通过 suppress 表抑制, 实现「常规增量 + 周期全量」的 PG 风格同步。
 """
 
 from __future__ import annotations
 
 import sqlite3
+
+# 参与增量同步的表: 有整数主键 id 的表 (触发器以 NEW.id 定位变更行)。
+# system_settings / usable_email_tags 无 id 主键, 由周期全量路径同步;
+# merge_snapshot 仍会合并它们, 增量包不含这两张表也不会丢数据。
+SYNC_TABLES: tuple[str, ...] = (
+    "users",
+    "groups",
+    "tags",
+    "email_accounts",
+    "usable_emails",
+    "platforms",
+    "platform_bindings",
+    "temp_mailboxes",
+    "mail_pool_entries",
+    "verification_readings",
+    "fetched_messages",
+)
 
 
 def column_exists(connection: sqlite3.Connection, table: str, column: str) -> bool:
@@ -71,3 +90,64 @@ def migrate_platform_rules_schema(connection: sqlite3.Connection) -> None:
         ON platform_rules(user_id, enabled)
         """
     )
+
+
+def migrate_sync_wal_schema(connection: sqlite3.Connection) -> None:
+    """Create the incremental-sync WAL tables and per-table capture triggers.
+
+    sync_changelog records every business INSERT/UPDATE on SYNC_TABLES (the
+    "WAL" of the PG-style replication design); sync_suppress lets a merge or
+    delta-apply transaction mute capture so applied rows are not re-broadcast.
+    Triggers read the suppress flag, so capture is fully automatic.
+    """
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sync_changelog (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            table_name TEXT NOT NULL,
+            row_id INTEGER NOT NULL,
+            op TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_sync_changelog_created
+        ON sync_changelog(created_at)
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sync_suppress (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            active INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    connection.execute("INSERT OR IGNORE INTO sync_suppress (id, active) VALUES (1, 0)")
+    for table in SYNC_TABLES:
+        connection.execute(
+            f"""
+            CREATE TRIGGER IF NOT EXISTS trg_sync_{table}_insert
+            AFTER INSERT ON {table}
+            WHEN (SELECT active FROM sync_suppress WHERE id = 1) = 0
+            BEGIN
+                INSERT INTO sync_changelog (table_name, row_id, op, created_at)
+                VALUES ('{table}', NEW.id, 'insert',
+                        strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+            END
+            """
+        )
+        connection.execute(
+            f"""
+            CREATE TRIGGER IF NOT EXISTS trg_sync_{table}_update
+            AFTER UPDATE ON {table}
+            WHEN (SELECT active FROM sync_suppress WHERE id = 1) = 0
+            BEGIN
+                INSERT INTO sync_changelog (table_name, row_id, op, created_at)
+                VALUES ('{table}', NEW.id, 'update',
+                        strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+            END
+            """
+        )

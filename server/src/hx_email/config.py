@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     sync_url: str = ""
     sync_token: str = ""
     sync_interval_seconds: int = 300
+    sync_full_interval_seconds: int = 86_400  # 全量基线间隔: 默认 24h
     # Docker 自动更新: compose 部署时由环境变量传入 (默认 true), 本地开发默认关闭
     update_enabled: bool = False
     update_compose_dir: str = "/compose"
