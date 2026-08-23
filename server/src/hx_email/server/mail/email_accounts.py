@@ -1,3 +1,4 @@
+import sqlite3
 from dataclasses import dataclass
 
 from hx_email.config import Settings
@@ -22,6 +23,7 @@ __all__ = [
     "add_email_account",
     "deactivate_email_account",
     "get_email_account",
+    "get_email_accounts",
     "has_active_email_account",
     "list_email_accounts",
     "usable_email_from_row",
@@ -163,25 +165,12 @@ def deactivate_email_account(
     settings: Settings, user_id: int, account_id: int
 ) -> EmailAccount | None:
     with connect(settings) as connection:
-        account = connection.execute(
-            """
-            SELECT id, provider, primary_address, display_name, imap_host,
-                   imap_port, username, imap_password, client_id, refresh_token,
-                   group_id, remark, telegram_enabled, last_refresh_at,
-                   created_at, last_fetch_at, refresh_failed_at
-            FROM email_accounts
-            WHERE id = ? AND user_id = ?
-            """,
-            (account_id, user_id),
-        ).fetchone()
-        if account is None:
-            return None
-        connection.execute(
-            """
-            UPDATE email_accounts SET status = 'inactive' WHERE id = ? AND user_id = ?
-            """,
+        cursor = connection.execute(
+            "UPDATE email_accounts SET status = 'inactive' WHERE id = ? AND user_id = ?",
             (account_id, user_id),
         )
+        if cursor.rowcount == 0:
+            return None
         email = connection.execute(
             """
             UPDATE usable_emails SET status = 'inactive', active = 0
@@ -190,34 +179,6 @@ def deactivate_email_account(
             """,
             (user_id, account_id),
         ).fetchall()
-    usable_emails = tuple(usable_email_from_row(row) for row in email)
-    primary_usable_email = next(e for e in usable_emails if e.kind == "primary")
-    return EmailAccount(
-        id=account["id"],
-        provider=account["provider"],
-        primary_address=account["primary_address"],
-        display_name=account["display_name"],
-        status="inactive",
-        primary_usable_email=primary_usable_email,
-        imap_host=account["imap_host"],
-        imap_port=account["imap_port"],
-        username=account["username"],
-        imap_password=account["imap_password"],
-        client_id=account["client_id"],
-        refresh_token=decrypt_secret(settings, str(account["refresh_token"] or "")),
-        group_id=account["group_id"],
-        remark=account["remark"] or "",
-        telegram_enabled=bool(account["telegram_enabled"]),
-        last_refresh_at=account["last_refresh_at"],
-        created_at=account["created_at"] or "",
-        last_fetch_at=account["last_fetch_at"],
-        refresh_failed_at=account["refresh_failed_at"],
-        usable_emails=usable_emails,
-    )
-
-
-def get_email_account(settings: Settings, user_id: int, account_id: int) -> EmailAccount | None:
-    with connect(settings) as connection:
         account = connection.execute(
             """
             SELECT id, provider, primary_address, display_name, status, imap_host,
@@ -229,26 +190,69 @@ def get_email_account(settings: Settings, user_id: int, account_id: int) -> Emai
             """,
             (account_id, user_id),
         ).fetchone()
-        if account is None:
-            return None
-        rows = connection.execute(
-            """
-            SELECT id, address, label, kind, status, created_at
-            FROM usable_emails
-            WHERE user_id = ? AND email_account_id = ?
-            ORDER BY id
+    return build_account_from_row(settings, account, email)
+
+
+def get_email_account(settings: Settings, user_id: int, account_id: int) -> EmailAccount | None:
+    return get_email_accounts(settings, user_id, [account_id]).get(account_id)
+
+
+def get_email_accounts(
+    settings: Settings,
+    user_id: int,
+    account_ids: list[int],
+) -> dict[int, EmailAccount]:
+    """批量读取账号 (单连接 + IN 查询), 避免逐账号 connect 的 N+1 连接风暴."""
+    if not account_ids:
+        return {}
+    unique_ids: list[int] = list(dict.fromkeys(account_ids))
+    placeholders: str = ",".join("?" for _ in unique_ids)
+    with connect(settings) as connection:
+        account_rows = connection.execute(
+            f"""
+            SELECT id, provider, primary_address, display_name, status, imap_host,
+                   imap_port, username, imap_password, client_id, refresh_token,
+                   group_id, remark, telegram_enabled, last_refresh_at,
+                   created_at, last_fetch_at, refresh_failed_at
+            FROM email_accounts WHERE user_id = ? AND id IN ({placeholders})
             """,
-            (user_id, account_id),
+            (user_id, *unique_ids),
         ).fetchall()
-    usable_emails = tuple(usable_email_from_row(row) for row in rows)
-    primary_usable_email = next(e for e in usable_emails if e.kind == "primary")
+        email_rows = connection.execute(
+            f"""
+            SELECT id, address, label, kind, status, created_at, email_account_id
+            FROM usable_emails
+            WHERE user_id = ? AND email_account_id IN ({placeholders}) ORDER BY id
+            """,
+            (user_id, *unique_ids),
+        ).fetchall()
+    emails_by_account: dict[int, list[sqlite3.Row]] = {}
+    for row in email_rows:
+        key: int = int(row["email_account_id"])
+        emails_by_account.setdefault(key, []).append(row)
+    result: dict[int, EmailAccount] = {}
+    for account in account_rows:
+        account_id_value: int = int(account["id"])
+        result[account_id_value] = build_account_from_row(
+            settings, account, emails_by_account.get(account_id_value, [])
+        )
+    return result
+
+
+def build_account_from_row(
+    settings: Settings,
+    account: sqlite3.Row,
+    usable_rows: list[sqlite3.Row],
+) -> EmailAccount:
+    """从 email_accounts/usable_emails 行构造 EmailAccount (共享构造逻辑)。"""
+    usable_emails = tuple(usable_email_from_row(row) for row in usable_rows)
     return EmailAccount(
         id=account["id"],
         provider=account["provider"],
         primary_address=account["primary_address"],
         display_name=account["display_name"],
         status=account["status"],
-        primary_usable_email=primary_usable_email,
+        primary_usable_email=next(e for e in usable_emails if e.kind == "primary"),
         imap_host=account["imap_host"],
         imap_port=account["imap_port"],
         username=account["username"],
@@ -272,8 +276,9 @@ def list_email_accounts(settings: Settings, user_id: int) -> tuple[EmailAccount,
             "SELECT id FROM email_accounts WHERE user_id = ? ORDER BY id",
             (user_id,),
         ).fetchall()
-    accounts = (get_email_account(settings, user_id, row["id"]) for row in rows)
-    return tuple(a for a in accounts if a is not None)
+    ids: list[int] = [int(row["id"]) for row in rows]
+    accounts_map: dict[int, EmailAccount] = get_email_accounts(settings, user_id, ids)
+    return tuple(accounts_map[account_id] for account_id in ids if account_id in accounts_map)
 
 
 def add_alias_to_email_account(

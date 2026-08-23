@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from sqlite3 import Connection, Row
 from typing import TYPE_CHECKING
 
 from hx_email.config import Settings
-from hx_email.database import utc_now_iso
+from hx_email.database import connect, utc_now_iso
 from hx_email.server.auth import require_inserted_id
 from hx_email.server.mail.usable_emails import UsableEmail
 
@@ -120,17 +121,8 @@ def add_alias_email(
     )
 
 
-def _get_account(settings: Settings, user_id: int, account_id: int) -> EmailAccount | None:
-    # 惰性导入避免与 email_accounts 循环依赖 (email_accounts -> account_helpers)
-    from hx_email.server.mail.email_accounts import get_email_account
-
-    return get_email_account(settings, user_id, account_id)
-
-
 def _age_cutoff_iso(days: int) -> str:
     """ISO timestamp (UTC, Z suffix, ms precision) of `now - days`, matching utc_now_iso()."""
-    from datetime import UTC, datetime, timedelta
-
     cutoff: datetime = datetime.now(UTC) - timedelta(days=days)
     return cutoff.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
@@ -141,8 +133,6 @@ def search_email_accounts(
     query: str,
 ) -> tuple[EmailAccount, ...]:
     """Full-text search across email addresses, remarks, and provider names."""
-    from hx_email.database import connect
-
     with connect(settings) as connection:
         like = f"%{query}%"
         rows = connection.execute(
@@ -157,8 +147,7 @@ def search_email_accounts(
             """,
             (user_id, like, like, like),
         ).fetchall()
-    accounts = (_get_account(settings, user_id, row["id"]) for row in rows)
-    return tuple(account for account in accounts if account is not None)
+    return _ordered_accounts(settings, user_id, [int(row["id"]) for row in rows])
 
 
 def _build_enhanced_query(
@@ -247,8 +236,6 @@ def list_email_accounts_enhanced(
     max_age_days: int | None = None,
 ) -> AccountPage:
     """Enhanced listing with pagination, filtering, and sorting."""
-    from hx_email.database import connect
-
     page = max(page, 1)
     page_size = min(max(page_size, 1), 200)
     query, params = _build_enhanced_query(
@@ -272,10 +259,24 @@ def list_email_accounts_enhanced(
             f"{query} LIMIT ? OFFSET ?",
             (*params, page_size, offset),
         ).fetchall()
-    accounts = (_get_account(settings, user_id, row["id"]) for row in rows)
     return AccountPage(
-        accounts=tuple(account for account in accounts if account is not None),
+        accounts=_ordered_accounts(settings, user_id, [int(row["id"]) for row in rows]),
         total_count=total,
         page=page,
         page_size=page_size,
     )
+
+
+def _ordered_accounts(
+    settings: Settings,
+    user_id: int,
+    account_ids: list[int],
+) -> tuple[EmailAccount, ...]:
+    """按给定顺序批量读取账号 (单连接 + IN 查询, 避免逐账号 connect 的 N+1 风暴)."""
+    from hx_email.server.mail.email_accounts import get_email_accounts
+
+    accounts_map: dict[int, EmailAccount] = get_email_accounts(settings, user_id, account_ids)
+    ordered: list[EmailAccount] = [
+        accounts_map[account_id] for account_id in account_ids if account_id in accounts_map
+    ]
+    return tuple(ordered)
