@@ -158,23 +158,38 @@ export const Messaging: React.FC = () => {
     }
   }, [loadAll, loginInstance, toast]);
 
-  useEffect(() => {
-    if (loginInstance === null) {
-      setAutoStarted(false);
-      return;
+  const handleEngineStopCard = useCallback(
+    async (instance: MessagingInstance) => {
+      setBusy(`engine-stop-${instance.id}`);
+      try {
+        await api.engineStop(instance.id);
+        toast("内置引擎已彻底关闭（容器已停止，不再占用内存）", "success");
+        await loadAll();
+      } catch (error: unknown) {
+        toast(error instanceof Error ? error.message : "关闭内置引擎失败", "error");
+      } finally {
+        setBusy(null);
+      }
+    },
+    [loadAll, toast],
+  );
+
+  const handleEngineStop = useCallback(async () => {
+    if (loginInstance === null) return;
+    setBusy("engine-stop");
+    try {
+      await api.engineStop(loginInstance.id);
+      toast("内置引擎已彻底关闭（容器已停止，不再占用内存）", "success");
+      setLoginInstance(null);
+      await loadAll();
+    } catch (error: unknown) {
+      toast(error instanceof Error ? error.message : "关闭内置引擎失败", "error");
+    } finally {
+      setBusy(null);
     }
-    if (
-      loginInstance.config.embedded_engine === "true" &&
-      probe !== null &&
-      !probe.api_reachable &&
-      !probing &&
-      !autoStarted &&
-      busy !== "engine-start"
-    ) {
-      setAutoStarted(true);
-      void handleEngineStart();
-    }
-  }, [autoStarted, busy, handleEngineStart, loginInstance, probe, probing]);
+  }, [loadAll, loginInstance, toast]);
+
+  // 不自动启动引擎（避免占用内存），仅保留手动「启动内置引擎」
 
   const handleSaveConfig = useCallback(async () => {
     if (loginInstance === null) return;
@@ -455,6 +470,23 @@ export const Messaging: React.FC = () => {
                       >
                         扫码
                       </Button>
+                      {instance.config.embedded_engine === "true" && (
+                        <Button
+                          size="sm"
+                          variant="danger"
+                          loading={busy === `engine-stop-${instance.id}`}
+                          icon={<IconZap size={14} />}
+                          title="彻底关闭内置引擎（停止容器，释放内存）"
+                          onClick={() => {
+                            if (loginInstance === null) {
+                              setLoginInstance(instance);
+                            }
+                            void handleEngineStopCard(instance);
+                          }}
+                        >
+                          关
+                        </Button>
+                      )}
                       <Button
                         size="sm"
                         variant="danger"
@@ -614,6 +646,15 @@ export const Messaging: React.FC = () => {
                     onClick={handleLoginStatus}
                   >
                     我已扫码，完成登录
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    loading={busy === "engine-stop"}
+                    icon={<IconZap size={14} />}
+                    onClick={() => void handleEngineStop()}
+                  >
+                    停止引擎
                   </Button>
                 </>
               ) : (
