@@ -5,7 +5,11 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from hx_email.server.instance_backup.archive import DATABASE_NAME, MANIFEST_NAME
+from hx_email.server.instance_backup.archive import (
+    DATABASE_NAME,
+    EXCLUDED_DATA_DIR_NAMES,
+    MANIFEST_NAME,
+)
 
 SKIPPED_NAMES: frozenset[str] = frozenset(
     {
@@ -30,6 +34,8 @@ def merge_data_files(staging_dir: Path, data_dir: Path) -> dict[str, str]:
             continue
         relative: str = path.relative_to(staging_dir).as_posix()
         if relative in SKIPPED_NAMES:
+            continue
+        if relative.split("/", 1)[0] in EXCLUDED_DATA_DIR_NAMES:
             continue
         target: Path = data_dir.joinpath(*path.relative_to(staging_dir).parts)
         digest: str = sha256_of_bytes(path.read_bytes())

@@ -20,6 +20,8 @@ MANIFEST_NAME: str = "manifest.json"
 MAX_ARCHIVE_BYTES: int = 64 * 1024 * 1024
 MAX_UNCOMPRESSED_BYTES: int = 128 * 1024 * 1024
 MAX_ARCHIVE_FILES: int = 4096
+# 运行时数据目录不进备份/同步: 内容可再生且体积巨大 (NapCat 引擎日志/缓存/会话)。
+EXCLUDED_DATA_DIR_NAMES: frozenset[str] = frozenset({"qq-engines"})
 
 
 class InstanceBackupError(ValueError):
@@ -51,6 +53,10 @@ def collect_backup_files(data_dir: Path, database_path: Path) -> list[Path]:
         and not path.is_symlink()
         and path.name not in excluded_names
         and path.resolve() != database_resolved
+        and (
+            not path.relative_to(data_dir).parts
+            or path.relative_to(data_dir).parts[0] not in EXCLUDED_DATA_DIR_NAMES
+        )
     )
 
 

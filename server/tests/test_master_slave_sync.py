@@ -14,6 +14,7 @@ from hx_email.database import connect, migrate
 from hx_email.security import decrypt_secret, load_secret_key
 from hx_email.server.instance_backup import create_instance_backup
 from hx_email.server.sync import SyncReport, apply_snapshot, push_snapshot, run_sync
+from hx_email.server.sync.impl.client import fetch_snapshot
 from hx_email.server.sync.impl.merge import load_rows
 
 
@@ -525,15 +526,28 @@ def test_push_endpoint_does_not_overwrite_existing_master_rows(tmp_path: Path) -
 class _SyncPushCaptureHandler(BaseHTTPRequestHandler):
     captured: ClassVar[dict[str, object]] = {}
 
-    def do_POST(self) -> None:
+    def _capture(self) -> None:
         length: int = int(self.headers.get("Content-Length", "0"))
         body: bytes = self.rfile.read(length)
         type(self).captured = {
             "path": self.path,
             "authorization": self.headers.get("Authorization", ""),
             "content_type": self.headers.get("Content-Type", ""),
+            "user_agent": self.headers.get("User-Agent", ""),
             "body": body,
         }
+
+    def do_GET(self) -> None:
+        self._capture()
+        payload: bytes = b"fake-snapshot-zip"
+        self.send_response(200)
+        self.send_header("Content-Type", "application/zip")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def do_POST(self) -> None:
+        self._capture()
         payload: bytes = json.dumps(
             {"error": "", "tables": {"users": 1, "email_accounts": 1}}
         ).encode("utf-8")
@@ -568,7 +582,34 @@ def test_push_snapshot_posts_local_archive_to_master(tmp_path: Path) -> None:
         assert captured["path"] == "/api/v1/admin/sync/push"
         assert captured["authorization"] == "Bearer secret-token"
         assert captured["content_type"] == "application/zip"
+        assert str(captured["user_agent"]).startswith("Mozilla/5.0")
         assert captured["body"]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_fetch_snapshot_sends_browser_user_agent(tmp_path: Path) -> None:
+    _SyncPushCaptureHandler.captured = {}
+    server: ThreadingHTTPServer = ThreadingHTTPServer(("127.0.0.1", 0), _SyncPushCaptureHandler)
+    thread: threading.Thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        settings: Settings = Settings(
+            data_dir=tmp_path / "slave",
+            admin_username="admin",
+            admin_password="admin-password",
+            sync_url=f"http://127.0.0.1:{server.server_port}",
+            sync_token="secret-token",
+        )
+        payload: bytes = fetch_snapshot(settings)
+
+        assert payload == b"fake-snapshot-zip"
+        captured: dict[str, object] = _SyncPushCaptureHandler.captured
+        assert captured["path"] == "/api/v1/admin/sync/snapshot"
+        assert captured["authorization"] == "Bearer secret-token"
+        assert str(captured["user_agent"]).startswith("Mozilla/5.0")
     finally:
         server.shutdown()
         server.server_close()
@@ -747,3 +788,49 @@ def test_pull_snapshot_never_overwrites_is_admin(tmp_path: Path) -> None:
         row = connection.execute("SELECT is_admin FROM users WHERE username = 'admin'").fetchone()
     assert row is not None
     assert row[0] == 0
+
+
+def test_backup_and_merge_exclude_runtime_data_dir(tmp_path: Path) -> None:
+    """qq-engines runtime data never enters backups or snapshot merges."""
+    from hx_email.server.instance_backup.archive import (
+        EXCLUDED_DATA_DIR_NAMES,
+        collect_backup_files,
+    )
+    from hx_email.server.sync.impl.files import merge_data_files
+
+    settings: Settings = Settings(
+        data_dir=tmp_path / "node",
+        admin_username="admin",
+        admin_password="admin-password",
+    )
+    migrate(settings)
+    data_dir: Path = settings.data_dir.resolve()
+    engine_dir: Path = data_dir / "qq-engines" / "1" / "data"
+    engine_dir.mkdir(parents=True)
+    (engine_dir / "big.log").write_bytes(b"x" * 1024)
+    (data_dir / "static").mkdir(exist_ok=True)
+    (data_dir / "static" / "keep.txt").write_text("keep", encoding="utf-8")
+
+    collected: list[Path] = collect_backup_files(data_dir, settings.database_path)
+    assert any(path.name == "keep.txt" for path in collected)
+    assert all("qq-engines" not in path.relative_to(data_dir).parts for path in collected)
+    assert "qq-engines" in EXCLUDED_DATA_DIR_NAMES
+
+    archive: bytes = create_instance_backup(settings)
+    import io
+    import zipfile
+
+    with zipfile.ZipFile(io.BytesIO(archive)) as zf:
+        names: list[str] = zf.namelist()
+    assert "static/keep.txt" in names
+    assert not any(name.startswith("qq-engines/") for name in names)
+
+    staging: Path = tmp_path / "staging"
+    staging.mkdir()
+    (staging / "qq-engines" / "9" / "data").mkdir(parents=True)
+    (staging / "qq-engines" / "9" / "data" / "runtime.bin").write_bytes(b"runtime")
+    (staging / "other.txt").write_text("other", encoding="utf-8")
+    merged: dict[str, str] = merge_data_files(staging, data_dir)
+    assert "other.txt" in merged
+    assert not any(key.startswith("qq-engines/") for key in merged)
+    assert not (data_dir / "qq-engines" / "9").exists()

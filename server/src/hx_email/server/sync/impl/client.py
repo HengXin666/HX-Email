@@ -12,6 +12,12 @@ from hx_email.config import Settings
 SNAPSHOT_PATH: str = "/api/v1/admin/sync/snapshot"
 PUSH_PATH: str = "/api/v1/admin/sync/push"
 REQUEST_TIMEOUT_SECONDS: int = 300
+# Cloudflare WAF 会拦截 Python-urllib 默认 UA (403 error 1010 机器人检测),
+# 使用浏览器 UA 以通过主实例入口反代/防火墙的访问校验。
+USER_AGENT: str = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+)
 
 
 class SyncClientError(RuntimeError):
@@ -48,7 +54,10 @@ def _master_base_url(settings: Settings) -> str:
 def _authorized_request(url: str, settings: Settings) -> urllib.request.Request:
     return urllib.request.Request(
         url,
-        headers={"Authorization": f"Bearer {settings.sync_token.strip()}"},
+        headers={
+            "Authorization": f"Bearer {settings.sync_token.strip()}",
+            "User-Agent": USER_AGENT,
+        },
     )
 
 
@@ -75,6 +84,7 @@ def push_snapshot_to_master(settings: Settings, archive_bytes: bytes) -> dict[st
         headers={
             "Authorization": f"Bearer {settings.sync_token.strip()}",
             "Content-Type": "application/zip",
+            "User-Agent": USER_AGENT,
         },
         method="POST",
     )
