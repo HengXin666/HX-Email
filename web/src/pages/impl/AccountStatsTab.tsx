@@ -99,22 +99,40 @@ export const AccountStatsTab: React.FC<{ provider: "microsoft" | "google" }> = (
     ];
   }, [stats]);
 
-  const dailyRefreshSeries: ChartSeries[] = useMemo(() => {
-    if (!stats) return [];
+  function formatRoundTime(iso: string): string {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso.slice(5, 16).replace("T", " ");
+    const pad = (n: number): string => String(n).padStart(2, "0");
+    return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  /** 每次刷新轮次的成功率序列: 横轴=一次刷新, 纵轴=该轮成功数/总尝试数 (%).
+   *  不是按天累计 — 每天刷新次数不固定, 天级成功数无法反映单次刷新的成败趋势。 */
+  const roundSuccessSeries: ChartSeries[] = useMemo(() => {
+    if (!stats?.refresh_rounds || stats.refresh_rounds.length === 0) return [];
     return [
       {
-        key: "success",
-        label: "刷新成功",
+        key: "rate",
+        label: "成功率",
         color: "#3fb950",
-        points: stats.daily_refresh.map((d) => ({ label: d.date.slice(5), value: d.success })),
-      },
-      {
-        key: "failed",
-        label: "刷新失败",
-        color: "#f85149",
-        points: stats.daily_refresh.map((d) => ({ label: d.date.slice(5), value: d.failed })),
+        fill: true,
+        points: stats.refresh_rounds.map((r) => ({
+          label: formatRoundTime(r.started_at),
+          value: r.success_rate,
+          detail: `成功 ${r.success} / 总数 ${r.total}（失败 ${r.failed}）`,
+        })),
       },
     ];
+  }, [stats]);
+
+  const roundSummary = useMemo(() => {
+    const rounds = stats?.refresh_rounds ?? [];
+    if (rounds.length === 0) return null;
+    const last = rounds[rounds.length - 1];
+    const avg = rounds.reduce((sum, r) => sum + r.success_rate, 0) / rounds.length;
+    const totalSuccess = rounds.reduce((sum, r) => sum + r.success, 0);
+    const total = rounds.reduce((sum, r) => sum + r.total, 0);
+    return { last, avg, totalSuccess, total, count: rounds.length };
   }, [stats]);
 
   const errorByProvider = useMemo(() => {
@@ -230,10 +248,48 @@ export const AccountStatsTab: React.FC<{ provider: "microsoft" | "google" }> = (
               <StatChart series={dailyNewSeries} />
             </Card>
             <Card className="p-4">
-              <h3 className="text-sm font-semibold text-gh-text mb-3">
-                每日刷新成功 / 失败（近 30 天）
+              <h3 className="text-sm font-semibold text-gh-text mb-1">
+                每次刷新成功率（近 30 次刷新）
               </h3>
-              <StatChart series={dailyRefreshSeries} />
+              {roundSummary ? (
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-gh-text-muted mb-3">
+                  <span>
+                    最近一次{" "}
+                    <span className="text-gh-text tabular-nums font-medium">
+                      {roundSummary.last.success_rate}%
+                    </span>
+                    <span className="ml-1 text-gh-text-secondary">
+                      （成功 {roundSummary.last.success} / {roundSummary.last.total}）
+                    </span>
+                  </span>
+                  <span>
+                    平均成功率{" "}
+                    <span className="text-gh-text tabular-nums font-medium">
+                      {roundSummary.avg.toFixed(1)}%
+                    </span>
+                  </span>
+                  <span>
+                    共 {roundSummary.count} 次 · 累计成功{" "}
+                    <span className="text-gh-success tabular-nums">
+                      {roundSummary.totalSuccess}
+                    </span>
+                    / <span className="text-gh-text tabular-nums">{roundSummary.total}</span>
+                  </span>
+                </div>
+              ) : (
+                <div className="text-[11px] text-gh-text-muted mb-3">近 30 天暂无刷新记录</div>
+              )}
+              {roundSuccessSeries.length > 0 ? (
+                <StatChart
+                  series={roundSuccessSeries}
+                  maxValue={100}
+                  valueFormatter={(value) => `${Math.round(value)}%`}
+                />
+              ) : (
+                <div className="py-10 text-center text-sm text-gh-text-secondary">
+                  每次刷新为一次轮次；刷新后会在此展示该轮成功率趋势。
+                </div>
+              )}
             </Card>
           </div>
 

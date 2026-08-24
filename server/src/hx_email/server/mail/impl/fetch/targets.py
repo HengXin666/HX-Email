@@ -77,13 +77,77 @@ def enrich_fetch_account_info(
     user_id: int,
     items: list[dict[str, object]],
 ) -> list[dict[str, object]]:
+    """批量填充 email_account_id / last_refresh_at (单连接 + 批量查询).
+
+    旧实现逐邮箱调用 resolve_fetch_account_info (每次新开 SQLite 连接 +
+    PRAGMA journal_mode=WAL), 5000 邮箱产生 5000+ 次连接争抢进程级锁,
+    页面加载慢且并发下间歇 500 (unable to open database file)。
+    此处改为单连接两次批量查询 + 内存归一化地址匹配, 语义与旧版完全一致。
+    """
+    if not items:
+        return items
+    ids: list[int] = []
     for item in items:
-        usable_email_id = item.get("id")
-        if not isinstance(usable_email_id, int):
+        raw_id: object = item.get("id")
+        if isinstance(raw_id, int):
+            ids.append(raw_id)
+    if not ids:
+        for item in items:
+            item["email_account_id"] = None
+            item["last_refresh_at"] = None
+        return items
+    unique_ids: list[int] = list(dict.fromkeys(ids))
+    placeholders: str = ",".join("?" for _ in unique_ids)
+    with connect(settings) as conn:
+        # 1) 直接关联: usable_emails.email_account_id -> email_accounts
+        direct_rows = conn.execute(
+            f"""
+            SELECT ue.id, ue.email_account_id, ea.last_refresh_at
+            FROM usable_emails ue
+            LEFT JOIN email_accounts ea ON ea.id = ue.email_account_id
+            WHERE ue.user_id = ? AND ue.id IN ({placeholders})
+            """,
+            (user_id, *unique_ids),
+        ).fetchall()
+        # 2) 兜底素材: 该用户全部账号关联邮箱 (一次批量读取),
+        #    供无直连账号的邮箱按归一化地址匹配 (语义同旧 resolve_fetch_account_info)
+        linked_rows = conn.execute(
+            """
+            SELECT ue.address, ue.email_account_id, ea.last_refresh_at
+            FROM usable_emails ue
+            JOIN email_accounts ea ON ea.id = ue.email_account_id
+            WHERE ue.user_id = ? AND ue.email_account_id IS NOT NULL
+            """,
+            (user_id,),
+        ).fetchall()
+    direct: dict[int, FetchAccountInfo] = {
+        int(row["id"]): FetchAccountInfo(
+            email_account_id=row["email_account_id"],
+            last_refresh_at=row["last_refresh_at"],
+        )
+        for row in direct_rows
+    }
+    fallback_by_address: dict[str, FetchAccountInfo] = {}
+    for row in linked_rows:
+        key: str = normalize_delivery_address(str(row["address"] or ""))
+        if key and "@" in key and key not in fallback_by_address:
+            fallback_by_address[key] = FetchAccountInfo(
+                email_account_id=row["email_account_id"],
+                last_refresh_at=row["last_refresh_at"],
+            )
+    for item in items:
+        email_id: object = item.get("id")
+        if not isinstance(email_id, int):
             item["email_account_id"] = None
             item["last_refresh_at"] = None
             continue
-        info = resolve_fetch_account_info(settings, user_id, usable_email_id)
+        info: FetchAccountInfo | None = direct.get(email_id)
+        if info is None or info.email_account_id is None:
+            address_key: str = normalize_delivery_address(str(item.get("address") or ""))
+            if "@" in address_key:
+                info = fallback_by_address.get(address_key) or info
+        if info is None:
+            info = FetchAccountInfo(email_account_id=None, last_refresh_at=None)
         item["email_account_id"] = info.email_account_id
         item["last_refresh_at"] = info.last_refresh_at
     return items

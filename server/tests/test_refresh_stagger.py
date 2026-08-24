@@ -40,7 +40,7 @@ def test_stagger_sleeps_between_accounts(tmp_path: Path, monkeypatch: pytest.Mon
         "hx_email.server.mail.impl.refresh_service._insert_refresh_log",
         lambda *a, **k: None,
     )
-    events = list(_refresh_account_batch(settings, accounts))
+    events = list(_refresh_account_batch(settings, 1, accounts))
     # 4 账号 -> 3 次错峰, 每次在 1..20 秒范围(默认)
     assert len(sleeps) == 3, f"应有 3 次错峰, 实际 {len(sleeps)}"
     assert all(1.0 <= d <= 20.0 for d in sleeps), sleeps
@@ -67,5 +67,5 @@ def test_stagger_disabled_when_zero(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     accounts = [
         {"id": 1, "email": "a@x.com", "provider": "outlook", "client_id": "c", "refresh_token": "r"}
     ]
-    list(_refresh_account_batch(settings, accounts))
+    list(_refresh_account_batch(settings, 1, accounts))
     assert sleeps == []

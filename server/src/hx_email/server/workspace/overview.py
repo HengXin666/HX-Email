@@ -93,6 +93,7 @@ def get_account_stats(
     """
     from datetime import UTC, datetime, timedelta
 
+    from hx_email.server.mail.impl.refresh.rounds import get_refresh_round_stats
     from hx_email.server.mail.impl.refresh_log_service import classify_refresh_error
 
     cutoff_iso: str = (
@@ -284,4 +285,5 @@ def get_account_stats(
         ],
         "daily_new": [{"date": day, "count": daily_new.get(day, 0)} for day in days],
         "daily_refresh": [{"date": day, **daily_refresh[day]} for day in days],
+        "refresh_rounds": get_refresh_round_stats(settings, user_id, provider, cutoff_iso),
     }

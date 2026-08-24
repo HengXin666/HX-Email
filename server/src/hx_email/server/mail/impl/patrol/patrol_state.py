@@ -76,6 +76,7 @@ class _Patrol:
     started_at: str | None = None
     finished_at: str | None = None
     error: str = ""
+    round_id: int = 0
     events: deque[tuple[int, dict[str, object]]] = field(default_factory=deque)
     _seq: int = 0
     _lock: threading.Lock = field(default_factory=threading.Lock)

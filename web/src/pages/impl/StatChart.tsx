@@ -3,6 +3,8 @@ import React, { useMemo, useRef, useState } from "react";
 interface ChartPoint {
   label: string;
   value: number;
+  /** 悬浮提示中额外展示的明细 (如该刷新轮次的成功/失败计数). */
+  detail?: string;
 }
 
 export interface ChartSeries {
@@ -17,6 +19,8 @@ interface StatChartProps {
   series: ChartSeries[];
   height?: number;
   valueFormatter?: (value: number) => string;
+  /** 固定纵轴最大值 (如成功率图表固定 100); 缺省按数据最大值自适应. */
+  maxValue?: number;
 }
 
 /**
@@ -29,6 +33,7 @@ export const StatChart: React.FC<StatChartProps> = ({
   series,
   height = 168,
   valueFormatter = (value) => String(value),
+  maxValue,
 }) => {
   const chartRef = useRef<HTMLDivElement | null>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
@@ -37,15 +42,16 @@ export const StatChart: React.FC<StatChartProps> = ({
     () => series.flatMap((s) => s.points.map((p) => p.value)),
     [series],
   );
-  const maxValue: number = Math.max(1, ...allValues);
+  const computedMax: number = Math.max(1, ...allValues);
+  const yMax: number = maxValue ?? computedMax;
   const pointCount: number = Math.max(2, ...series.map((s) => s.points.length));
-  const yTicks: number[] = [maxValue, Math.round(maxValue / 2), 0];
+  const yTicks: number[] = [yMax, Math.round(yMax / 2), 0];
 
   const toPath = (points: ChartPoint[]): string =>
     points
       .map((point, index) => {
         const x: number = pointCount <= 1 ? 0 : (index / (pointCount - 1)) * 100;
-        const y: number = 96 - (point.value / maxValue) * 88;
+        const y: number = 96 - (point.value / yMax) * 88;
         return `${index === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
       })
       .join(" ");
@@ -155,7 +161,7 @@ export const StatChart: React.FC<StatChartProps> = ({
                 const point = s.points[hoverIndex];
                 if (!point) return null;
                 const x: number = (hoverIndex / (pointCount - 1)) * 100;
-                const y: number = 96 - (point.value / maxValue) * 88;
+                const y: number = 96 - (point.value / yMax) * 88;
                 return (
                   <circle
                     key={s.key}
@@ -182,6 +188,12 @@ export const StatChart: React.FC<StatChartProps> = ({
               }}
             >
               <div className="font-medium text-gh-text">{hoveredLabel}</div>
+              {(() => {
+                const detail = series[0]?.points[hoverIndex]?.detail;
+                return detail ? (
+                  <div className="mt-0.5 text-gh-text-secondary">{detail}</div>
+                ) : null;
+              })()}
               {series.map((s) => {
                 const point = s.points[hoverIndex];
                 if (!point) return null;

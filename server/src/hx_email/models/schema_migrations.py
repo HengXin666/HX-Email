@@ -54,6 +54,7 @@ COLUMN_MIGRATIONS: tuple[tuple[str, str, str], ...] = (
     ("fetched_messages", "body_html", "TEXT NOT NULL DEFAULT ''"),
     ("fetched_messages", "from_email", "TEXT NOT NULL DEFAULT ''"),
     ("sessions", "expires_at", "TEXT NOT NULL DEFAULT ''"),
+    ("refresh_logs", "round_id", "INTEGER"),
 )
 
 
@@ -61,6 +62,24 @@ def apply_column_migrations(connection: sqlite3.Connection) -> None:
     for table, column, definition in COLUMN_MIGRATIONS:
         if not column_exists(connection, table, column):
             connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
+def migrate_refresh_rounds_schema(connection: sqlite3.Connection) -> None:
+    """刷新轮次表: 一次批量/单账号刷新 = 一轮, refresh_logs.round_id 关联日志."""
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS refresh_rounds (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            scope TEXT NOT NULL DEFAULT '',
+            started_at TEXT NOT NULL DEFAULT '',
+            total INTEGER NOT NULL DEFAULT 0,
+            success INTEGER NOT NULL DEFAULT 0,
+            failed INTEGER NOT NULL DEFAULT 0,
+            finished_at TEXT NOT NULL DEFAULT ''
+        )
+        """
+    )
 
 
 def migrate_platform_rules_schema(connection: sqlite3.Connection) -> None:

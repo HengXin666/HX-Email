@@ -34,6 +34,12 @@ from hx_email.server.mail.impl.patrol.patrol_state import (
     stagger_sleep as _stagger_sleep,
 )
 from hx_email.server.mail.impl.patrol.refresh import fetch_accounts as _fetch_accounts
+from hx_email.server.mail.impl.refresh.rounds import (
+    create_refresh_round as _create_refresh_round,
+)
+from hx_email.server.mail.impl.refresh.rounds import (
+    finish_refresh_round as _finish_refresh_round,
+)
 from hx_email.server.mail.impl.refresh_log_service import (
     insert_refresh_log as _insert_refresh_log,
 )
@@ -88,6 +94,8 @@ class PatrolManager:
         patrol.total = len(accounts)
         patrol.started_at = _now_iso()
         patrol.status = "running"
+        scope: str = f"{mode}:{group_id}" if group_id is not None else mode
+        patrol.round_id = _create_refresh_round(settings, user_id, scope)
         patrol.append_event({"type": "start", "total": len(accounts)})
         patrol._thread = threading.Thread(
             target=self._run, args=(patrol, accounts), daemon=True, name=f"patrol-{user_id}"
@@ -137,6 +145,13 @@ class PatrolManager:
             patrol.current = progress.done_count
             patrol.success = progress.success_count
             patrol.failed = progress.fail_count
+        _finish_refresh_round(
+            patrol.settings,
+            patrol.round_id,
+            total,
+            progress.success_count,
+            progress.fail_count,
+        )
         patrol.append_event(
             {
                 "type": "complete",
@@ -181,6 +196,7 @@ class PatrolManager:
             str(result.get("message", "")),
             str(result.get("error_detail", "")),
             started_at=started_at,
+            round_id=patrol.round_id or None,
         )
         index: int = progress.advance(bool(result["success"]))
         with patrol._lock:
@@ -205,6 +221,13 @@ class PatrolManager:
             patrol.status = "error"
             patrol.error = str(error)
             patrol.finished_at = _now_iso()
+        _finish_refresh_round(
+            patrol.settings,
+            patrol.round_id,
+            total,
+            patrol.success,
+            patrol.failed,
+        )
         patrol.append_event(
             {
                 "type": "complete",

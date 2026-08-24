@@ -15,6 +15,12 @@ from typing import Any, cast
 from hx_email.config import Settings
 from hx_email.database import connect
 from hx_email.server.mail.impl.oauth_tool import try_refresh_provider_oauth_token
+from hx_email.server.mail.impl.refresh.rounds import (
+    create_refresh_round as _create_refresh_round,
+)
+from hx_email.server.mail.impl.refresh.rounds import (
+    finish_refresh_round as _finish_refresh_round,
+)
 from hx_email.server.mail.impl.refresh_log_service import (
     insert_refresh_log as _insert_refresh_log,
 )
@@ -126,7 +132,11 @@ def _fetch_group_accounts(
     ]
 
 
-def _refresh_account(settings: Settings, account: dict[str, object]) -> dict[str, object]:
+def _refresh_account(
+    settings: Settings,
+    account: dict[str, object],
+    round_id: int,
+) -> dict[str, object]:
     """Refresh one account and write a refresh log; returns its result dict."""
     account_id: int = cast(Any, account["id"])
     email: str = cast(Any, account["email"])
@@ -148,6 +158,7 @@ def _refresh_account(settings: Settings, account: dict[str, object]) -> dict[str
         str(result.get("message", "")),
         str(result.get("error_detail", "")),
         started_at=started_at,
+        round_id=round_id,
     )
     return {
         "account_id": account_id,
@@ -180,12 +191,14 @@ def _refresh_group_accounts_stream(
     group_filter, ungrouped = _group_account_scope(group_id)
     accounts = _fetch_group_accounts(settings, user_id, group_filter, ungrouped=ungrouped)
     total = len(accounts)
+    scope: str = "ungrouped" if ungrouped else f"group:{group_id}"
+    round_id: int = _create_refresh_round(settings, user_id, scope)
     yield "start", {"total": total}
     success_count = 0
     for index, account in enumerate(accounts):
         if index > 0:
             _stagger_sleep(settings)
-        result = _refresh_account(settings, account)
+        result = _refresh_account(settings, account, round_id)
         if bool(result["success"]):
             success_count += 1
         progress: dict[str, object] = {
@@ -194,6 +207,7 @@ def _refresh_group_accounts_stream(
             **result,
         }
         yield "progress", progress
+    _finish_refresh_round(settings, round_id, total, success_count, total - success_count)
     yield "complete", {"total": total, "success": success_count, "failed": total - success_count}
 
 

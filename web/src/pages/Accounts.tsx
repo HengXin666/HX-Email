@@ -1036,6 +1036,14 @@ const EmailList: React.FC<{
   const [visibleCount, setVisibleCount] = useState(EMAIL_PAGE_SIZE);
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
 
+  // 账号索引: 5000 级邮箱/账号时 accounts.find 是 O(n²), 页面会卡死;
+  // 改为 Map 一次构建、O(1) 查询。
+  const accountById = useMemo(() => {
+    const map = new Map<number, EmailAccount>();
+    for (const a of accounts) map.set(a.id, a);
+    return map;
+  }, [accounts]);
+
   const filtered = useMemo(() => {
     let list: UsableEmail[] = emails.filter((email: UsableEmail) => email.kind !== "alias");
     if (!showTemp) list = list.filter((email: UsableEmail) => email.kind !== "temp");
@@ -1048,9 +1056,7 @@ const EmailList: React.FC<{
     }
     if (normalizedQuery) {
       list = list.filter((e: UsableEmail) => {
-        const account: EmailAccount | undefined = accounts.find(
-          (a: EmailAccount) => a.id === e.email_account_id,
-        );
+        const account: EmailAccount | undefined = accountById.get(e.email_account_id ?? -1);
         const aliases: UsableEmail[] = getAccountAliases(account);
         return (
           e.address.toLowerCase().includes(normalizedQuery) ||
@@ -1065,7 +1071,7 @@ const EmailList: React.FC<{
       });
     }
     return list.sort((left, right) => compareEmailCreatedAt(left, right, sortOrder));
-  }, [accounts, emails, groupId, query, showTemp, sortOrder]);
+  }, [accountById, emails, groupId, query, showTemp, sortOrder]);
 
   // 凭证状态计数 (基于当前分组/搜索范围, 未叠加凭证筛选)
   const credCounts = useMemo(() => {
@@ -1073,23 +1079,22 @@ const EmailList: React.FC<{
     let invalid = 0;
     for (const e of filtered) {
       const state: CredentialState = accountCredentialState(
-        accounts.find((a: EmailAccount) => a.id === e.email_account_id),
+        accountById.get(e.email_account_id ?? -1),
       );
       if (state === "valid") valid += 1;
       else if (state === "invalid") invalid += 1;
     }
     return { valid, invalid };
-  }, [accounts, filtered]);
+  }, [accountById, filtered]);
 
   // 凭证筛选后的列表
   const credFiltered = useMemo(() => {
     if (credFilter === "all") return filtered;
     return filtered.filter(
       (e: UsableEmail) =>
-        accountCredentialState(accounts.find((a: EmailAccount) => a.id === e.email_account_id)) ===
-        credFilter,
+        accountCredentialState(accountById.get(e.email_account_id ?? -1)) === credFilter,
     );
-  }, [accounts, credFilter, filtered]);
+  }, [accountById, credFilter, filtered]);
 
   // 查询/分组/排序/临时邮箱可见性/凭证筛选变化时, 重置懒加载窗口回到第一页
   useEffect(() => {
@@ -1272,6 +1277,7 @@ const EmailList: React.FC<{
             <EmailCard
               key={e.id}
               email={e}
+              accountById={accountById}
               selected={selectedEmailId === e.id}
               onClick={() => onSelect(e)}
               onSettings={() => setShowSettings(e.id)}
@@ -1326,6 +1332,7 @@ const EmailList: React.FC<{
 
 const EmailCard: React.FC<{
   email: UsableEmail;
+  accountById: Map<number, EmailAccount>;
   selected: boolean;
   onClick: () => void;
   onSettings: () => void;
@@ -1334,6 +1341,7 @@ const EmailCard: React.FC<{
   onRefreshAccount?: () => void;
 }> = ({
   email,
+  accountById,
   selected,
   onClick,
   onSettings,
@@ -1342,11 +1350,11 @@ const EmailCard: React.FC<{
   onRefreshAccount,
 }) => {
   const { toast } = useToast();
-  const { accounts, refreshAccounts, refreshEmails } = useApp();
+  const { refreshAccounts, refreshEmails } = useApp();
   const [copied, setCopied] = useState(false);
   const [aliasesExpanded, setAliasesExpanded] = useState(false);
 
-  const account = (accounts || []).find((a) => a.id === email.email_account_id);
+  const account = accountById.get(email.email_account_id ?? -1);
   const aliases: UsableEmail[] = getAccountAliases(account);
   const credState: CredentialState = accountCredentialState(account);
   const cardName: string = email.label || account?.display_name || email.address;

@@ -74,4 +74,14 @@ export interface AccountStats {
   }>;
   daily_new: Array<{ date: string; count: number }>;
   daily_refresh: Array<{ date: string; success: number; failed: number }>;
+  /** 每次刷新轮次的成败统计 (按时间升序): 用于「每次刷新成功率」趋势. */
+  refresh_rounds: Array<{
+    round_id: number;
+    started_at: string;
+    scope: string;
+    total: number;
+    success: number;
+    failed: number;
+    success_rate: number;
+  }>;
 }

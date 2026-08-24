@@ -253,6 +253,108 @@ def test_account_stats_endpoint_aggregates_counts_and_series(tmp_path: Path) -> 
     assert data["by_provider"][0]["provider"] == "gmail"
 
 
+def test_account_stats_refresh_rounds_per_run_success_rate(tmp_path: Path) -> None:
+    """每次刷新 = 一轮: 按轮次聚合成功/总数/成功率, 而非按天累计."""
+    from hx_email.server.mail.impl.refresh.rounds import (
+        create_refresh_round,
+        finish_refresh_round,
+    )
+    from hx_email.server.mail.impl.refresh_log_service import insert_refresh_log
+
+    settings = make_settings(tmp_path)
+    add_accounts(settings, 1, 3)  # gmail x3 (id 1-3)
+    for index in range(2):
+        add_email_account(
+            settings,
+            1,
+            "outlook",
+            f"ms{index}@outlook.com",
+            f"ms{index}",
+            imap_host="outlook.live.com",
+            imap_port=993,
+            client_id="cid",
+            refresh_token="rt",
+        )  # outlook x2 (id 4-5)
+    client = TestClient(create_app(settings))
+    session = client.post(
+        "/api/v1/auth/login",
+        json={"username": "admin", "password": "admin"},
+    ).json()
+    headers = {"Authorization": f"Bearer {session['access_token']}"}
+
+    # 两轮刷新: 第一轮 5 个账号 4 成功 1 失败; 第二轮 2 个账号 1 成功 1 失败
+    round_1 = create_refresh_round(settings, 1, "group:3")
+    for account_id in range(1, 6):
+        insert_refresh_log(
+            settings,
+            account_id,
+            f"a{account_id}@example.com",
+            "failed" if account_id == 5 else "success",
+            "ok",
+            "",
+            round_id=round_1,
+        )
+    finish_refresh_round(settings, round_1, 5, 4, 1)
+    round_2 = create_refresh_round(settings, 1, "all")
+    for account_id in (1, 2):
+        insert_refresh_log(
+            settings,
+            account_id,
+            f"a{account_id}@example.com",
+            "failed" if account_id == 2 else "success",
+            "ok",
+            "",
+            round_id=round_2,
+        )
+    finish_refresh_round(settings, round_2, 2, 1, 1)
+
+    data = client.get("/api/v1/overview/account-stats?provider=microsoft", headers=headers).json()
+    rounds = data["refresh_rounds"]
+    # 第 2 轮只刷新了 gmail 账号, 在 outlook 视图下不出现 (无该服务商账号的轮次省略)
+    assert [r["round_id"] for r in rounds] == [round_1]
+    first = rounds[0]
+    assert first["total"] == 2  # outlook 账号在第一轮占 2 个 (id 4,5)
+    assert first["success"] == 1
+    assert first["failed"] == 1
+    assert first["success_rate"] == 50.0
+
+    # 服务商过滤: google 视图只统计 gmail 账号
+    gmail_only = client.get(
+        "/api/v1/overview/account-stats?provider=google", headers=headers
+    ).json()["refresh_rounds"]
+    assert [r["round_id"] for r in gmail_only] == [round_1, round_2]  # 按时间升序
+    assert gmail_only[0]["total"] == 3  # gmail 在第一轮占 3 个
+    assert gmail_only[0]["failed"] == 0
+    assert gmail_only[0]["success_rate"] == 100.0
+    assert gmail_only[1]["total"] == 2
+    assert gmail_only[1]["success"] == 1
+    assert gmail_only[1]["failed"] == 1
+    assert gmail_only[1]["success_rate"] == 50.0
+
+
+def test_refresh_single_account_writes_round(tmp_path: Path) -> None:
+    """单账号刷新也记一轮 (round_id 落库, 轮次表写入成败)."""
+    from hx_email.database import connect
+    from hx_email.server.mail.impl.refresh.single import refresh_single_account
+
+    settings = make_settings(tmp_path)
+    add_accounts(settings, 1, 1)
+    with connect(settings) as connection:
+        connection.execute("UPDATE email_accounts SET status = 'inactive' WHERE id = 1")
+    result = refresh_single_account(settings, 1, 1, object())  # type: ignore[arg-type]
+    assert result["success"] is False
+    with connect(settings) as connection:
+        log = connection.execute(
+            "SELECT round_id FROM refresh_logs WHERE account_id = 1"
+        ).fetchone()
+        round_row = connection.execute(
+            "SELECT total, success, failed FROM refresh_rounds WHERE id = ?",
+            (log["round_id"],),
+        ).fetchone()
+    assert round_row["total"] == 1
+    assert round_row["failed"] == 1
+
+
 def test_classify_refresh_error_distinguishes_microsoft_codes() -> None:
     from hx_email.server.mail.impl.refresh_log_service import classify_refresh_error
 

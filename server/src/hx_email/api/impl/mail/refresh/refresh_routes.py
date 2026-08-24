@@ -18,11 +18,11 @@ from hx_email.server.mail.impl.patrol.refresh import (
     refresh_group_accounts,
     refresh_ungrouped_accounts,
 )
+from hx_email.server.mail.impl.refresh.single import refresh_single_account
 from hx_email.server.mail.impl.refresh_service import (
     refresh_all_accounts,
     refresh_failed_accounts,
     refresh_selected_accounts,
-    refresh_single_account,
 )
 from hx_email.server.mail.verification import MailboxProvider
 

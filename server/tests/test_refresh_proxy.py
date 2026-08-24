@@ -9,9 +9,9 @@ from hx_email.server.mail.impl.oauth_tool import (
     try_refresh_oauth_token,
     try_refresh_provider_oauth_token,
 )
+from hx_email.server.mail.impl.refresh.single import refresh_single_account
 from hx_email.server.mail.impl.refresh_service import (
     refresh_selected_accounts,
-    refresh_single_account,
 )
 from hx_email.server.mail.verification import EmptyMailboxProvider
 
@@ -35,7 +35,7 @@ def test_refresh_single_account_passes_group_proxy_to_token_refresh(tmp_path) ->
     _insert_proxy_account(settings)
 
     with patch(
-        "hx_email.server.mail.impl.refresh_service.try_refresh_provider_oauth_token",
+        "hx_email.server.mail.impl.refresh.single.try_refresh_provider_oauth_token",
         return_value={"success": True, "message": "ok", "error_detail": ""},
     ) as refresh:
         result = refresh_single_account(settings, 1, 1, EmptyMailboxProvider())
@@ -162,7 +162,7 @@ def test_refresh_failure_records_first_success_to_failure_transition(tmp_path) -
 
     fail_result = {"success": False, "message": "boom", "error_detail": "invalid_grant"}
     with patch(
-        "hx_email.server.mail.impl.refresh_service.try_refresh_provider_oauth_token",
+        "hx_email.server.mail.impl.refresh.single.try_refresh_provider_oauth_token",
         return_value=fail_result,
     ):
         first = refresh_single_account(settings, 1, 1, EmptyMailboxProvider())
@@ -177,7 +177,7 @@ def test_refresh_failure_records_first_success_to_failure_transition(tmp_path) -
     assert second_times["refresh_failed_at"] == first_times["refresh_failed_at"]
 
     with patch(
-        "hx_email.server.mail.impl.refresh_service.try_refresh_provider_oauth_token",
+        "hx_email.server.mail.impl.refresh.single.try_refresh_provider_oauth_token",
         return_value={"success": True, "message": "ok", "error_detail": ""},
     ):
         refresh_single_account(settings, 1, 1, EmptyMailboxProvider())

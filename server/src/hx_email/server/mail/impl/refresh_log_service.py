@@ -26,6 +26,7 @@ def insert_refresh_log(
     error_detail: str,
     started_at: str | None = None,
     completed_at: str | None = None,
+    round_id: int | None = None,
 ) -> int:
     now = completed_at or now_iso()
     with connect(settings) as connection:
@@ -33,11 +34,11 @@ def insert_refresh_log(
             """
             INSERT INTO refresh_logs (
                 account_id, email, status, message, error_detail,
-                started_at, completed_at
+                started_at, completed_at, round_id
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (account_id, email, status, message, error_detail, started_at, now),
+            (account_id, email, status, message, error_detail, started_at, now, round_id),
         )
         if status == "success":
             connection.execute(

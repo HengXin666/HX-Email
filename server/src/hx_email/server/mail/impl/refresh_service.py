@@ -7,6 +7,12 @@ from typing import Any, cast
 from hx_email.config import Settings
 from hx_email.database import connect
 from hx_email.server.mail.impl.oauth_tool import try_refresh_provider_oauth_token
+from hx_email.server.mail.impl.refresh.rounds import (
+    create_refresh_round as _create_refresh_round,
+)
+from hx_email.server.mail.impl.refresh.rounds import (
+    finish_refresh_round as _finish_refresh_round,
+)
 from hx_email.server.mail.impl.refresh_log_service import (
     insert_refresh_log as _insert_refresh_log,
 )
@@ -19,94 +25,6 @@ from hx_email.server.settings_service import get_setting
 
 def sse_event(event: str, data: object) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
-
-
-def refresh_single_account(
-    settings: Settings,
-    user_id: int,
-    account_id: int,
-    mailbox_provider: MailboxProvider,
-) -> dict[str, object]:
-    started_at = _now_iso()
-    with connect(settings) as connection:
-        row = connection.execute(
-            """
-            SELECT ea.id, ea.primary_address, ea.provider, ea.client_id,
-                   ea.refresh_token, ea.status,
-                   g.proxy_url
-            FROM email_accounts ea
-            LEFT JOIN groups g ON g.id = ea.group_id
-            WHERE ea.id = ? AND ea.user_id = ?
-            """,
-            (account_id, user_id),
-        ).fetchone()
-    if row is None:
-        return {"account_id": account_id, "success": False, "message": "Account not found"}
-    email: str = row["primary_address"]
-    provider: str = row["provider"] or ""
-    client_id_v: str = row["client_id"] or ""
-    refresh_token_val: str = row["refresh_token"] or ""
-    proxy_url: str = row["proxy_url"] or ""
-    account_status: str = row["status"] or "inactive"
-    if account_status != "active":
-        _insert_refresh_log(
-            settings,
-            account_id,
-            email,
-            "failed",
-            "Account is not active",
-            "account_inactive",
-            started_at=started_at,
-        )
-        return {
-            "account_id": account_id,
-            "success": False,
-            "email": email,
-            "message": "Account is not active",
-        }
-    if provider not in ("outlook", "gmail"):
-        return {
-            "account_id": account_id,
-            "success": True,
-            "email": email,
-            "message": "Password-based account does not require token refresh",
-        }
-    if not client_id_v or not refresh_token_val:
-        _insert_refresh_log(
-            settings,
-            account_id,
-            email,
-            "failed",
-            "Missing OAuth credentials (client_id or refresh_token)",
-            "missing_credentials",
-            started_at=started_at,
-        )
-        return {
-            "account_id": account_id,
-            "success": False,
-            "email": email,
-            "message": "Missing OAuth credentials",
-        }
-    result = try_refresh_provider_oauth_token(
-        settings, provider, client_id_v, refresh_token_val, proxy_url, account_id
-    )
-    log_status = "success" if result["success"] else "failed"
-    _insert_refresh_log(
-        settings,
-        account_id,
-        email,
-        log_status,
-        str(result.get("message", "")),
-        str(result.get("error_detail", "")),
-        started_at=started_at,
-    )
-    return {
-        "account_id": account_id,
-        "success": result["success"],
-        "email": email,
-        "message": result.get("message", ""),
-        "error_detail": result.get("error_detail", ""),
-    }
 
 
 def _fetch_active_accounts(
@@ -159,9 +77,11 @@ def _stagger_sleep(settings: Settings) -> None:
 
 def _refresh_account_batch(
     settings: Settings,
+    user_id: int,
     accounts: list[dict[str, object]],
 ) -> Generator[str, None, None]:
     total = len(accounts)
+    round_id: int = _create_refresh_round(settings, user_id, "batch")
     yield sse_event("start", {"total": total})
     success_count = 0
     fail_count = 0
@@ -185,6 +105,7 @@ def _refresh_account_batch(
             str(result.get("message", "")),
             str(result.get("error_detail", "")),
             started_at=started_at,
+            round_id=round_id,
         )
         if result["success"]:
             success_count += 1
@@ -200,6 +121,7 @@ def _refresh_account_batch(
             "error_detail": result.get("error_detail", ""),
         }
         yield sse_event("progress", progress)
+    _finish_refresh_round(settings, round_id, total, success_count, fail_count)
     yield sse_event(
         "complete",
         {"total": total, "success": success_count, "failed": fail_count},
@@ -212,7 +134,7 @@ def refresh_all_accounts(
     mailbox_provider: MailboxProvider,
 ) -> Generator[str, None, None]:
     accounts = _fetch_active_accounts(settings, user_id)
-    yield from _refresh_account_batch(settings, accounts)
+    yield from _refresh_account_batch(settings, user_id, accounts)
 
 
 def refresh_selected_accounts(
@@ -247,7 +169,7 @@ def refresh_selected_accounts(
         }
         for row in rows
     ]
-    yield from _refresh_account_batch(settings, accounts)
+    yield from _refresh_account_batch(settings, user_id, accounts)
 
 
 def refresh_failed_accounts(
@@ -286,4 +208,4 @@ def refresh_failed_accounts(
         }
         for row in rows
     ]
-    yield from _refresh_account_batch(settings, accounts)
+    yield from _refresh_account_batch(settings, user_id, accounts)
