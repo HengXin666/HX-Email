@@ -106,8 +106,22 @@ export const AccountStatsTab: React.FC<{ provider: "microsoft" | "google" }> = (
     return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
 
-  /** 每次刷新轮次的成功率序列: 横轴=一次刷新, 纵轴=该轮成功数/总尝试数 (%).
-   *  不是按天累计 — 每天刷新次数不固定, 天级成功数无法反映单次刷新的成败趋势。 */
+  /** 每次巡航轮次的成功率序列: 横轴=每次巡航, 纵轴=该轮成功数/总尝试数 (%).
+   *  服务端已排除 single 手动单刷, 只保留多账号批量刷新 (patrol all/failed/group),
+   *  因此每个点即一次完整巡航, 横轴按巡航开始时间标注。 */
+  function roundScopeLabel(scope: string): string {
+    const mode = scope.startsWith("group:") ? "group" : scope;
+    return (
+      {
+        all: "全量巡航",
+        failed: "失败重刷",
+        group: "分组巡航",
+        ungrouped: "未分组巡航",
+        selected: "选中刷新",
+      }[mode] ?? scope
+    );
+  }
+
   const roundSuccessSeries: ChartSeries[] = useMemo(() => {
     if (!stats?.refresh_rounds || stats.refresh_rounds.length === 0) return [];
     return [
@@ -119,7 +133,7 @@ export const AccountStatsTab: React.FC<{ provider: "microsoft" | "google" }> = (
         points: stats.refresh_rounds.map((r) => ({
           label: formatRoundTime(r.started_at),
           value: r.success_rate,
-          detail: `成功 ${r.success} / 总数 ${r.total}（失败 ${r.failed}）`,
+          detail: `${roundScopeLabel(r.scope)} · 成功 ${r.success} / 总数 ${r.total}（失败 ${r.failed}）`,
         })),
       },
     ];
@@ -249,7 +263,7 @@ export const AccountStatsTab: React.FC<{ provider: "microsoft" | "google" }> = (
             </Card>
             <Card className="p-4">
               <h3 className="text-sm font-semibold text-gh-text mb-1">
-                每次刷新成功率（近 30 次刷新）
+                每次巡航成功率（近 30 次巡航）
               </h3>
               {roundSummary ? (
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-gh-text-muted mb-3">
@@ -277,7 +291,7 @@ export const AccountStatsTab: React.FC<{ provider: "microsoft" | "google" }> = (
                   </span>
                 </div>
               ) : (
-                <div className="text-[11px] text-gh-text-muted mb-3">近 30 天暂无刷新记录</div>
+                <div className="text-[11px] text-gh-text-muted mb-3">近 30 天暂无巡航记录</div>
               )}
               {roundSuccessSeries.length > 0 ? (
                 <StatChart
@@ -287,7 +301,7 @@ export const AccountStatsTab: React.FC<{ provider: "microsoft" | "google" }> = (
                 />
               ) : (
                 <div className="py-10 text-center text-sm text-gh-text-secondary">
-                  每次刷新为一次轮次；刷新后会在此展示该轮成功率趋势。
+                  每次巡航为一次批量刷新；巡航后会在此展示该轮成功率趋势。
                 </div>
               )}
             </Card>

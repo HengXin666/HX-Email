@@ -254,7 +254,7 @@ def test_account_stats_endpoint_aggregates_counts_and_series(tmp_path: Path) -> 
 
 
 def test_account_stats_refresh_rounds_per_run_success_rate(tmp_path: Path) -> None:
-    """每次刷新 = 一轮: 按轮次聚合成功/总数/成功率, 而非按天累计."""
+    """每次巡航 = 一轮: 按巡航轮次聚合成功/总数/成功率, 排除 single 手动单刷."""
     from hx_email.server.mail.impl.refresh.rounds import (
         create_refresh_round,
         finish_refresh_round,
@@ -282,7 +282,20 @@ def test_account_stats_refresh_rounds_per_run_success_rate(tmp_path: Path) -> No
     ).json()
     headers = {"Authorization": f"Bearer {session['access_token']}"}
 
-    # 两轮刷新: 第一轮 5 个账号 4 成功 1 失败; 第二轮 2 个账号 1 成功 1 失败
+    # 手动单刷 (scope='single') 也落库, 但不计入巡航趋势
+    single_round = create_refresh_round(settings, 1, "single")
+    insert_refresh_log(
+        settings,
+        1,
+        "a1@example.com",
+        "success",
+        "ok",
+        "",
+        round_id=single_round,
+    )
+    finish_refresh_round(settings, single_round, 1, 1, 0)
+
+    # 两轮巡航: 第一轮 5 个账号 4 成功 1 失败; 第二轮 2 个账号 1 成功 1 失败
     round_1 = create_refresh_round(settings, 1, "group:3")
     for account_id in range(1, 6):
         insert_refresh_log(
@@ -310,7 +323,7 @@ def test_account_stats_refresh_rounds_per_run_success_rate(tmp_path: Path) -> No
 
     data = client.get("/api/v1/overview/account-stats?provider=microsoft", headers=headers).json()
     rounds = data["refresh_rounds"]
-    # 第 2 轮只刷新了 gmail 账号, 在 outlook 视图下不出现 (无该服务商账号的轮次省略)
+    # single 手动单刷不出现; 第 2 轮只刷新了 gmail 账号, 在 outlook 视图下也不出现
     assert [r["round_id"] for r in rounds] == [round_1]
     first = rounds[0]
     assert first["total"] == 2  # outlook 账号在第一轮占 2 个 (id 4,5)
@@ -318,7 +331,7 @@ def test_account_stats_refresh_rounds_per_run_success_rate(tmp_path: Path) -> No
     assert first["failed"] == 1
     assert first["success_rate"] == 50.0
 
-    # 服务商过滤: google 视图只统计 gmail 账号
+    # 服务商过滤: google 视图只统计 gmail 账号, single 轮同样被排除
     gmail_only = client.get(
         "/api/v1/overview/account-stats?provider=google", headers=headers
     ).json()["refresh_rounds"]

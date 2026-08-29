@@ -45,7 +45,7 @@ export const StatChart: React.FC<StatChartProps> = ({
   const computedMax: number = Math.max(1, ...allValues);
   const yMax: number = maxValue ?? computedMax;
   const pointCount: number = Math.max(2, ...series.map((s) => s.points.length));
-  const yTicks: number[] = [yMax, Math.round(yMax / 2), 0];
+  const yTicks: number[] = Array.from(new Set([yMax, Math.round(yMax / 2), 0]));
 
   const toPath = (points: ChartPoint[]): string =>
     points

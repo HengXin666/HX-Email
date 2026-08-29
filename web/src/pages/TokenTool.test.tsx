@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import React from "react";
 import { beforeEach, expect, test, vi } from "vitest";
 import { ToastProvider } from "../components/ui/Toast";
@@ -200,4 +200,79 @@ test("account-stats tab follows the selected provider from the dropdown", async 
   expect(screen.getAllByText(/Microsoft \(Outlook\)/).length).toBeGreaterThan(0);
   expect(screen.getByText("刷新失败原因分布（近 30 天，按错误码分类）")).toBeInTheDocument();
   expect(screen.getByText("令牌失效/过期")).toBeInTheDocument();
+});
+
+test("round-rate chart only plots patrol rounds and labels hover by cruise time", async () => {
+  // 巡航轮 (scope='all', 每小时一次): 才是「每次刷新成功率」的粒度。
+  // single 手动单刷由服务端排除, 前端不应出现。
+  const patrolRounds = Array.from({ length: 12 }, (_, i) => ({
+    round_id: 1000 + i,
+    started_at: `2026-08-29T${String(8 + i).padStart(2, "0")}:47:46.000000+00:00`,
+    scope: "all",
+    total: 305,
+    success: i % 3 === 0 ? 120 : 153,
+    failed: i % 3 === 0 ? 185 : 152,
+    success_rate: i % 3 === 0 ? 39.3 : 50.2,
+  }));
+  getAccountStats.mockResolvedValue({
+    total: 2,
+    oauth: 2,
+    microsoft: 1,
+    google: 1,
+    valid: 2,
+    invalid: 0,
+    unknown: 0,
+    failed_refresh: 0,
+    last_refresh: null,
+    by_provider: [
+      { provider: "outlook", count: 1 },
+      { provider: "gmail", count: 1 },
+    ],
+    by_group: [],
+    ungrouped: { total: 2, valid: 2, invalid: 0 },
+    error_categories: [],
+    age_buckets: [],
+    daily_new: [],
+    daily_refresh: [],
+    refresh_rounds: patrolRounds,
+  });
+  window.localStorage.setItem("hx_token_tool_provider", "microsoft");
+  window.localStorage.setItem("hx_token_tool_active_tab", "guide");
+
+  render(
+    <ToastProvider>
+      <TokenTool />
+    </ToastProvider>,
+  );
+
+  fireEvent.click(screen.getByText("账号统计"));
+  expect(await screen.findByText("每次巡航成功率（近 30 次巡航）")).toBeInTheDocument();
+
+  // 横轴刻度: 12 轮 > 8 → 取 前/中/末 三个时间标签, 必须互不相同 (每次巡航时间点)
+  const chartCard = screen
+    .getByText("每次巡航成功率（近 30 次巡航）")
+    .closest("div") as HTMLElement;
+  // 刻度容器在绘图区下方: 取全部 3 个时间标签
+  const axisRow = chartCard.querySelector(".mt-1.flex");
+  expect(axisRow).not.toBeNull();
+  const axisLabels = Array.from((axisRow as HTMLElement).querySelectorAll("span")).map(
+    (el) => el.textContent ?? "",
+  );
+  expect(axisLabels).toHaveLength(3);
+  expect(new Set(axisLabels).size).toBe(3); // 前/中/末各不同
+
+  // 悬浮提示: 模拟鼠标移动到最后一个巡航点, 横坐标=该次巡航时间 + 全量巡航明细
+  const plotArea = chartCard.querySelector(".relative.flex-1");
+  expect(plotArea).not.toBeNull();
+  const originalRect = Element.prototype.getBoundingClientRect;
+  Element.prototype.getBoundingClientRect = () =>
+    ({ left: 0, top: 0, width: 300, height: 168, right: 300, bottom: 168 }) as DOMRect;
+  try {
+    fireEvent.mouseMove(plotArea as HTMLElement, { clientX: 9999, clientY: 50 });
+    expect(
+      within(plotArea as HTMLElement).getByText("全量巡航 · 成功 153 / 总数 305（失败 152）"),
+    ).toBeInTheDocument();
+  } finally {
+    Element.prototype.getBoundingClientRect = originalRect;
+  }
 });

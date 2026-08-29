@@ -52,9 +52,11 @@ def get_refresh_round_stats(
     cutoff_iso: str,
     limit: int = 30,
 ) -> list[dict[str, object]]:
-    """按刷新轮次聚合最近 N 轮的成功/失败/总数 (可只统计单一服务商).
+    """按巡航轮次聚合最近 N 轮的成功/失败/总数 (可只统计单一服务商).
 
-    每轮 = 一次批量或单账号刷新; 返回值按开始时间升序 (最旧在前), 供
+    只统计「巡航」轮次 (scope != 'single', 即 patrol 的 all/failed/group 等
+    一次覆盖多账号的批量刷新), 排除手动单卡刷新的 single 轮 — 后者每轮只有
+    1 个账号, 会淹没巡航趋势。返回值按开始时间升序 (最旧在前), 供
     「每次刷新成功率」趋势图使用; 某轮无该服务商账号时整轮省略。
     """
     provider_filter: str = ""
@@ -74,6 +76,7 @@ def get_refresh_round_stats(
             JOIN refresh_rounds rr ON rr.id = rl.round_id
             WHERE rl.round_id IS NOT NULL
               AND rl.completed_at >= ?
+              AND rr.scope != 'single'
               {provider_filter}
             GROUP BY rl.round_id
             ORDER BY rr.started_at DESC, rl.round_id DESC
