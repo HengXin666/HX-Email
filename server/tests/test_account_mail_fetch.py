@@ -17,7 +17,10 @@ class SequenceMailboxProvider:
         self.since_uids = []
 
     def read_messages(self, email_account, folder="inbox", skip=0, top=50, since_uid=""):
-        _ = (email_account, folder, skip)
+        _ = (email_account, skip)
+        # 刷新会读 收件箱 + 垃圾箱; 这个假件的垃圾箱是空的, 也不计序列/calls
+        if folder != "inbox":
+            return []
         self.last_top = top
         self.since_uids.append(since_uid)
         self.calls += 1

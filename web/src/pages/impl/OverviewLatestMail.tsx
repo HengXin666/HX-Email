@@ -48,6 +48,14 @@ export const OverviewLatestMail: React.FC<OverviewLatestMailProps> = ({
                     <span className="text-sm font-medium text-gh-text truncate">
                       {message.subject || "(无主题)"}
                     </span>
+                    {message.folder === "junk" && (
+                      <span
+                        title="该邮件来自垃圾邮件箱"
+                        className="inline-flex shrink-0 items-center rounded px-1 py-px text-[10px] font-medium bg-[#d29922]/15 text-[#d29922]"
+                      >
+                        垃圾邮件
+                      </span>
+                    )}
                     {message.verification_code && (
                       <span className="inline-flex items-center gap-1 text-xs font-mono text-gh-warning shrink-0">
                         <IconKey size={11} /> {message.verification_code}

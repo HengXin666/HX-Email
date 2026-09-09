@@ -23,7 +23,10 @@ class CountingMailboxProvider:
         top: int = 50,
         since_uid: str = "",
     ) -> list[MailboxMessage]:
-        _ = (email_account, folder, skip, top, since_uid)
+        _ = (email_account, skip, top, since_uid)
+        # 刷新会读 收件箱 + 垃圾箱; 这里只统计收件箱, 垃圾箱视为空
+        if folder != "inbox":
+            return []
         self.calls += 1
         return [
             MailboxMessage(

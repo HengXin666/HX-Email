@@ -53,6 +53,8 @@ COLUMN_MIGRATIONS: tuple[tuple[str, str, str], ...] = (
     ("fetched_messages", "message_id", "TEXT NOT NULL DEFAULT ''"),
     ("fetched_messages", "body_html", "TEXT NOT NULL DEFAULT ''"),
     ("fetched_messages", "from_email", "TEXT NOT NULL DEFAULT ''"),
+    # 来源文件夹 (inbox/junk/...): 垃圾邮件箱里的验证码也要能被展示与提取
+    ("fetched_messages", "folder", "TEXT NOT NULL DEFAULT 'inbox'"),
     ("sessions", "expires_at", "TEXT NOT NULL DEFAULT ''"),
     ("refresh_logs", "round_id", "INTEGER"),
 )

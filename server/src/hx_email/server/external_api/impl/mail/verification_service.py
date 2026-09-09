@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from hx_email.config import Settings
 from hx_email.server.external_api.impl.mail.helpers import (
-    coerce_messages,
     filter_messages,
+    read_messages_with_junk,
     resolve_email,
 )
 from hx_email.server.external_api.impl.mail.temp_mail_reader import (
@@ -66,8 +64,7 @@ def extract_verification_code(
                 return temp_result
         return {"verification_code": "", "matched_email_id": "", "match_count": 0}
 
-    raw_all: list[Any] = mailbox_provider.read_messages(account)
-    all_msgs: list[MailboxMessage] = coerce_messages(raw_all)
+    all_msgs: list[MailboxMessage] = read_messages_with_junk(mailbox_provider, account, folder)
     filtered: list[MailboxMessage] = filter_messages(
         all_msgs, from_contains, subject_contains, since_minutes
     )
@@ -108,8 +105,7 @@ def extract_verification_link(
                 return temp_result
         return {"verification_link": "", "matched_email_id": "", "match_count": 0}
 
-    raw_all: list[Any] = mailbox_provider.read_messages(account)
-    all_msgs: list[MailboxMessage] = coerce_messages(raw_all)
+    all_msgs: list[MailboxMessage] = read_messages_with_junk(mailbox_provider, account, folder)
     filtered: list[MailboxMessage] = filter_messages(
         all_msgs, from_contains, subject_contains, since_minutes
     )

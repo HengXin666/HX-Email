@@ -25,6 +25,8 @@ export interface StoredEmailMessage {
   message_id?: string;
   received_at: string;
   created_at: string;
+  /** 来源文件夹: inbox / junk(垃圾邮件) / ... */
+  folder?: string;
 }
 
 export interface EmailMessagesPage {
@@ -53,6 +55,8 @@ export interface MailNotification {
   subject: string;
   verification_code: string | null;
   received_at: string;
+  /** inbox / junk(垃圾邮件) */
+  folder?: string;
 }
 
 export interface LatestMailMessage {
@@ -65,5 +69,7 @@ export interface LatestMailMessage {
   subject: string;
   body: string;
   verification_code: string | null;
+  /** inbox / junk(垃圾邮件) */
+  folder?: string;
   received_at: string;
 }

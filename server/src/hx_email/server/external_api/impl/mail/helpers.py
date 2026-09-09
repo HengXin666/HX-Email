@@ -4,8 +4,10 @@ from typing import Any
 
 from hx_email.config import Settings
 from hx_email.database import connect
-from hx_email.server.mail import MailboxMessage
+from hx_email.server.mail import EmailAccountMailbox, MailboxMessage
 from hx_email.server.mail.verification import (
+    FolderMailboxProvider,
+    MailboxProvider,
     coerce_message,
 )
 
@@ -44,6 +46,36 @@ def resolve_email(settings: Settings, email: str, claim_token: str | None = None
 def coerce_messages(raw_messages: list[Any]) -> list[MailboxMessage]:
     """Convert raw messages to MailboxMessage list."""
     return [coerce_message(raw) for raw in raw_messages]
+
+
+def read_messages_with_junk(
+    mailbox_provider: MailboxProvider,
+    account: EmailAccountMailbox,
+    folder: str = "inbox",
+    top: int = 50,
+) -> list[MailboxMessage]:
+    """读指定文件夹 + 垃圾邮件箱 (验证码常被判垃圾), 按 message_id/主题/时间去重。"""
+    if isinstance(mailbox_provider, FolderMailboxProvider):
+        raw: list[Any] = []
+        for target in (folder, "junk"):
+            try:
+                raw.extend(mailbox_provider.read_messages_folder(account, folder=target, top=top))
+            except Exception:
+                continue
+        return dedupe_messages(coerce_messages(raw))
+    return coerce_messages(list(mailbox_provider.read_messages(account)))
+
+
+def dedupe_messages(messages: list[MailboxMessage]) -> list[MailboxMessage]:
+    seen: set[tuple[str, str, str]] = set()
+    unique: list[MailboxMessage] = []
+    for message in messages:
+        key = (message.message_id, message.subject, message.received_at)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(message)
+    return unique
 
 
 def filter_messages(

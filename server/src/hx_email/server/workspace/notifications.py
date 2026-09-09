@@ -23,7 +23,7 @@ def list_latest_messages(
                    COALESCE(g.name, '') AS group_name,
                    COALESCE(g.color, '') AS group_color,
                    m.from_address, m.recipient_address, m.subject, m.body,
-                   m.received_at, m.created_at
+                   m.received_at, m.created_at, m.folder
             FROM fetched_messages m
             JOIN usable_emails ue ON ue.id = m.usable_email_id AND ue.user_id = m.user_id
             LEFT JOIN email_accounts ea ON ea.id = m.email_account_id AND ea.user_id = m.user_id
@@ -57,6 +57,7 @@ def list_latest_messages(
                 f"{row['subject']}\n{row['body'] or ''}"
             ),
             "received_at": row["received_at"] or row["created_at"],
+            "folder": row["folder"] or "inbox",
         }
         for row in rows
     ]

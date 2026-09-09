@@ -22,3 +22,4 @@ class MailboxMessage:
     message_id: str = ""
     is_read: bool = False
     has_attachments: bool = False
+    folder: str = "inbox"

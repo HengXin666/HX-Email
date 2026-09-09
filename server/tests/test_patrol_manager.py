@@ -1,9 +1,11 @@
 """持久化巡检管理器: 后台线程状态机 (启动/暂停/恢复/终止) 与 HTTP 端点。"""
 
 import time
+from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from fastapi.testclient import TestClient
 from hx_email.app import create_app
 from hx_email.config import Settings
@@ -11,6 +13,21 @@ from hx_email.database import connect, migrate
 from hx_email.server.mail.email_accounts import add_email_account
 from hx_email.server.mail.impl.patrol.patrol_manager import manager
 from hx_email.server.settings_service import set_setting
+
+
+@pytest.fixture(autouse=True)
+def _reset_patrol_singleton() -> Iterator[None]:
+    """巡检管理器是进程级单例。
+
+    整套测试一起跑时, 前面的用例/后台线程可能给它留下一个未结束的任务,
+    导致本文件第一个 start() 直接返回 False (实测 main 分支就是这样挂的)。
+    每个用例前后强制清空 user 1 的残留状态, 保证用例互相隔离。
+    """
+    manager.stop(1)
+    manager._patrols.pop(1, None)
+    yield
+    manager.stop(1)
+    manager._patrols.pop(1, None)
 
 
 def make_settings(tmp_path: Path, concurrent_workers: int = 1) -> Settings:

@@ -65,8 +65,8 @@ def save_messages(
                 INSERT OR IGNORE INTO fetched_messages (
                     user_id, usable_email_id, email_account_id,
                     from_address, from_email, recipient_address, subject, body,
-                    body_html, message_id, received_at, body_hash
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    body_html, message_id, received_at, body_hash, folder
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     user_id,
@@ -81,6 +81,7 @@ def save_messages(
                     message_id,
                     received_at or now_iso(),
                     body_hash,
+                    msg.folder or "inbox",
                 ),
             )
             if cursor.rowcount > 0 and cursor.lastrowid is not None:
@@ -162,12 +163,12 @@ def get_messages(
     limit: int = 100,
     offset: int = 0,
 ) -> list[dict[str, object]]:
-    """List persisted messages for a usable_email, newest first."""
+    """List persisted messages for a usable_email, newest first (按收信时间倒序)."""
     with connect(settings) as conn:
         rows = conn.execute(
             """
             SELECT id, from_address, from_email, recipient_address, subject,
-                   body, body_html, message_id, received_at, created_at
+                   body, body_html, message_id, received_at, created_at, folder
             FROM fetched_messages
             WHERE usable_email_id = ?
             ORDER BY received_at DESC, id DESC
@@ -261,4 +262,5 @@ def row_to_dict(row: Row) -> dict[str, object]:
         "message_id": row["message_id"],
         "received_at": row["received_at"],
         "created_at": row["created_at"],
+        "folder": row["folder"] or "inbox",
     }

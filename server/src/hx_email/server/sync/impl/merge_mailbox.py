@@ -112,7 +112,7 @@ def merge_fetched_messages(
         connection.execute(
             "INSERT OR IGNORE INTO fetched_messages (user_id, usable_email_id, email_account_id,"
             " from_address, recipient_address, subject, body, message_id, body_hash,"
-            " received_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " received_at, created_at, folder) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 strict_remap(user_ids, row["user_id"]),
                 strict_remap(email_ids, row["usable_email_id"]),
@@ -125,5 +125,6 @@ def merge_fetched_messages(
                 row["body_hash"],
                 row["received_at"],
                 row["created_at"],
+                row.get("folder") or "inbox",
             ),
         )

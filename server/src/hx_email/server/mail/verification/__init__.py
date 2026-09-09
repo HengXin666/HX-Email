@@ -254,4 +254,5 @@ def coerce_message(message: MailboxMessage | dict[str, object]) -> MailboxMessag
         from_address=str(message.get("from_address", "")),
         from_email=str(message.get("from_email", "")),
         body_html=str(message.get("body_html", "")),
+        folder=str(message.get("folder") or "inbox"),
     )

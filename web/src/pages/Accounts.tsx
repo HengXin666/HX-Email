@@ -1900,6 +1900,8 @@ interface DetailMessage {
   verification_code?: string | null;
   received_at?: string;
   created_at?: string;
+  /** 来源文件夹: junk = 垃圾邮件箱 (前端显示"垃圾邮件"标签) */
+  folder?: string;
 }
 
 interface VerificationCodeItem {
@@ -1972,6 +1974,7 @@ function mapStoredMessages(
     verification_code: message.verification_code,
     received_at: message.received_at || message.created_at || "",
     created_at: message.created_at,
+    folder: message.folder || "inbox",
   }));
 }
 
@@ -2541,6 +2544,14 @@ const MessagesTab: React.FC<{
                     >
                       {m.subject || "(无主题)"}
                     </div>
+                    {m.folder === "junk" && (
+                      <span
+                        title="该邮件来自垃圾邮件箱"
+                        className="inline-flex shrink-0 items-center rounded px-1 py-px text-[10px] font-medium bg-[#d29922]/15 text-[#d29922]"
+                      >
+                        垃圾邮件
+                      </span>
+                    )}
                     {m.verification_code && (
                       <button
                         type="button"
