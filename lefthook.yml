@@ -15,6 +15,11 @@ pre-commit:
       glob: "*.{md,yml,yaml}"
       run: web/node_modules/.bin/prettier --write --ignore-unknown {staged_files}
       stage_fixed: true
+    # Agent Notes 门禁 (结构/格式/引用/覆盖率). 复用 skill 自带的 shim, 它自带
+    # "原生 Node >=22.6 优先, 否则 npx tsx" 的 runner 回退. 不加 glob: 覆盖率门禁
+    # 必须在每次提交都跑, 否则动了受保护源码却不带 note 的提交会被放过去.
+    agent-notes:
+      run: sh .agents/skills/hx-agent-notes/assets/hooks/pre-commit
 
 pre-push:
   commands:

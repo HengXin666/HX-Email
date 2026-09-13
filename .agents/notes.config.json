@@ -1,0 +1,65 @@
+{
+  "root": ".agents/notes",
+  "archive": "archived",
+  "lifecycles": [
+    "proposed",
+    "implemented",
+    "rejected"
+  ],
+  "classes": [
+    "feature",
+    "bug-fix",
+    "simplification",
+    "architecture",
+    "process",
+    "testing"
+  ],
+  "formatAdopted": "2026-07-05",
+  "coverage": {
+    "enabled": true,
+    "guarded": [
+      "server/**",
+      "web/**",
+      "scripts/**",
+      "extension/**",
+      "tampermonkey/**"
+    ],
+    "label": "note-exempt"
+  },
+  "backlinks": {
+    "enabled": true,
+    "required": false,
+    "roots": [
+      "server",
+      "web",
+      "scripts",
+      "extension",
+      "tampermonkey"
+    ],
+    "exclude": [
+      ".agents/**",
+      "**/.agents/**",
+      "**/*.spec.*",
+      "**/*.test.*"
+    ],
+    "extensions": [
+      ".ts",
+      ".tsx",
+      ".js",
+      ".mjs",
+      ".py",
+      ".go",
+      ".rs",
+      ".java",
+      ".kt",
+      ".rb",
+      ".php",
+      ".cs",
+      ".c",
+      ".cc",
+      ".cpp",
+      ".h",
+      ".hpp"
+    ]
+  }
+}
