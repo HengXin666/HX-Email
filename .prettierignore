@@ -1,1 +1,3 @@
 .codex/skills/
+# 已归档的 Agent Note 是字节冻结的 (manifest.json 存了 sha256), 格式化会撕掉封条
+.agents/notes/archived/
