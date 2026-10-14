@@ -15,7 +15,7 @@ from hx_email.server.external_api.impl.mail.temp_mail_reader import (
     to_mailbox_messages,
 )
 from hx_email.server.mail import MailboxMessage
-from hx_email.server.mail.impl.email_service import _find_email_account
+from hx_email.server.mail.impl.email_service import resolve_account_for_address
 from hx_email.server.mail.temp_mail import TempMailProvider
 from hx_email.server.mail.verification import (
     LINK_PATTERN,
@@ -46,7 +46,7 @@ def extract_verification_code(
     extraction that only matches codes near verification keywords.
     """
     resolved_email = resolve_email(settings, email, claim_token)
-    account = _find_email_account(settings, resolved_email)
+    account = resolve_account_for_address(settings, resolved_email)
     if account is None:
         if temp_mail_providers:
             temp_result = temp_extract_verification_code(
@@ -90,7 +90,7 @@ def extract_verification_link(
 ) -> dict[str, object]:
     """Extract verification link from messages."""
     resolved_email = resolve_email(settings, email, claim_token)
-    account = _find_email_account(settings, resolved_email)
+    account = resolve_account_for_address(settings, resolved_email)
     if account is None:
         if temp_mail_providers:
             temp_result = temp_extract_verification_link(

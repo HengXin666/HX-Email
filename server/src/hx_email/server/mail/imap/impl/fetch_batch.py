@@ -5,7 +5,7 @@ import re
 from email.utils import parseaddr
 
 from hx_email.server.mail import EmailAccountMailbox, MailboxMessage
-from hx_email.server.mail.imap.imap_helpers import (
+from hx_email.server.mail.imap.helpers import (
     decode_mime_header,
     extract_flags_from_fetch,
     extract_from,

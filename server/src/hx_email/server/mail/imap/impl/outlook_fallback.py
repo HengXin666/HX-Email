@@ -6,7 +6,7 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from hx_email.server.mail.imap.imap_helpers import _OUTLOOK_IMAP_SERVERS
+from hx_email.server.mail.imap.helpers import _OUTLOOK_IMAP_SERVERS
 
 if TYPE_CHECKING:
     from hx_email.server.mail import EmailAccountMailbox, MailboxMessage

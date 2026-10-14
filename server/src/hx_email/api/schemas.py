@@ -183,11 +183,6 @@ class BatchEmailRequest(BaseModel):
     top: int = 20
 
 
-class DeleteEmailRequest(BaseModel):
-    email: str
-    ids: list[str]
-
-
 class AccountUpdate(BaseModel):
     email: str | None = None
     password: str | None = None

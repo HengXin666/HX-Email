@@ -131,7 +131,9 @@ def test_gmail_fetch_uses_imported_imap_app_password(tmp_path) -> None:
     usable_email_id = account["primary_usable_email"]["id"]
     fake = FakeIMAP()
 
-    with patch("hx_email.server.mail.imap.imap_provider.imaplib.IMAP4_SSL", return_value=fake):
+    with patch(
+        "hx_email.server.mail.imap.session.credentials.imaplib.IMAP4_SSL", return_value=fake
+    ):
         result = client.post(f"{API}/usable-emails/{usable_email_id}/fetch-emails", headers=headers)
 
     assert result.status_code == 200
@@ -161,7 +163,9 @@ def test_gmail_fetch_uses_legacy_refresh_token_app_password(tmp_path) -> None:
     usable_email_id = account["primary_usable_email"]["id"]
     fake = FakeIMAP()
 
-    with patch("hx_email.server.mail.imap.imap_provider.imaplib.IMAP4_SSL", return_value=fake):
+    with patch(
+        "hx_email.server.mail.imap.session.credentials.imaplib.IMAP4_SSL", return_value=fake
+    ):
         result = client.post(f"{API}/usable-emails/{usable_email_id}/fetch-emails", headers=headers)
 
     assert result.status_code == 200
@@ -274,7 +278,9 @@ def test_gmail_import_spaced_app_password_login_normalizes(tmp_path) -> None:
     usable_email_id = account["primary_usable_email"]["id"]
     fake = FakeIMAP()
 
-    with patch("hx_email.server.mail.imap.imap_provider.imaplib.IMAP4_SSL", return_value=fake):
+    with patch(
+        "hx_email.server.mail.imap.session.credentials.imaplib.IMAP4_SSL", return_value=fake
+    ):
         result = client.post(f"{API}/usable-emails/{usable_email_id}/fetch-emails", headers=headers)
 
     assert imported["status"] == "done"
@@ -304,7 +310,9 @@ def test_gmail_update_spaced_app_password_login_normalizes(tmp_path) -> None:
     assert updated.status_code == 200
     fake = FakeIMAP()
 
-    with patch("hx_email.server.mail.imap.imap_provider.imaplib.IMAP4_SSL", return_value=fake):
+    with patch(
+        "hx_email.server.mail.imap.session.credentials.imaplib.IMAP4_SSL", return_value=fake
+    ):
         result = client.post(
             f"{API}/usable-emails/{account['primary_usable_email']['id']}/fetch-emails",
             headers=headers,
@@ -331,7 +339,9 @@ def test_non_gmail_fetch_keeps_password_verbatim(tmp_path) -> None:
     usable_email_id = account["primary_usable_email"]["id"]
     fake = FakeIMAP()
 
-    with patch("hx_email.server.mail.imap.imap_provider.imaplib.IMAP4_SSL", return_value=fake):
+    with patch(
+        "hx_email.server.mail.imap.session.credentials.imaplib.IMAP4_SSL", return_value=fake
+    ):
         result = client.post(f"{API}/usable-emails/{usable_email_id}/fetch-emails", headers=headers)
 
     assert imported["status"] == "done"

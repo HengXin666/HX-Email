@@ -12,7 +12,7 @@ from typing import Any
 from hx_email.config import Settings
 from hx_email.server.mail import EmailAccountMailbox, MailboxMessage
 from hx_email.server.mail.graph.graph_client import GraphMailProvider
-from hx_email.server.mail.imap.imap_provider import IMAPMailboxProvider
+from hx_email.server.mail.imap.session.fetch import IMAPMailboxProvider
 from hx_email.server.mail.verification import coerce_message
 
 logger = logging.getLogger(__name__)

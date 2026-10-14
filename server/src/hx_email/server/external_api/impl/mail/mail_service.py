@@ -18,7 +18,7 @@ from hx_email.server.external_api.impl.mail.temp_mail_reader import (
     temp_get_messages,
 )
 from hx_email.server.mail import MailboxMessage
-from hx_email.server.mail.impl.email_service import _find_email_account
+from hx_email.server.mail.impl.email_service import resolve_account_for_address
 from hx_email.server.mail.temp_mail import TempMailProvider
 from hx_email.server.mail.verification import MailboxProvider, coerce_message
 
@@ -38,7 +38,7 @@ def get_messages(
 ) -> dict[str, object]:
     """Fetch messages with optional filters. If claim_token, resolve email from pool claim."""
     resolved_email: str = resolve_email(settings, email, claim_token)
-    account = _find_email_account(settings, resolved_email)
+    account = resolve_account_for_address(settings, resolved_email)
     if account is None:
         if temp_mail_providers:
             temp_result = temp_get_messages(
@@ -85,7 +85,7 @@ def get_latest_message(
 ) -> dict[str, object]:
     """Get single latest message matching filters."""
     resolved_email = resolve_email(settings, email, claim_token)
-    account = _find_email_account(settings, resolved_email)
+    account = resolve_account_for_address(settings, resolved_email)
     if account is None:
         if temp_mail_providers:
             temp_result = temp_get_latest_message(
@@ -136,7 +136,7 @@ def get_message_detail(
 ) -> dict[str, object]:
     """Get full message detail with body."""
     resolved_email = resolve_email(settings, email, claim_token)
-    account = _find_email_account(settings, resolved_email)
+    account = resolve_account_for_address(settings, resolved_email)
     if account is None:
         if temp_mail_providers:
             temp_result = temp_get_message_detail(
@@ -185,7 +185,7 @@ def get_message_raw(
     Since the provider does not expose raw MIME, returns the body as text.
     """
     resolved_email = resolve_email(settings, email, claim_token)
-    account = _find_email_account(settings, resolved_email)
+    account = resolve_account_for_address(settings, resolved_email)
     if account is None:
         if temp_mail_providers:
             temp_result = temp_get_message_raw(

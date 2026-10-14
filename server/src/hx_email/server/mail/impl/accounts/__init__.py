@@ -6,6 +6,7 @@ from hx_email.server.mail.impl.accounts.account_helpers import (
 from hx_email.server.mail.impl.accounts.account_service import (
     delete_email_account,
     delete_email_account_by_email,
+    resolve_account_for_address,
     toggle_telegram_notification,
     update_account_remark,
     update_email_account,
@@ -34,6 +35,7 @@ __all__ = [
     "export_all_accounts_text",
     "export_selected_accounts_text",
     "list_email_accounts_enhanced",
+    "resolve_account_for_address",
     "search_email_accounts",
     "toggle_telegram_notification",
     "update_account_remark",

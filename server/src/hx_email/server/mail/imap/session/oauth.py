@@ -1,3 +1,9 @@
+"""Microsoft IMAP OAuth token exchange (XOAUTH2 credentials for IMAP.AccessAsUser.All).
+
+One implementation only: this module is the live path used by the IMAP reader and
+the permanent-delete path; it previously carried an unused duplicate.
+"""
+
 from __future__ import annotations
 
 import hashlib
@@ -18,7 +24,13 @@ _IMAP_SCOPE: str = "https://outlook.office.com/IMAP.AccessAsUser.All offline_acc
 _IMAP_TENANTS: tuple[str, ...] = ("consumers", "common")
 
 
-def get_imap_token(client_id: str, refresh_token: str, *, tenant: str = "consumers") -> str:
+# ── OAuth token helpers ──────────────────────────────────────────────────
+
+
+def get_imap_token(
+    client_id: str, refresh_token: str, *, tenant: str = "consumers"
+) -> tuple[str, str]:
+    """Get an IMAP-specific access token with caching (60s TTL)."""
     cache_key: str = (
         f"{tenant}:{client_id}:{hashlib.sha256(refresh_token.encode()).hexdigest()[:16]}"
     )
@@ -27,7 +39,7 @@ def get_imap_token(client_id: str, refresh_token: str, *, tenant: str = "consume
         if cached:
             token, expires = cached
             if time.monotonic() < expires:
-                return token
+                return token, ""
     token_url: str = _IMAP_TOKEN_URL_TEMPLATE.format(tenant=tenant)
     body: bytes = urlencode(
         {
@@ -50,16 +62,29 @@ def get_imap_token(client_id: str, refresh_token: str, *, tenant: str = "consume
             if not access_token:
                 error = str(data.get("error", "unknown"))
                 desc = str(data.get("error_description", str(data)))
-                raise RuntimeError(f"OAuth 令牌无效 (tenant={tenant}): {error} - {desc[:200]}")
+                raise RuntimeError(f"OAuth 令牌无效 (tenant={tenant}): {error} — {desc[:200]}")
             expires_in = int(str(data.get("expires_in", 3599)))
             ttl = max(0, expires_in - 60)
+            rotated_token: str = str(data.get("refresh_token") or "")
             with _IMAP_TOKEN_LOCK:
                 _IMAP_TOKEN_CACHE[cache_key] = (access_token, time.monotonic() + ttl)
-            return access_token
+                if rotated_token:
+                    rotated_hash: str = hashlib.sha256(rotated_token.encode()).hexdigest()[:16]
+                    _IMAP_TOKEN_CACHE[f"{tenant}:{client_id}:{rotated_hash}"] = (
+                        access_token,
+                        time.monotonic() + ttl,
+                    )
+            return access_token, rotated_token
     except HTTPError as exc:
-        error, desc = read_http_error(exc)
+        try:
+            err_data: dict[str, object] = json.loads(exc.read().decode())
+            error = str(err_data.get("error", "unknown"))
+            desc = str(err_data.get("error_description", str(exc)))
+        except Exception:
+            error = str(exc.code)
+            desc = str(exc)
         raise RuntimeError(
-            f"OAuth 令牌已过期或无效 (tenant={tenant}): {error} - {desc[:200]}"
+            f"OAuth 令牌已过期或无效 (tenant={tenant}): {error} — {desc[:200]}"
         ) from exc
     except RuntimeError:
         raise
@@ -67,23 +92,16 @@ def get_imap_token(client_id: str, refresh_token: str, *, tenant: str = "consume
         raise RuntimeError(f"获取 IMAP 令牌网络错误 (tenant={tenant}): {exc}") from exc
 
 
-def try_get_imap_token(client_id: str, refresh_token: str) -> tuple[str, str]:
+def try_get_imap_token(client_id: str, refresh_token: str) -> tuple[str, str, str]:
+    """Try to get an IMAP token, falling through tenants."""
     last_error: RuntimeError | None = None
     for tenant in _IMAP_TENANTS:
         try:
-            token: str = get_imap_token(client_id, refresh_token, tenant=tenant)
-            return token, tenant
+            token, rotated_token = get_imap_token(client_id, refresh_token, tenant=tenant)
+            return token, tenant, rotated_token
         except RuntimeError as exc:
             last_error = exc
             logger.debug("IMAP token failed for tenant=%s: %s", tenant, exc)
     if last_error is not None:
         raise last_error
-    raise RuntimeError("Failed to get IMAP token: no tenants available")
-
-
-def read_http_error(exc: HTTPError) -> tuple[str, str]:
-    try:
-        err_data: dict[str, object] = json.loads(exc.read().decode())
-        return str(err_data.get("error", "unknown")), str(err_data.get("error_description", exc))
-    except Exception:
-        return str(exc.code), str(exc)
+    raise RuntimeError("Failed to get IMAP token: no tenants available")  # pragma: no cover

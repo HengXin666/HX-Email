@@ -1,28 +1,18 @@
-"""IMAP helper functions and OAuth token utilities — extracted from imap_provider."""
+"""IMAP MIME/header helpers shared by the fetch and delete paths.
+
+Microsoft token exchange moved to ``imap_oauth`` (its former home here held a
+second, live copy while ``imap_oauth`` held an unused duplicate).
+"""
 
 from __future__ import annotations
 
 import email
-import hashlib
-import json
 import logging
-import time
 from email.header import decode_header
 from email.utils import parsedate_to_datetime
-from threading import Lock
-from urllib.error import HTTPError
-from urllib.parse import urlencode
-from urllib.request import Request, urlopen
 
 logger = logging.getLogger(__name__)
 
-# ── OAuth token cache ────────────────────────────────────────────────────
-
-_IMAP_TOKEN_CACHE: dict[str, tuple[str, float]] = {}
-_IMAP_TOKEN_LOCK: Lock = Lock()
-_IMAP_TOKEN_URL_TEMPLATE: str = "https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token"
-_IMAP_SCOPE: str = "https://outlook.office.com/IMAP.AccessAsUser.All offline_access"
-_IMAP_TENANTS: tuple[str, ...] = ("consumers", "common")
 _OUTLOOK_PROVIDERS: frozenset[str] = frozenset({"outlook", "hotmail"})
 _OUTLOOK_IMAP_SERVERS: tuple[str, ...] = ("outlook.live.com", "outlook.office365.com")
 
@@ -214,86 +204,3 @@ def extract_text_and_html(msg: email.message.Message) -> tuple[str, str]:
         else:
             text_part = _decode_payload(msg)
     return text_part or "", html_part or ""
-
-
-# ── OAuth token helpers ──────────────────────────────────────────────────
-
-
-def get_imap_token(
-    client_id: str, refresh_token: str, *, tenant: str = "consumers"
-) -> tuple[str, str]:
-    """Get an IMAP-specific access token with caching (60s TTL)."""
-    cache_key: str = (
-        f"{tenant}:{client_id}:{hashlib.sha256(refresh_token.encode()).hexdigest()[:16]}"
-    )
-    with _IMAP_TOKEN_LOCK:
-        cached = _IMAP_TOKEN_CACHE.get(cache_key)
-        if cached:
-            token, expires = cached
-            if time.monotonic() < expires:
-                return token, ""
-    token_url: str = _IMAP_TOKEN_URL_TEMPLATE.format(tenant=tenant)
-    body: bytes = urlencode(
-        {
-            "client_id": client_id,
-            "grant_type": "refresh_token",
-            "refresh_token": refresh_token,
-            "scope": _IMAP_SCOPE,
-        }
-    ).encode()
-    try:
-        req = Request(
-            token_url,
-            data=body,
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-            method="POST",
-        )
-        with urlopen(req, timeout=15) as resp:
-            data: dict[str, object] = json.loads(resp.read().decode())
-            access_token = str(data.get("access_token", ""))
-            if not access_token:
-                error = str(data.get("error", "unknown"))
-                desc = str(data.get("error_description", str(data)))
-                raise RuntimeError(f"OAuth 令牌无效 (tenant={tenant}): {error} — {desc[:200]}")
-            expires_in = int(str(data.get("expires_in", 3599)))
-            ttl = max(0, expires_in - 60)
-            rotated_token: str = str(data.get("refresh_token") or "")
-            with _IMAP_TOKEN_LOCK:
-                _IMAP_TOKEN_CACHE[cache_key] = (access_token, time.monotonic() + ttl)
-                if rotated_token:
-                    rotated_hash: str = hashlib.sha256(rotated_token.encode()).hexdigest()[:16]
-                    _IMAP_TOKEN_CACHE[f"{tenant}:{client_id}:{rotated_hash}"] = (
-                        access_token,
-                        time.monotonic() + ttl,
-                    )
-            return access_token, rotated_token
-    except HTTPError as exc:
-        try:
-            err_data: dict[str, object] = json.loads(exc.read().decode())
-            error = str(err_data.get("error", "unknown"))
-            desc = str(err_data.get("error_description", str(exc)))
-        except Exception:
-            error = str(exc.code)
-            desc = str(exc)
-        raise RuntimeError(
-            f"OAuth 令牌已过期或无效 (tenant={tenant}): {error} — {desc[:200]}"
-        ) from exc
-    except RuntimeError:
-        raise
-    except Exception as exc:
-        raise RuntimeError(f"获取 IMAP 令牌网络错误 (tenant={tenant}): {exc}") from exc
-
-
-def try_get_imap_token(client_id: str, refresh_token: str) -> tuple[str, str, str]:
-    """Try to get an IMAP token, falling through tenants."""
-    last_error: RuntimeError | None = None
-    for tenant in _IMAP_TENANTS:
-        try:
-            token, rotated_token = get_imap_token(client_id, refresh_token, tenant=tenant)
-            return token, tenant, rotated_token
-        except RuntimeError as exc:
-            last_error = exc
-            logger.debug("IMAP token failed for tenant=%s: %s", tenant, exc)
-    if last_error is not None:
-        raise last_error
-    raise RuntimeError("Failed to get IMAP token: no tenants available")  # pragma: no cover

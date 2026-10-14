@@ -122,18 +122,3 @@ def test_emails_endpoints_do_not_leak_other_users_mailboxes(tmp_path):
     ]
     assert alice_batch["results"][0]["success"] is True
     assert alice_batch["results"][1]["success"] is False
-
-    bob_delete = client.post(
-        f"{API}/emails/delete",
-        json={"email": "alice@example.com", "ids": ["1"]},
-        headers=bob_headers,
-    )
-    assert bob_delete.status_code == 200
-    assert bob_delete.json() == {"success": False, "deleted_count": 0}
-
-    alice_delete = client.post(
-        f"{API}/emails/delete",
-        json={"email": "alice@example.com", "ids": ["1"]},
-        headers=alice_headers,
-    )
-    assert alice_delete.json() == {"success": True, "deleted_count": 1}

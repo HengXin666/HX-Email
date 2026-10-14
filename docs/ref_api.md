@@ -154,7 +154,6 @@
 | POST | `/api/emails/batch`                            | Session | JSON `{"account_ids": [int, ...], "folders?": [str, ...], "skip?": int, "top?": int}` | `{"success": true, "results": [...], "summary": {"total_accounts": int, "success_accounts": int, "failed_accounts": int}}`    | 批量拉取多账号邮件                                         |
 | GET  | `/api/emails/:email_addr`                      | Session | `?folder=&skip=&top=&method=`                                                         | `{"success": true, "emails": [...], "method": str, "has_more": bool}`                                                         | 获取指定邮箱的邮件列表（自动回退 Graph→IMAP New→IMAP Old） |
 | GET  | `/api/emails/:email_addr/extract-verification` | Session | `?code_length=&code_regex=&code_source=`                                              | `{"success": true, "verification_code": str, ...}`                                                                            | 从最新邮件中提取验证码                                     |
-| POST | `/api/emails/delete`                           | Session | JSON `{"email": str, "ids": [str, ...]}`                                              | `{"success": true}`                                                                                                           | 批量删除邮件（永久删除）                                   |
 | GET  | `/api/email/:email_addr/:message_id`           | Session | `?folder=&method=`                                                                    | `{"success": true, "email": {"id": str, "subject": str, "from": str, "to": str, "date": str, "body": str, "body_type": str}}` | 获取单封邮件详情                                           |
 | GET  | `/api/providers`                               | Session | —                                                                                     | `{"success": true, "providers": [...]}`                                                                                       | 获取支持的邮箱提供商列表                                   |
 
@@ -442,7 +441,6 @@ GET     /api/accounts/refresh-stats     # 刷新统计
 POST    /api/emails/batch               # 批量拉取邮件
 GET     /api/emails/:email_addr         # 邮件列表
 GET     /api/emails/:email_addr/extract-verification  # 提取验证码
-POST    /api/emails/delete              # 删除邮件
 GET     /api/email/:email_addr/:message_id  # 邮件详情
 
 # 临时邮箱

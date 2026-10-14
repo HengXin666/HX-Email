@@ -8,40 +8,21 @@ from hx_email.config import Settings
 from hx_email.database import connect
 from hx_email.server.mail import EmailAccountMailbox, MailboxMessage
 from hx_email.server.mail.graph.fallback_provider import FallbackMailProvider
+from hx_email.server.mail.impl.accounts import resolve_account_for_address
 from hx_email.server.mail.verification import (
     DeliveryTarget,
     MailboxProvider,
     coerce_message,
     find_verification_code,
-    normalize_delivery_address,
 )
 
-
-def _find_email_account(
-    settings: Settings,
-    email_addr: str,
-    user_id: int | None = None,
-) -> EmailAccountMailbox | None:
-    target_address: str = normalize_delivery_address(email_addr)
-    query: str = """
-        SELECT ea.id, ea.provider, ea.primary_address, ue.address
-        FROM email_accounts ea
-        JOIN usable_emails ue ON ue.email_account_id = ea.id
-    """
-    params: tuple[int, ...] = ()
-    if user_id is not None:
-        query += " WHERE ea.user_id = ? AND ue.user_id = ?"
-        params = (user_id, user_id)
-    with connect(settings) as connection:
-        rows = connection.execute(query, params).fetchall()
-
-    for row in rows:
-        if normalize_delivery_address(str(row["address"] or "")) != target_address:
-            continue
-        return EmailAccountMailbox(
-            id=row["id"], provider=row["provider"], primary_address=row["primary_address"]
-        )
-    return None
+__all__ = [
+    "batch_fetch_emails",
+    "extract_verification_code",
+    "fetch_emails",
+    "get_email_detail",
+    "resolve_account_for_address",
+]
 
 
 def _build_message_dict(msg: MailboxMessage, idx: int) -> dict[str, object]:
@@ -88,12 +69,8 @@ def fetch_emails(
     top: int = 20,
     method: str | None = None,
 ) -> dict[str, object]:
-    """Fetch emails for an address; returns {emails, method, has_more}.
-
-    Graph → IMAP fallback is handled transparently by FallbackMailProvider
-    (injected by app.py).  All consumers automatically get Graph for Outlook.
-    """
-    account = _find_email_account(settings, email_addr, user_id)
+    """Fetch emails for an address; returns {emails, method, has_more}."""
+    account = resolve_account_for_address(settings, email_addr, user_id)
     if account is None:
         return {"emails": [], "method": "none", "has_more": False}
 
@@ -104,8 +81,7 @@ def fetch_emails(
 
     all_messages: list[dict[str, object]] = []
     for idx, raw in enumerate(raw_messages):
-        msg = coerce_message(raw)
-        all_messages.append(_build_message_dict(msg, idx))
+        all_messages.append(_build_message_dict(coerce_message(raw), idx))
 
     paged, has_more = _paginate(all_messages, skip, top)
     return {"emails": paged, "method": resolved_method, "has_more": has_more}
@@ -120,8 +96,8 @@ def get_email_detail(
     folder: str = "inbox",
     method: str | None = None,
 ) -> dict[str, object]:
-    """Get single email with full body. Outlook/Hotmail → Graph first, then IMAP fallback."""
-    account = _find_email_account(settings, email_addr, user_id)
+    """Get one email with its full body (Graph first for Outlook, then IMAP)."""
+    account = resolve_account_for_address(settings, email_addr, user_id)
     if account is None:
         return _empty_detail(email_addr, message_id)
 
@@ -148,19 +124,18 @@ def get_email_detail(
         msg_idx = int(message_id) - 1
         if msg_idx < 0 or msg_idx >= len(raw_messages):
             return _empty_detail(email_addr, message_id)
-        raw = raw_messages[msg_idx]
-        msg = coerce_message(raw)
-        return {
-            "id": message_id,
-            "subject": msg.subject,
-            "from": msg.from_address if msg.from_address else "",
-            "to": email_addr,
-            "date": msg.received_at if msg.received_at else "",
-            "body": msg.body,
-            "body_type": "text",
-        }
+        msg = coerce_message(raw_messages[msg_idx])
     except (ValueError, IndexError):
         return _empty_detail(email_addr, message_id)
+    return {
+        "id": message_id,
+        "subject": msg.subject,
+        "from": msg.from_address if msg.from_address else "",
+        "to": email_addr,
+        "date": msg.received_at if msg.received_at else "",
+        "body": msg.body,
+        "body_type": "text",
+    }
 
 
 def _empty_detail(email_addr: str, message_id: str) -> dict[str, object]:
@@ -262,12 +237,8 @@ def extract_verification_code(
     code_regex: str | None = None,
     code_source: str = "all",
 ) -> dict[str, object]:
-    """Extract verification code from latest emails.
-
-    When no custom regex or length is given, uses keyword-context-aware
-    extraction that only matches codes near verification keywords.
-    """
-    account = _find_email_account(settings, email_addr, user_id)
+    """Extract a verification code from the latest emails for one address."""
+    account = resolve_account_for_address(settings, email_addr, user_id)
     if account is None:
         return {"verification_code": "", "matched_email_id": "", "match_count": 0}
 
@@ -280,18 +251,3 @@ def extract_verification_code(
         code_regex=code_regex,
         code_source=code_source,
     )
-
-
-def delete_emails(
-    settings: Settings,
-    mailbox_provider: MailboxProvider,
-    email_addr: str,
-    user_id: int,
-    message_ids: list[str],
-) -> dict[str, object]:
-    """Delete emails by IDs (stub; provider has no delete). Returns {success, deleted_count}."""
-    account = _find_email_account(settings, email_addr, user_id)
-    if account is None:
-        return {"success": False, "deleted_count": 0}
-
-    return {"success": True, "deleted_count": len(message_ids)}

@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from hx_email.config import Settings
 from hx_email.database import connect
 from hx_email.security import encrypt_secret
+from hx_email.server.mail import EmailAccountMailbox
 from hx_email.server.mail.imap.message_store import delete_messages_for_email
 from hx_email.server.mail.impl.accounts.account_helpers import update_primary_usable_email
 
@@ -167,3 +168,37 @@ def toggle_telegram_notification(
             (1 if enabled else 0, account_id, user_id),
         )
     return cursor.rowcount > 0
+
+
+def resolve_account_for_address(
+    settings: Settings,
+    email_addr: str,
+    user_id: int | None = None,
+) -> EmailAccountMailbox | None:
+    """Find the account that owns an address (primary or alias).
+
+    ``user_id=None`` searches every tenant, which the external API relies on for
+    public-mode lookups by address alone.
+    """
+    # Local import: ``email_accounts`` imports this package, and verification reaches
+    # email_accounts back through imap.session.credentials -> google_oauth.
+    from hx_email.server.mail.verification import normalize_delivery_address
+
+    target: str = normalize_delivery_address(email_addr)
+    query: str = (
+        "SELECT ea.id, ea.provider, ea.primary_address, ue.address"
+        " FROM email_accounts ea"
+        " JOIN usable_emails ue ON ue.email_account_id = ea.id"
+    )
+    params: tuple[int, ...] = ()
+    if user_id is not None:
+        query += " WHERE ea.user_id = ? AND ue.user_id = ?"
+        params = (user_id, user_id)
+    with connect(settings) as connection:
+        rows = connection.execute(query, params).fetchall()
+    for row in rows:
+        if normalize_delivery_address(str(row["address"] or "")) == target:
+            return EmailAccountMailbox(
+                id=row["id"], provider=row["provider"], primary_address=row["primary_address"]
+            )
+    return None

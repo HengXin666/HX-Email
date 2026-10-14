@@ -7,8 +7,8 @@ from hx_email.config import Settings
 from hx_email.database import connect, migrate
 from hx_email.security import decrypt_secret
 from hx_email.server.mail import EmailAccountMailbox
-from hx_email.server.mail.imap.imap_helpers import IMAPAuthRejectedError, parse_date
-from hx_email.server.mail.imap.imap_provider import IMAPMailboxProvider
+from hx_email.server.mail.imap.helpers import IMAPAuthRejectedError, parse_date
+from hx_email.server.mail.imap.session.fetch import IMAPMailboxProvider
 
 
 class FakeImapConnection:
@@ -84,10 +84,10 @@ def test_imap_provider_fetches_latest_message_ids_first_like_reference_project(t
 
     with (
         patch(
-            "hx_email.server.mail.imap.imap_provider.try_get_imap_token",
+            "hx_email.server.mail.imap.session.credentials.try_get_imap_token",
             return_value=("token", "consumers", ""),
         ),
-        patch("hx_email.server.mail.imap.imap_provider.imaplib.IMAP4_SSL", return_value=fake),
+        patch("hx_email.server.mail.imap.session.credentials.imaplib.IMAP4_SSL", return_value=fake),
     ):
         messages = IMAPMailboxProvider(settings).read_messages_folder(
             EmailAccountMailbox(id=1, provider="outlook", primary_address="owner@example.com"),
@@ -116,7 +116,9 @@ def test_imap_provider_fetches_only_uids_newer_than_since_uid(tmp_path) -> None:
 
     fake = FakeImapConnection("imap.gmail.com", 993)
 
-    with patch("hx_email.server.mail.imap.imap_provider.imaplib.IMAP4_SSL", return_value=fake):
+    with patch(
+        "hx_email.server.mail.imap.session.credentials.imaplib.IMAP4_SSL", return_value=fake
+    ):
         messages = IMAPMailboxProvider(settings).read_messages(
             EmailAccountMailbox(id=1, provider="gmail", primary_address="owner@example.com"),
             top=10,
@@ -143,11 +145,13 @@ def test_gmail_oauth_credentials_use_google_token_endpoint(tmp_path) -> None:
 
     with (
         patch(
-            "hx_email.server.mail.imap.imap_provider.get_google_access_token",
+            "hx_email.server.mail.imap.session.credentials.get_google_access_token",
             return_value="google-access-token",
         ) as google_token,
-        patch("hx_email.server.mail.imap.imap_provider.try_get_imap_token") as microsoft_token,
-        patch("hx_email.server.mail.imap.imap_provider.imaplib.IMAP4_SSL", return_value=fake),
+        patch(
+            "hx_email.server.mail.imap.session.credentials.try_get_imap_token"
+        ) as microsoft_token,
+        patch("hx_email.server.mail.imap.session.credentials.imaplib.IMAP4_SSL", return_value=fake),
     ):
         IMAPMailboxProvider(settings).read_messages(
             EmailAccountMailbox(id=1, provider="gmail", primary_address="owner@gmail.com"), top=1
@@ -173,7 +177,7 @@ def test_outlook_imap_persists_rotated_refresh_token(tmp_path) -> None:
 
     with (
         patch(
-            "hx_email.server.mail.imap.imap_provider.try_get_imap_token",
+            "hx_email.server.mail.imap.session.credentials.try_get_imap_token",
             return_value=("access-token", "consumers", "rotated-refresh-token"),
         ),
         patch.object(provider, "_imap_fetch", return_value=[]),
@@ -214,7 +218,7 @@ def test_outlook_host_fallback_applies_to_legacy_imap_provider(tmp_path) -> None
 
     with (
         patch(
-            "hx_email.server.mail.imap.imap_provider.try_get_imap_token",
+            "hx_email.server.mail.imap.session.credentials.try_get_imap_token",
             return_value=("token", "consumers", ""),
         ),
         patch.object(provider, "_imap_fetch", side_effect=fetch),
@@ -242,7 +246,7 @@ def test_gmail_oauth_uses_primary_address_instead_of_stale_imap_username(tmp_pat
     provider = IMAPMailboxProvider(settings)
     with (
         patch(
-            "hx_email.server.mail.imap.imap_provider.get_google_access_token",
+            "hx_email.server.mail.imap.session.credentials.get_google_access_token",
             return_value="google-access-token",
         ),
         patch.object(provider, "_imap_fetch", return_value=[]) as imap_fetch,
@@ -295,11 +299,11 @@ def test_imap_provider_uses_group_proxy_for_account_group(tmp_path) -> None:
 
     with (
         patch(
-            "hx_email.server.mail.imap.imap_provider.try_get_imap_token",
+            "hx_email.server.mail.imap.session.credentials.try_get_imap_token",
             return_value=("token", "consumers", ""),
         ),
-        patch("hx_email.server.mail.imap.imap_provider.imap_connect_via_proxy", fake_proxy),
-        patch("hx_email.server.mail.imap.imap_provider.imaplib.IMAP4_SSL") as direct_connect,
+        patch("hx_email.server.mail.imap.session.credentials.imap_connect_via_proxy", fake_proxy),
+        patch("hx_email.server.mail.imap.session.credentials.imaplib.IMAP4_SSL") as direct_connect,
     ):
         messages = IMAPMailboxProvider(settings).read_messages(
             EmailAccountMailbox(id=1, provider="outlook", primary_address="owner@example.com"),

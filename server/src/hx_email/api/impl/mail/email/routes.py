@@ -1,4 +1,4 @@
-"""Email operations routes: batch fetch, list, detail, extract, delete."""
+"""Email operations routes: batch fetch, list, detail, extract."""
 
 from __future__ import annotations
 
@@ -8,11 +8,10 @@ from typing import Annotated
 from fastapi import APIRouter, Header, HTTPException, Query
 
 from hx_email.api.dependencies import require_user
-from hx_email.api.schemas import BatchEmailRequest, DeleteEmailRequest
+from hx_email.api.schemas import BatchEmailRequest
 from hx_email.config import Settings
 from hx_email.server.mail.impl.email_service import (
     batch_fetch_emails,
-    delete_emails,
     extract_verification_code,
     fetch_emails,
     get_email_detail,
@@ -41,20 +40,6 @@ def register_email_ops_routes(
             folders=payload.folders,
             skip=payload.skip,
             top=payload.top,
-        )
-
-    @router.post("/emails/delete")
-    def delete_emails_endpoint(
-        payload: DeleteEmailRequest,
-        authorization: Annotated[str | None, Header()] = None,
-    ) -> dict[str, object]:
-        user = require_user(settings, authorization)
-        return delete_emails(
-            settings,
-            mailbox_provider,
-            payload.email,
-            user.id,
-            payload.ids,
         )
 
     # Must be registered before catch-all /emails/{email_addr}

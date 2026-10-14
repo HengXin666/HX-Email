@@ -4,7 +4,7 @@ from sqlite3 import Row
 from hx_email.config import Settings
 from hx_email.database import connect
 from hx_email.security import decrypt_secret
-from hx_email.server.mail.imap.password_rules import normalize_imap_password
+from hx_email.server.mail.imap.session.credentials import normalize_password
 from hx_email.server.mail.impl.sending.router import get_email_server
 from hx_email.server.settings_service import get_setting
 
@@ -177,7 +177,7 @@ def build_credentials(
         )
     if not password and not client_id and refresh_token:
         password = refresh_token
-    password = normalize_imap_password(provider, password)
+    password = normalize_password(provider, password)
     if not smtp_host or not username or not password:
         return None
     return SendCredentials(

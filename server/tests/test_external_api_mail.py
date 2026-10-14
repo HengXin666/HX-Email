@@ -50,7 +50,7 @@ def test_latest_message_uses_first_message_from_newest_first_provider(tmp_path: 
     )
 
     with patch(
-        "hx_email.server.external_api.impl.mail.mail_service._find_email_account",
+        "hx_email.server.external_api.impl.mail.mail_service.resolve_account_for_address",
         return_value=account,
     ):
         result: dict[str, object] = get_latest_message(

@@ -152,6 +152,28 @@ class GraphMailProvider:
                     messages.append(parse_graph_message(item, account.primary_address))
         return GraphReadResult(messages, True)
 
+    def _open_session(self, email_account: EmailAccountMailbox) -> tuple[str, str]:
+        """Return (access_token, proxy_url) for an account, or ("", proxy) on failure."""
+        row = self._load_account_row(email_account.id)
+        if row is None:
+            return "", ""
+        client_id, refresh_token = self._extract_credentials(row)
+        refresh_token = decrypt_secret(self._settings, refresh_token)
+        if not client_id or not refresh_token:
+            return "", ""
+        proxy_url = load_group_proxy(self._settings, email_account.id)
+        try:
+            access_token, _tenant, rotated_token = try_get_graph_token(
+                client_id, refresh_token, proxy_url
+            )
+            persist_rotated_refresh_token(
+                self._settings, email_account.id, refresh_token, rotated_token
+            )
+        except RuntimeError as exc:
+            logger.warning("Graph token failed for account %d: %s", email_account.id, exc)
+            return "", proxy_url
+        return access_token, proxy_url
+
     def _graph_get_message(
         self,
         access_token: str,

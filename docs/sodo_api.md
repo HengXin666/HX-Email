@@ -9,18 +9,17 @@
 
 1. [IMAP 邮件获取](#1-imap-邮件获取)
 2. [IMAP 邮件详情](#2-imap-邮件详情)
-3. [IMAP 邮件删除](#3-imap-邮件删除)
-4. [验证码/链接提取](#4-验证码链接提取)
-5. [IMAP 消息持久化与同步](#5-imap-消息持久化与同步)
-6. [IMAP 邮箱账号管理](#6-imap-邮箱账号管理)
-7. [OAuth2 Token 刷新 (IMAP/Graph)](#7-oauth2-token-刷新-imapgraph)
-8. [SMTP 外发测试](#8-smtp-外发测试)
-9. [邮箱池管理](#9-邮箱池管理)
-10. [代理连通性测试](#10-代理连通性测试)
-11. [OAuth2 Token 工具 (PKCE)](#11-oauth2-token-工具-pkce)
-12. [邮箱提供商信息](#12-邮箱提供商信息)
-13. [外部 API (密钥认证)](#13-外部-api-密钥认证)
-14. [临时邮箱](#15-临时邮箱)
+3. [验证码/链接提取](#3-验证码链接提取)
+4. [IMAP 消息持久化与同步](#4-imap-消息持久化与同步)
+5. [IMAP 邮箱账号管理](#5-imap-邮箱账号管理)
+6. [OAuth2 Token 刷新 (IMAP/Graph)](#6-oauth2-token-刷新-imapgraph)
+7. [SMTP 外发测试](#7-smtp-外发测试)
+8. [邮箱池管理](#8-邮箱池管理)
+9. [代理连通性测试](#9-代理连通性测试)
+10. [OAuth2 Token 工具 (PKCE)](#10-oauth2-token-工具-pkce)
+11. [邮箱提供商信息](#11-邮箱提供商信息)
+12. [外部 API (密钥认证)](#12-外部-api-密钥认证)
+13. [临时邮箱](#13-临时邮箱)
 
 ---
 
@@ -58,19 +57,7 @@
 
 ---
 
-## 3. IMAP 邮件删除
-
-通过 IMAP 或 Graph API 删除指定邮件。
-
-### HX-Email
-
-| 方法 | 路径                    | 描述                                                   |
-| ---- | ----------------------- | ------------------------------------------------------ |
-| POST | `/api/v1/emails/delete` | 批量删除邮件 (当前为 stub，未实现 IMAP STORE +EXPUNGE) |
-
----
-
-## 4. 验证码/链接提取
+## 3. 验证码/链接提取
 
 从收件箱最新邮件中提取验证码 (默认6位数字) 或验证链接。核心链路: IMAP FETCH 最新 N 封 → 正则匹配 → 返回码/链接。
 
@@ -92,7 +79,7 @@
 
 ---
 
-## 5. IMAP 消息持久化与同步
+## 4. IMAP 消息持久化与同步
 
 IMAP 抓取后将邮件存入 SQLite `fetched_messages` 表，支持后续本地查询和验证码提取。
 
@@ -110,7 +97,7 @@ IMAP 抓取后将邮件存入 SQLite `fetched_messages` 表，支持后续本地
 
 ---
 
-## 6. IMAP 邮箱账号管理
+## 5. IMAP 邮箱账号管理
 
 管理用于 IMAP 连接的邮箱账号 (IMAP 凭证 / OAuth 凭据)。
 
@@ -137,7 +124,7 @@ IMAP 抓取后将邮件存入 SQLite `fetched_messages` 表，支持后续本地
 
 ---
 
-## 7. OAuth2 Token 刷新 (IMAP/Graph)
+## 6. OAuth2 Token 刷新 (IMAP/Graph)
 
 刷新 Microsoft OAuth2 refresh token，获取新的 access token 用于 IMAP XOAUTH2 或 Graph API。
 
@@ -169,7 +156,7 @@ IMAP 抓取后将邮件存入 SQLite `fetched_messages` 表，支持后续本地
 
 ---
 
-## 8. SMTP 外发测试
+## 7. SMTP 外发测试
 
 通过 SMTP 发送测试邮件 (用于验证通知配置)。
 
@@ -185,7 +172,7 @@ IMAP 抓取后将邮件存入 SQLite `fetched_messages` 表，支持后续本地
 
 ---
 
-## 9. 邮箱池管理
+## 8. 邮箱池管理
 
 管理可用的邮箱地址池，支持领取/释放/完成。底层依赖 IMAP 验证码提取链路。
 
@@ -209,7 +196,7 @@ IMAP 抓取后将邮件存入 SQLite `fetched_messages` 表，支持后续本地
 
 ---
 
-## 10. 代理连通性测试
+## 9. 代理连通性测试
 
 通过 SOCKS/HTTP 代理测试到 IMAP 服务器的连通性。
 
@@ -225,7 +212,7 @@ IMAP 抓取后将邮件存入 SQLite `fetched_messages` 表，支持后续本地
 
 ---
 
-## 11. OAuth2 Token 工具 (PKCE)
+## 10. OAuth2 Token 工具 (PKCE)
 
 开发者工具: 执行 Microsoft OAuth2 PKCE 授权码流程，获取 refresh token 并保存到邮箱账号。
 
@@ -248,7 +235,7 @@ IMAP 抓取后将邮件存入 SQLite `fetched_messages` 表，支持后续本地
 
 ---
 
-## 12. 邮箱提供商信息
+## 11. 邮箱提供商信息
 
 返回支持的邮箱提供商及其 IMAP/SMTP 服务器配置。
 
@@ -272,7 +259,7 @@ IMAP 抓取后将邮件存入 SQLite `fetched_messages` 表，支持后续本地
 
 ---
 
-## 13. 外部 API (密钥认证)
+## 12. 外部 API (密钥认证)
 
 使用 `Authorization: Bearer <api-key>` 认证的外部 API 路由，供浏览器扩展或第三方调用。所有邮件相关端点底层依赖 IMAP/Graph 读取。
 
@@ -302,7 +289,7 @@ IMAP 抓取后将邮件存入 SQLite `fetched_messages` 表，支持后续本地
 
 ---
 
-## 15. 临时邮箱
+## 13. 临时邮箱
 
 不依赖真实 IMAP 服务器，而是通过上游临时邮箱提供商 API 创建一次性邮箱。
 
@@ -323,7 +310,7 @@ IMAP 抓取后将邮件存入 SQLite `fetched_messages` 表，支持后续本地
 
 | 协议                                | 实现                                   | 用途                         |
 | ----------------------------------- | -------------------------------------- | ---------------------------- |
-| **IMAP SSL (993)**                  | `imap_provider.py` + `imap_helpers.py` | 邮件获取/详情/删除           |
+| **IMAP SSL (993)**                  | `imap_provider.py` + `imap_helpers.py` | 邮件获取/详情                |
 | **IMAP XOAUTH2**                    | `imap_helpers.py`                      | Outlook OAuth 2.0 IMAP 认证  |
 | **IMAP LOGIN**                      | `imap_provider.py`                     | 标准 IMAP 密码认证           |
 | **SMTP SSL (465) / STARTTLS (587)** | `smtplib`（`settings_test_routes.py`） | 外发测试邮件                 |

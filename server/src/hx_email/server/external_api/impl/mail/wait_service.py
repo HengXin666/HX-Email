@@ -20,7 +20,7 @@ from hx_email.server.external_api.impl.mail.temp_mail_reader import (
     to_mailbox_messages,
 )
 from hx_email.server.mail import MailboxMessage
-from hx_email.server.mail.impl.email_service import _find_email_account
+from hx_email.server.mail.impl.email_service import resolve_account_for_address
 from hx_email.server.mail.temp_mail import TempMailProvider
 from hx_email.server.mail.verification import (
     MailboxProvider,
@@ -65,7 +65,7 @@ def wait_for_message(
 
     # Sync mode: poll until timeout
     deadline: float = time.monotonic() + timeout_seconds
-    account = _find_email_account(settings, resolved_email)
+    account = resolve_account_for_address(settings, resolved_email)
     if account is None:
         if temp_mail_providers:
             temp_result = temp_wait_for_message(
@@ -86,7 +86,7 @@ def wait_for_message(
 
     while time.monotonic() < deadline:
         time.sleep(poll_interval)
-        account = _find_email_account(settings, resolved_email)
+        account = resolve_account_for_address(settings, resolved_email)
         if account is None:
             continue
         raw_all: list[Any] = mailbox_provider.read_messages(account)
