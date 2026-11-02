@@ -209,3 +209,65 @@ def test_options_read_synced_domains(tmp_path) -> None:
 
     assert options["domains"] == ["a.com", "b.com"]
     assert options["default_domain"] == "b.com"
+
+
+def test_options_filter_excluded_domains_and_fall_back_default(tmp_path) -> None:
+    _provider, settings = make_provider(tmp_path)
+    set_setting(settings, "cf_worker_domains", '["@a.com", "@b.com", "@c.com"]')
+    set_setting(settings, "cf_worker_excluded_domains", '["a.com", "@b.com"]')
+    set_setting(settings, "cf_worker_default_domain", "@a.com")
+
+    options = get_temp_mail_options(settings, "cf")
+
+    assert options["domains"] == ["@c.com"]
+    assert options["default_domain"] == "@c.com"
+
+
+def test_options_all_domains_excluded_gives_empty_default(tmp_path) -> None:
+    _provider, settings = make_provider(tmp_path)
+    set_setting(settings, "cf_worker_domains", '["a.com", "b.com"]')
+    set_setting(settings, "cf_worker_excluded_domains", '["@a.com", "@b.com"]')
+    set_setting(settings, "cf_worker_default_domain", "a.com")
+
+    options = get_temp_mail_options(settings, "cf")
+
+    assert options["domains"] == []
+    assert options["default_domain"] == ""
+
+
+def test_create_mailbox_skips_excluded_default_domain(tmp_path) -> None:
+    provider, settings = make_provider(tmp_path)
+    set_setting(settings, "cf_worker_domains", '["@a.com", "@b.com"]')
+    set_setting(settings, "cf_worker_excluded_domains", '["a.com"]')
+    set_setting(settings, "cf_worker_default_domain", "@a.com")
+
+    response = json.dumps({"address": "x@b.com", "jwt": "j", "id": 1})
+    with patch(MOCK_TARGET, return_value=(200, response)) as http:
+        provider.create_mailbox(None)
+
+    assert http.call_args[0][3]["domain"] == "b.com"
+
+
+def test_create_mailbox_raises_when_all_synced_domains_excluded(tmp_path) -> None:
+    provider, settings = make_provider(tmp_path)
+    set_setting(settings, "cf_worker_domains", '["@a.com", "@b.com"]')
+    set_setting(settings, "cf_worker_excluded_domains", '["@a.com", "b.com"]')
+
+    with (
+        patch(MOCK_TARGET) as http,
+        pytest.raises(TempMailProviderError, match="已被删除"),
+    ):
+        provider.create_mailbox(None)
+
+    http.assert_not_called()
+
+
+def test_create_mailbox_without_synced_domains_lets_worker_choose(tmp_path) -> None:
+    provider, settings = make_provider(tmp_path)
+    set_setting(settings, "cf_worker_excluded_domains", '["@a.com"]')
+
+    response = json.dumps({"address": "x@w.com", "jwt": "j", "id": 1})
+    with patch(MOCK_TARGET, return_value=(200, response)) as http:
+        provider.create_mailbox(None)
+
+    assert "domain" not in http.call_args[0][3]

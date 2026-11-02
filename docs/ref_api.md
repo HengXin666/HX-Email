@@ -216,7 +216,7 @@
 **PUT `/api/settings` 支持的字段（部分关键字段）**:
 
 - `verification_ai_enabled` / `verification_ai_base_url` / `verification_ai_model` / `verification_ai_api_key` — AI 验证码提取
-- `cf_worker_domains` / `cf_worker_default_domain` / `cf_worker_base_url` / `cf_worker_admin_key` / `cf_worker_custom_auth` — Cloudflare Worker 临时邮箱
+- `cf_worker_domains` / `cf_worker_excluded_domains` / `cf_worker_default_domain` / `cf_worker_base_url` / `cf_worker_admin_key` / `cf_worker_custom_auth` — Cloudflare Worker 临时邮箱；`cf_worker_excluded_domains` 是用户手动删除（不参与轮换）的域名 JSON 数组，同步不会把它清掉
 - `external_api_key` / `external_api_keys` / `external_api_rate_limit_per_minute` — 对外 API 安全
 - `external_api_disable_raw_content` / `external_api_disable_wait_message` — 对外 API 功能开关
 - `pool_external_enabled` — 外部邮箱池开关
@@ -236,7 +236,7 @@
 | POST | `/api/settings/email-test`                 | Session | JSON `{"recipient": str, "email_account_id": int}`（或使用已保存配置）                             | `{"success": true}`                 | 测试邮件通知              |
 | POST | `/api/settings/webhook-test`               | Session | — (使用已保存配置)                                                                                 | `{"success": true}`                 | 测试 Webhook 通知         |
 | POST | `/api/settings/verification-ai-test`       | Session | JSON `{"subject?": str, "body?": str, "body_html?": str, "code_length?": int, "code_regex?": str}` | `{"success": true}`                 | 测试 AI 验证码提取        |
-| POST | `/api/settings/cf-worker-sync-domains`     | Session | —                                                                                                  | `{"success": true}`                 | 从 CF Worker 同步域名列表 |
+| POST | `/api/settings/cf-worker-sync-domains`     | Session | —                                                                                                  | `{"success": true, "domains": [...], "default_domain": str, "excluded_domains": [...]}` | 从 CF Worker 同步域名列表（保留用户已删除的域名） |
 | GET  | `/api/settings/external-api-key/plaintext` | Session | —                                                                                                  | `{"success": true, "api_key": str}` | 获取 API Key 明文         |
 
 ### 7.3 系统维护（设置页引用）

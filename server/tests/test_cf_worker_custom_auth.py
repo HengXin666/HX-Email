@@ -181,3 +181,42 @@ def test_sync_domains_reports_non_json_with_message(tmp_path) -> None:
     body = response.json()
     assert body["success"] is False
     assert body["message"]
+
+
+def test_sync_domains_prunes_stale_excluded_domains(tmp_path) -> None:
+    client, _settings, headers = make_client(tmp_path)
+    saved = client.put(
+        f"{API}/settings",
+        json={"cf_worker_excluded_domains": '["@b.com", "gone.com"]'},
+        headers=headers,
+    )
+    assert saved.status_code == 200
+
+    with patch(
+        "hx_email.api.impl.settings.cf_worker_sync._json_get",
+        return_value=(200, '{"domains": ["@a.com", "@b.com"]}'),
+    ):
+        response = client.post(
+            f"{API}/settings/cf-worker-sync-domains",
+            json={"worker_url": "https://w.example.dev"},
+            headers=headers,
+        )
+
+    body = response.json()
+    assert body["success"] is True
+    assert body["excluded_domains"] == ["@b.com"]
+    fetched = client.get(f"{API}/settings", headers=headers).json()
+    assert fetched["cf_worker_excluded_domains"] == '["@b.com"]'
+
+
+def test_put_settings_rejects_invalid_excluded_domains(tmp_path) -> None:
+    client, _settings, headers = make_client(tmp_path)
+
+    for invalid in ("not json", '{"a.com": true}', '["a.com", 1]'):
+        response = client.put(
+            f"{API}/settings",
+            json={"cf_worker_excluded_domains": invalid},
+            headers=headers,
+        )
+        assert response.status_code == 422
+        assert "cf_worker_excluded_domains" in response.json()["detail"]

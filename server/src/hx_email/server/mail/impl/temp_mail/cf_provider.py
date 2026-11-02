@@ -21,6 +21,7 @@ from email.utils import parsedate_to_datetime
 from typing import Any
 
 from hx_email.config import Settings
+from hx_email.server.mail.impl.temp_mail.temp_mail_options import read_domain_list
 from hx_email.server.mail.temp_mail import (
     MissingTempMailProviderError,
     ProviderMailbox,
@@ -277,18 +278,20 @@ class CFWorkerTempMailProvider:
         return base_url, admin_key, custom_auth
 
     def _default_domain(self) -> str:
-        default: str = get_setting(self._settings, "cf_worker_default_domain").strip()
-        if not default:
-            default = get_setting(self._settings, "temp_mail_default_domain").strip()
-        if default:
-            return default.lstrip("@")
-        try:
-            domains: Any = json.loads(get_setting(self._settings, "cf_worker_domains") or "[]")
-        except ValueError:
-            domains = []
-        if isinstance(domains, list):
-            for item in domains:
-                name: str = str(item).strip()
-                if name:
-                    return name.lstrip("@")
+        domains: list[str] = read_domain_list(self._settings, "cf_worker_domains")
+        excluded_list: list[str] = read_domain_list(self._settings, "cf_worker_excluded_domains")
+        excluded: set[str] = {item.lstrip("@") for item in excluded_list}
+        default: str = (
+            get_setting(self._settings, "cf_worker_default_domain").strip()
+            or get_setting(self._settings, "temp_mail_default_domain").strip()
+        ).lstrip("@")
+        if default and default not in excluded:
+            return default
+        usable: list[str] = [d.lstrip("@") for d in domains if d.lstrip("@") not in excluded]
+        if usable:
+            return usable[0]
+        if domains:
+            raise TempMailProviderError(
+                "CF Worker 已同步的域名都已被删除, 请在系统设置-临时邮箱中恢复至少一个"
+            )
         return ""

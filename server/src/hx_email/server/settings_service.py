@@ -1,6 +1,7 @@
 """Settings service: domain logic for reading and writing system settings."""
 
 import base64
+import json
 import os
 import secrets
 from typing import Any
@@ -24,6 +25,7 @@ SETTINGS_DEFAULTS: dict[str, str] = {
     "verification_ai_model": "",
     "verification_ai_api_key": "",
     "cf_worker_domains": "[]",
+    "cf_worker_excluded_domains": "[]",
     "cf_worker_default_domain": "",
     "cf_worker_base_url": "",
     "cf_worker_admin_key": "",
@@ -192,6 +194,17 @@ def stringify_setting_value(value: object) -> str:
     return str(value).strip() if not isinstance(value, str) else value.strip()
 
 
+def normalize_domain_list(key: str, value: str) -> str:
+    """Validate that a setting holds a JSON array of strings; empty means no domains."""
+    try:
+        parsed: object = json.loads(value or "[]")
+    except ValueError as error:
+        raise ValueError(f"{key} must be a JSON array of strings") from error
+    if not isinstance(parsed, list) or not all(isinstance(item, str) for item in parsed):
+        raise ValueError(f"{key} must be a JSON array of strings")
+    return value or "[]"
+
+
 def normalize_settings_updates(
     settings: Settings,
     updates: dict[str, Any],
@@ -214,6 +227,8 @@ def normalize_settings_updates(
             if account_id < 1:
                 raise ValueError("email_notification_account_id must be a positive integer")
             string_value = str(account_id)
+        if key == "cf_worker_excluded_domains":
+            string_value = normalize_domain_list(key, string_value)
         if key in BOOLEAN_SETTING_KEYS:
             lowered: str = string_value.lower()
             if lowered not in {"true", "false", "1", "0"}:

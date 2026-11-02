@@ -52,6 +52,22 @@ def _parse_domains(data: dict[str, Any]) -> tuple[list[str], str]:
     return domains, default_domain
 
 
+def prune_excluded_domains(settings: Settings, domains: list[str]) -> list[str]:
+    """Drop excluded domains the Worker no longer serves, persist and return the rest."""
+    try:
+        stored: Any = json.loads(get_setting(settings, "cf_worker_excluded_domains") or "[]")
+    except ValueError:
+        stored = []
+    synced: set[str] = {domain.lstrip("@") for domain in domains}
+    kept: list[str] = [
+        str(item).strip()
+        for item in (stored if isinstance(stored, list) else [])
+        if str(item or "").strip().lstrip("@") in synced
+    ]
+    set_setting(settings, "cf_worker_excluded_domains", json.dumps(kept, ensure_ascii=False))
+    return kept
+
+
 def register_cf_worker_sync_route(router: APIRouter, settings: Settings) -> None:
     """Register the CF Worker domain sync endpoint."""
 
@@ -94,9 +110,11 @@ def register_cf_worker_sync_route(router: APIRouter, settings: Settings) -> None
         set_setting(settings, "cf_worker_domains", json.dumps(domains, ensure_ascii=False))
         if default_domain:
             set_setting(settings, "cf_worker_default_domain", default_domain)
+        excluded_domains: list[str] = prune_excluded_domains(settings, domains)
         return {
             "success": True,
             "domains": domains,
             "default_domain": default_domain,
+            "excluded_domains": excluded_domains,
             "message": f"已同步 {len(domains)} 个域名",
         }

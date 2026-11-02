@@ -34,10 +34,13 @@ export const settingsApi = {
     }),
 
   syncCFDomains: (data: Record<string, unknown>) =>
-    request<{ success: boolean; domains?: string[]; default_domain?: string; message?: string }>(
-      "/settings/cf-worker-sync-domains",
-      { method: "POST", body: JSON.stringify(data) },
-    ),
+    request<{
+      success: boolean;
+      domains?: string[];
+      default_domain?: string;
+      excluded_domains?: string[];
+      message?: string;
+    }>("/settings/cf-worker-sync-domains", { method: "POST", body: JSON.stringify(data) }),
 
   getAPIKeyPlaintext: () =>
     request<{ external_api_key: string }>("/settings/external-api-key/plaintext"),
