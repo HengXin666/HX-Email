@@ -2,6 +2,13 @@
 
 Status: implemented
 
+Decision-ID: drop-provider-side-mail-deletion
+
+## Code
+
+- `server/src/hx_email/server/mail/imap/impl/store/persist.py`
+- `server/src/hx_email/server/mail/impl/accounts/account_service.py`
+
 ## Problem
 
 前端邮件列表每封邮件右侧的删除按钮, 以及 `POST /api/v1/emails/delete`、

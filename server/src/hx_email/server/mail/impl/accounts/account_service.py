@@ -170,6 +170,8 @@ def toggle_telegram_notification(
     return cursor.rowcount > 0
 
 
+# 原在 impl/message/, 该包随永久删除功能移除后只剩此函数, 因此挪到 accounts
+# 决策见 .agents/notes/implemented/simplification/2026-10-14-drop-provider-side-mail-deletion.md
 def resolve_account_for_address(
     settings: Settings,
     email_addr: str,

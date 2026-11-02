@@ -7,8 +7,6 @@ Decision-ID: messaging-router-gateway
 ## Code
 
 - `server/src/hx_email/server/messaging/types.py`
-- `server/src/hx_email/api/impl/messaging/event_routes.py`
-- `server/src/hx_email/models/messaging.py`
 
 ## Problem
 
@@ -26,9 +24,10 @@ HX-Email 的消息插件已经能通过 NapCat 与 OneBot 11 收发 QQ 消息, �
 
 ## Decision
 
-在同仓新增 `server/router/` 路由层, 统一使用 source, sink, route, envelope, cursor 五个概念
+在同仓新增 `server/router/` 路由层, 统一使用 source, sink, route, envelope, cursor 五个概念; 实现规格 `docs/messaging-router.md` 是全套文档的唯一契约, ADR 与两份 provider 方案与它冲突时以规格为准
+- 会话地址只有一套: `<platform>:<instance_id>:<session_type>:<peer>`, session_type 为 `private`, `group`, `temp`, `repo`, `issue`
 - 适配器是平台连接, 路由层是订阅与分发, 适配器通过一个更窄的 `MessagingProvider` 协议成为路由层的 provider
-- 依赖方向为 路由层 -> provider -> adapter, `server/messaging/` 不 import 路由层, 现有适配器签名不改
+- 依赖方向为 路由层 -> provider -> adapter, `server/messaging/` 不 import 路由层, 抽象基类 `MessagingAdapter` 的签名不改; 它的 `send_message(target, text) -> str` 给不出 `reply_to` 与错误分类, 所以 QQ provider 改用 `OneBotAdapter` 新增的结构化动作接口 `call_action`
 - 对外以 MCP server 为主 (`/mcp` streamable HTTP 与 `hx-email mcp` stdio), REST 兼容面在 `/api/v1/router`, 与 MCP tool 一一对应
 - 现有前端继续使用 `/api/v1/messaging`, 内部改为共享同一张消息表, 同一套 cursor 与同一个 outbox
 
@@ -40,18 +39,20 @@ HX-Email 的消息插件已经能通过 NapCat 与 OneBot 11 收发 QQ 消息, �
 稳定性
 - QQ 不做任何协议自研, 只用 NapCat 的 OneBot 11, Lagrange.OneBot 为同接口备用
 - 每个 QQ 账号独立实例与独立容器, session 地址绑定唯一实例, 不做跨号切换发送
-- 出站经过令牌桶整形, QQ 默认同会话 3 秒间隔, 账号每分钟 20 条, 突发 3 条, 每日 1000 条, 附加随机抖动
-- 出站以 `(instance_id, kind, idempotency_key)` 幂等, 入站以 `(instance_id, platform_message_id)` 去重
-- 可重试错误指数退避, 风控信号触发该账号出站熔断 30 分钟
+- 出站经过令牌桶整形, QQ 默认同会话 3 秒间隔且每分钟 10 条, 账号突发 3 条, 每分钟 20 条, 每小时 300 条, 每日 1000 条, 单条 1500 字符, 附加随机抖动, 均为本项目经验值
+- 平台出站以 `(instance_id, idempotency_key)` 幂等, webhook 投递以 `(route_id, idempotency_key)` 幂等, 窗口 7 天; 超时等结果未知记为 `unknown` 不自动重发, QQ 与 GitHub 都没有平台侧幂等键, GitHub 用评论隐藏标记查重
+- 入站以 `(instance_id, dedup_key)` 永久唯一键去重, QQ 的 dedup_key 含消息时间, 旧消息按保留期清理
+- 平台出站可重试错误 2 秒起步翻倍最多重试 3 次, webhook 投递 10 秒起步翻倍单次上限 1 小时, 24 小时后 `dead`; 5 分钟内 3 次风控类失败触发该账号出站 `held` 30 分钟, 当天第三次进入 `manual_hold`
 
 资源占用
-- QQ 与 GitHub 都是平台推送, 路由层没有周期性拉取循环, 唯一常驻定时器是 60 秒一次的 housekeeping
+- QQ 与 GitHub 都是平台推送, 路由层没有周期性拉取循环, 唯一常驻定时器是 60 秒一次的 housekeeping, 有 SSE 连接时每条另有 25 秒心跳
 - 读取全部按 cursor 增量走索引, 大于 16 KB 的 raw 落盘, 信号队列只存 cursor 不存消息体
-- 验收项写成可测量数字, 空闲 CPU 不超过单核 0.5%, 启用路由层后 RSS 增量不超过 40 MB, NapCat 容器限制 512 MB 内存
+- 验收项写成可测量数字, 以 `router_enabled` 开关对照测增量: 空闲 CPU 增量不超过单核 0.5%, RSS 增量不超过 40 MB; NapCat 容器限制 1g 内存, 高于 700 MiB 的 p95 目标, 因为 OOM 被杀会重新登录并抬高风控风险
 
 GitHub
 - 使用 GitHub App, webhook 接收事件并以 `X-Hub-Signature-256` 校验, installation token 发评论与建 issue
-- 权限最小集为 Metadata 只读, Issues 读写, Pull requests 读写
+- 回调路径为 `/api/v1/router/ingress/github/{instance_id}`, 订阅 `issue_comment`, `pull_request_review_comment`, `pull_request_review`, `issues`, `pull_request` 与默认投递的 installation 两类事件, 不订阅 `push`
+- 权限最小集为 Metadata 只读, Issues 读写, Pull requests 读写, 不申请 Contents
 
 完整论证见 `docs/adr/0005-messaging-router-gateway.md`, 实现规格见 `docs/messaging-router.md`
 
@@ -69,15 +70,16 @@ GitHub
 - AI 获得跨平台一致的 MCP 工具集, 新增平台只多出新的 session 地址前缀, 不改工具定义
 - 监听不再依赖轮询, 空闲 CPU 与内存有可测量上限, 这些数字成为实现阶段的验收项
 - 出站必须经过 outbox 与整形器, 同一会话连发会被拉开到至少 3 秒一条, 单条最低延迟变大
-- 新增 `router_routes` 与 `router_outbox` 两张表, `messaging_messages` 增加去重唯一索引, 迁移前要先清理已有重复行
+- 新增 `router_routes`, `router_outbox`, `router_ingress_deliveries`, `router_api_keys` 四张表, `messaging_messages` 增加 6 列与基于 `dedup_key` 的唯一索引, 旧行 `dedup_key` 为空不受约束, 迁移不需要清理重复行
 - 部署需要为 GitHub webhook 提供公网 HTTPS 回调地址
-- 本 note 在 proposed 阶段, `## Code` 中的三个文件需要在实现提交里补上指向本 note 的声明锚点, 落地时连同锚点一起移到 implemented
+- 本 note 在 proposed 阶段, `## Code` 只列今天已经受这条决策约束的 `server/src/hx_email/server/messaging/types.py`, 锚点在 `MessagingAdapter.list_messages` 上, 约束是 cursor 与订阅不进适配器协议
+- 路由层, `api/impl/messaging/event_routes.py` 的共享读路径与 `models/messaging.py` 的去重索引都还没有实现, 实现提交要在承载它们的文件上补锚点并加入 `## Code`, 落地时连同锚点一起移到 implemented
 
 ## Testing
 
 本 note 处于 proposed, 下面是实现提交必须带上的验证
 - cursor 增量读, 越界 cursor 与跨实例 cursor 拒绝, 由 `server/tests/test_router_cursor.py` 覆盖
-- 出站幂等, 令牌桶间隔, 退避上限, 熔断与恢复, 由 `server/tests/test_router_outbox.py` 覆盖
+- 两类出站幂等键, 令牌桶间隔, 重试矩阵, 熔断与恢复, 重启时 send 行置 `unknown`, 由 `server/tests/test_router_outbox.py` 覆盖
 - OneBot 事件重投去重与 GitHub 签名校验, 由 `server/tests/test_router_ingress.py` 覆盖
 - 全部 MCP tool 的入参 schema 拒绝多余字段, 由 `server/tests/test_router_mcp.py` 覆盖
 - 空闲 CPU, 常驻内存与订阅者落后的数字验收项 A1 到 A6 在部署机上手工执行, 结果写回落地后的 implemented note

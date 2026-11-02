@@ -146,6 +146,8 @@ class MessagingAdapter(ABC):
     def list_conversations(self) -> list[MessagingConversation]:
         """列出私聊/群聊会话。"""
 
+    # 提案中 cursor 增量读与订阅放在独立路由层, 不加到适配器协议上, 这里保持最新 n 条语义
+    # 决策见 .agents/notes/proposed/feature/2026-11-02-messaging-router-gateway.md
     @abstractmethod
     def list_messages(self, conversation_id: str, limit: int = 50) -> list[MessagingMessage]:
         """拉取某个会话的历史消息(能力位 supports_history)。"""

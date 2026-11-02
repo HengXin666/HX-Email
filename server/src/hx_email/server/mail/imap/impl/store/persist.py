@@ -139,6 +139,8 @@ def message_already_saved(
     return row is not None
 
 
+# 永久删除整条链路已移除, purge_uid 不再回填, 这里只补增量窗口要用的 message_id
+# 决策见 .agents/notes/implemented/simplification/2026-10-14-drop-provider-side-mail-deletion.md
 def backfill_message_uid(
     conn: sqlite3.Connection,
     usable_email_id: int,

@@ -2,6 +2,12 @@
 
 Status: implemented
 
+Decision-ID: imap-folders-by-special-use
+
+## Code
+
+- `server/src/hx_email/server/mail/imap/session/mailboxes.py`
+
 ## Problem
 
 Gmail 的 `[Gmail]/...` 系统文件夹名随账号语言变化, 且用 modified UTF-7 返回: 实测同一个

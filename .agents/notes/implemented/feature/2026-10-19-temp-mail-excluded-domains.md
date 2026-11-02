@@ -2,6 +2,12 @@
 
 Status: implemented
 
+Decision-ID: temp-mail-excluded-domains
+
+## Code
+
+- `web/src/features/settings/impl/temp_mail_domains.ts`
+
 ## Problem
 
 系统设置 → 临时邮箱 → 可用域名 目前只有一条写路径: `POST /settings/cf-worker-sync-domains` 把

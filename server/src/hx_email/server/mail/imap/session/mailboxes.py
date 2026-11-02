@@ -5,8 +5,6 @@ on a Chinese account ``[Gmail]/&V4NXPpCuTvY-`` is Spam and ``[Gmail]/&YkBnCZCuTv
 is All Mail. The English names in ``impl/folder_candidates.py`` therefore never match
 such an account, while LIST's RFC 6154 special-use attributes name the mailbox no
 matter the language. The reader asks for those instead of assuming a name.
-
-See .agents/notes/implemented/architecture/2026-10-14-imap-folders-by-special-use.md
 """
 
 from __future__ import annotations
@@ -23,6 +21,8 @@ SPECIAL_USE_ATTRIBUTES: dict[str, tuple[str, ...]] = {
 }
 
 
+# 逻辑名按 RFC 6154 特殊属性解析, 与账号语言无关, 只在候选名表全部失败后才调用
+# 决策见 .agents/notes/implemented/architecture/2026-10-14-imap-folders-by-special-use.md
 def resolve_special_use_name(connection: imaplib.IMAP4, folder: str) -> str:
     """Return the server's own mailbox name for a logical folder, or "" if unknown."""
     wanted: tuple[str, ...] | None = SPECIAL_USE_ATTRIBUTES.get(folder)
