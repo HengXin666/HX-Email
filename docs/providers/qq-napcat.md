@@ -4,6 +4,8 @@
 
 本文建立在三份现有材料之上: `docs/messaging-plugins.md` 的 1.1 节与 2.6 节, `server/src/hx_email/server/messaging/onebot.py` 与 `engine.py`, 以及 `server/src/hx_email/api/impl/messaging/event_routes.py`
 
+会话地址, 幂等, 重试, 限流与内存口径以 `docs/messaging-router.md` 为准, 本文只说明 QQ provider 如何实现这些契约, 两者冲突时以规格为准
+
 凡标注 需复核 的内容都是本文写作时无法从仓库代码或可打开的公开页面直接确认的事实, 实现前必须逐条核对, 核对方法写在同一处
 
 ## 0. 需求边界
@@ -98,10 +100,10 @@
     |  下行: OneBot 11 HTTP server  <- 本服务调用 send_* / get_* 动作
     v
 [本服务 QQNapCatProvider]
-    |  事件归一化, chat_id 构造, 去重, 速率整形, 错误分类, 登录态机
+    |  事件归一化, session 地址构造, dedup_key 构造, 错误分类, 登录态机
     v
 [路由层 MessagingRouter]
-    |  按实例与 chat_id 分发, 落库, 广播 ProviderEvent
+    |  落库与入站去重, 出站幂等与速率整形, 按 session 地址分发给 route
     v
 [MCP / REST 消费者]
 ```
@@ -127,30 +129,30 @@
 
 ### 4.1 构造规则
 
-chat_id 由本服务构造, 格式固定为 `qq:<self_id>:<kind>:<peer>`, 各部分只含数字与小写字母, 用英文冒号分隔
+QQ 会话使用规格第 2 节的统一 session 地址 `qq:<instance_id>:<session_type>:<peer>`, 由本服务构造, 写入 `messaging_messages.chat_id`
 
-| 会话类型 | kind | peer | 示例 |
+| 会话类型 | session_type | peer | 示例 |
 | --- | --- | --- | --- |
-| 好友私聊 | `p` | 对方 QQ 号 | `qq:2000001:p:3000001` |
-| 群聊 | `g` | 群号 | `qq:2000001:g:600001` |
-| 群临时会话 | `t` | `<群号>-<对方 QQ 号>` | `qq:2000001:t:600001-3000001` |
+| 好友私聊 | `private` | 对方 QQ 号 | `qq:3:private:3000001` |
+| 群聊 | `group` | 群号 | `qq:3:group:600001` |
+| 群临时会话 | `temp` | `<群号>-<对方 QQ 号>` | `qq:3:temp:600001-3000001` |
 
-- `self_id` 取自 OneBot 事件中的 `self_id` 字段, 也就是当前登录的 QQ 号, 下行调用时取 `get_login_info` 的 `user_id`
-- 私聊事件的 `sub_type` 为 `friend` 时归入 `p`, 为 `group` 时归入 `t`; 临时会话的来源群号在 NapCat 上报中的具体字段位置需复核, 复核方法是用测试小号从群里发起一次临时会话并抓取原始上报
-- 反向解析规则唯一: 按冒号拆成 4 段, 第 3 段决定调用 `send_private_msg` 还是 `send_group_msg`, `t` 类会话下发时同时带 `user_id` 与 `group_id`
+- `instance_id` 是 `messaging_instances.id`, 一个实例只登录一个 QQ 号, 当前登录号 (OneBot 事件的 `self_id`, 下行时 `get_login_info` 的 `user_id`) 记录在实例状态里, 不进入地址
+- 私聊事件的 `sub_type` 为 `friend` 时归入 `private`, 为 `group` 时归入 `temp`; 临时会话的来源群号在 NapCat 上报中的具体字段位置需复核, 复核方法是用测试小号从群里发起一次临时会话并抓取原始上报
+- 反向解析规则以规格第 2 节为准: 第 3 段决定调用 `send_private_msg` 还是 `send_group_msg`, `temp` 类会话下发时同时带 `user_id` 与 `group_id`
 
 ### 4.2 为什么必须由本服务构造
 
-- QQ 号与群号是两套独立编号, 数值可以相同; 直接用平台 id 就是 G1 与 G2 的根因
-- 同一部署可能挂多个 QQ 号, 同一个群被两个号同时加入时, 两个号看到的是两个独立会话, 必须带 `self_id` 才能区分
-- 临时会话的回复必须携带来源群号, 平台 id 本身不含这个信息
-- 统一抽象层要覆盖 Telegram 与 Discord, 前缀 `qq:` 保证跨平台不冲突, 消费者看到 chat_id 就能判断平台
-- 协议端将来从 NapCat 换成 Lagrange 时, 只要 self_id 与对端号码不变, chat_id 就不变, 历史会话与 MCP 侧引用都不受影响
+- QQ 号与群号是两套独立编号, 数值可以相同; 直接用平台 id 就是 G1 与 G2 的根因, 地址第 3 段把它们分开
+- 同一部署可能挂多个 QQ 号, 同一个群被两个号同时加入时, 两个号看到的是两个独立会话; 每个号对应一个独立实例, `instance_id` 已足够区分
+- 临时会话的回复必须携带来源群号, 平台 id 本身不含这个信息, 所以 `temp` 的 peer 同时含群号与对方 QQ 号
+- 统一抽象层要覆盖 GitHub, Telegram 与 Discord, 所有平台共用 `<platform>:<instance_id>:<session_type>:<peer>` 结构, 消费者看到地址就能判断平台
+- 协议端从 NapCat 换成备用实现时实例行不变, 地址也不变, 历史会话与 MCP 侧引用都不受影响
 
 ### 4.3 迁移现有数据
 
-- 现有 `messaging_messages` 中的 chat_id 是裸数字, 迁移时用 `chat_type` 与 `raw_json` 中的 `self_id`, `group_id`, `sub_type` 重算新 chat_id
-- 无法从 raw_json 判定 self_id 的旧行, 用所属实例当前登录号补齐, 并在迁移报告中计数
+- 现有 `messaging_messages` 中的 chat_id 是裸数字 (`impl/events.py` 取 `group_id or user_id`), 迁移时用 `chat_type` 与 `raw_json` 中的 `group_id`, `user_id`, `sub_type` 重算为 session 地址, 实例号取该行的 `instance_id`
+- 无法从 raw_json 判定会话类型的旧行保持原值不改, 并在迁移报告中计数, 路由层把解析失败的 chat_id 视为不可寻址, 不出现在 `sessions_list` 中
 
 ## 5. 防封与稳定性
 
@@ -166,23 +168,22 @@ chat_id 由本服务构造, 格式固定为 `qq:<self_id>:<kind>:<peer>`, 各部
 
 ### 5.2 发送速率整形
 
-速率整形以令牌桶实现, 按实例计算, 所有发送入口 (REST, MCP, 内部自动化) 共用同一个桶
+速率整形由路由层的令牌桶统一实现, 参数与依据以规格第 9.1 节为准, QQ provider 不另设限流; 下表是 `rate_profile=default` 的取值, 全部是本项目经验值, 不是腾讯公布的阈值
 
 | 维度 | 上限 | 说明 |
 | --- | --- | --- |
-| 全实例每秒 | 1 条, 桶容量 3 | 允许 3 条以内的瞬时突发, 之后每秒补 1 个令牌 |
-| 全实例每分钟 | 20 条 | 滑动窗口计数, 超出后返回 `rate_limited` 与 `retry_after_s` |
-| 全实例每小时 | 300 条 | 滑动窗口计数 |
-| 全实例每天 | 2000 条 | 自然日按 Asia/Shanghai 计 |
-| 单会话 | 每 3 秒 1 条, 每分钟 10 条 | 防止对单个人或单个群刷屏 |
-| 单条长度 | 不超过 1500 个字符 | 超出拆条, 拆出的每条照样占令牌 |
+| 同一 session | 最小间隔 3 秒, 每分钟 10 条 | 防止对单个人或单个群刷屏 |
+| 账号级突发 | 3 条, 之后每秒补 1 个令牌 | 允许 3 条以内的瞬时突发 |
+| 账号级每分钟 | 20 条 | 滑动窗口计数 |
+| 账号级每小时 | 300 条 | 滑动窗口计数 |
+| 账号级每天 | 1000 条 | 自然日按 Asia/Shanghai 计 |
+| 随机抖动 | 每次 0.5 到 1.5 秒 | 打散固定节奏 |
+| 单条长度 | 1500 个字符 | 超出返回 `text_too_long`, 不拆条; QQ 客户端实际上限需复核, 复核方法是用测试小号发送 1500, 3000, 4500 字符纯文本并记录结果 |
 
-群发即同一内容发往多个会话, 额外遵守以下规则
-
-- 相邻两个会话之间的间隔不少于 8 秒, 再叠加 0 到 4 秒随机抖动
-- 单批最多 10 个会话, 两批之间间隔不少于 5 分钟
-- 同一内容每天最多发往 20 个会话, 内容相同以去除空白后的 SHA-256 判定
-- 群发任务排队执行, 接口立即返回任务号, 不阻塞调用方
+- `conservative` 档见规格第 9.1 节
+- 超出限额的消息在 outbox 中排队, 接口在 `wait_seconds` 内无法投递时返回 `rate_limited` 与 `queued_until`, 消息不丢
+- 同一内容发往多个会话 (去除空白后 SHA-256 相同) 额外受限: 相邻两个会话间隔不少于 8 秒再叠加 0 到 4 秒随机抖动, 同一内容每天最多发往 20 个会话
+- 路由层不提供批量群发接口, 上面的规则针对调用方逐条调用 `message_send` 形成的事实群发
 
 ### 5.3 消息格式
 
@@ -191,24 +192,28 @@ chat_id 由本服务构造, 格式固定为 `qq:<self_id>:<kind>:<peer>`, 各部
 
 ### 5.4 幂等与去重
 
-- 下行幂等键: 调用方必须传入 `client_msg_id` 即 UUID v4, 去重键为 `(instance_id, client_msg_id)`, 重发窗口 24 小时; 窗口内重复提交直接返回第一次的结果, 状态标记为 `duplicate`
-- 下行发送超时属于结果未知: 不自动重发, 状态记为 `unknown`, 由调用方决定是否用新的 `client_msg_id` 再发; 只有连接被拒绝这种确定没发出去的错误才自动重试
-- 上行去重键: `(instance_id, chat_id, platform_message_id)`, 在 `messaging_messages` 上建唯一索引, 入库用 `INSERT ... ON CONFLICT DO NOTHING`, 修复 G4
-- NapCat 的 `message_id` 是否在容器重启后会重复使用需复核; 在确认之前, 上行去重额外限定窗口为 10 分钟, 即只有 10 分钟内的同键事件才视为重复, 超出窗口的同号消息照常入库
+本节是规格第 7.2 节到第 7.5 节在 QQ 上的落点, 规则以规格为准
+
+- 下行幂等: 调用方在 `message_send` 中传 `idempotency_key` (8 到 64 字符, 推荐 UUID v4), 路由层以 `(instance_id, idempotency_key)` 为唯一键, 幂等窗口 7 天; 窗口内重复提交返回第一次的 `delivery_id` 与当前状态, 并带 `deduplicated=true`
+- OneBot 11 没有平台侧幂等键, 因此下行发送超时属于结果未知: 状态记为 `unknown`, 不自动重发, 由调用方决定是否用新的 `idempotency_key` 再发; 进程在调用期间退出时同样记为 `unknown`; 只有连接被拒绝这种确定没发出去的错误才按第 5.5 节自动重试
+- 上行去重键: `(instance_id, dedup_key)`, 其中 `dedup_key = "qq:<message_id>:<time>"`, `time` 取 OneBot 事件的 Unix 秒; 在 `messaging_messages` 上建永久唯一索引, 入库用 `INSERT ... ON CONFLICT DO NOTHING`, 修复 G4
+- NapCat 的 `message_id` 是否在容器重启后会重复使用需复核; 即使复用, 不同时间的新消息因 `time` 不同不会被误判为重复, 而同一事件的重投两者都相同会被吸收, 这样不需要时间窗口, SQLite 的永久唯一索引就能表达
+- 旧消息由规格第 10 节的保留期清理删除, 默认 90 天
 - 补拉历史 (第 3.2 节) 产生的记录走同一套上行去重
 
 ### 5.5 失败分类与退避
 
 | 类别 | 判定依据 | 处理 |
 | --- | --- | --- |
-| 可退避 | 连接被拒绝; HTTP 502, 503, 504; 容器正在重启 | 指数退避 2 秒, 4 秒, 8 秒, 上限 60 秒, 叠加 20% 随机抖动, 最多 3 次 |
+| 可退避 | 连接被拒绝; HTTP 502, 503, 504; 容器正在重启 | 指数退避 2 秒, 4 秒, 8 秒, 单次上限 60 秒, 叠加 20% 随机抖动, 最多重试 3 次, 与规格第 7.4 节一致 |
 | 结果未知 | 请求超时 (默认 10 秒) | 不重试, 状态 `unknown`, 写入告警日志 |
 | 直接放弃 | retcode 1400 即参数错误, 1404 即动作不存在; 目标不是好友或已不在群内; 被禁言 | 不重试, 返回 `failed` 与错误码 |
 | 放弃并告警 | HTTP 401, 403 或 retcode 1401, 1403 (token 不匹配) | 不重试, 实例标记 `error`, 通知用户检查配置 |
 | 熔断 | 返回文案含风控, 频繁, 账号异常, 冻结等字样; 收到下线或冻结通知 | 立即暂停该实例全部发送, 见下 |
 
 - retcode 1400, 1401, 1403, 1404 是 OneBot 11 标准约定; NapCat 自定义的失败码与风控文案关键字需复核, 复核方法是汇总测试期 NapCat 日志中所有非零 retcode 及 `wording` 字段
-- 熔断规则: 5 分钟内出现 3 次风控类失败, 暂停发送 30 分钟; 当天第二次熔断, 暂停 6 小时; 当天第三次熔断, 暂停到用户在前端手动解除
+- 熔断由路由层执行, 规则以规格第 9.3 节为准: 5 分钟内出现 3 次风控类失败或收到冻结与下线通知, 出站进入 `held` 30 分钟; 当天第二次 6 小时; 当天第三次进入 `manual_hold`, 只能由用户在前端手动解除
+- QQ provider 只负责分类: 风控类失败在 `SendResult` 中置 `risk_signal=true`
 - 熔断期间接收照常, 只停发送; 熔断与解除都写入实例事件并推送给消费者
 
 ### 5.6 登录态维持
@@ -241,11 +246,11 @@ chat_id 由本服务构造, 格式固定为 `qq:<self_id>:<kind>:<peer>`, 各部
 
 ### 6.2 降低内存的手段
 
-- 容器硬限制: `--memory 1g --memory-swap 1g --cpus 1`, 超限由 cgroup 处理并触发第 5.6 节的重连流程, 修复 G10; 1g 是初始值, 以实测 p95 的 1.5 倍重新设定
+- 容器硬限制: `--memory=1g --memory-swap=1g --cpus=1`, 与 ADR 0005 的验收项 A5 一致, 修复 G10; 1g 约为第 6.4 节 p95 目标 700 MiB 的 1.4 倍, 实测后改为实测 p95 的 1.5 倍且不低于 1g; 上限不能压到 p95 附近, 因为触顶会被 OOM 杀掉, 容器重启后要重新登录, 频繁重新登录会抬高风控风险
 - 单容器多号复用: NTQQ 一个客户端进程只承载一个账号, 多号仍然是多组进程; NapCat 是否支持一个容器内多个账号进程需复核; 可落实的复用是所有实例共用同一镜像只读层与共享库页缓存, 以及固定同一个镜像版本, 不要让不同实例跑不同版本导致页缓存无法共享
 - 闲置实例自动休眠: 只对用户标记为 仅发送 的实例生效; 连续 24 小时没有任何发送请求时停止容器, 下一次发送请求到来时用保存的登录态拉起; 每个实例每天最多唤醒 4 次, 超过则保持常驻; 需要接收消息的实例不休眠, 因为休眠期间的消息无法上报
 - 事件驱动不做轮询: 状态由心跳与上报事件维护, `status()` 读本地状态机而不是每次调用 `get_login_info`, 修复 G12; 前端轮询状态只读数据库
-- 消息表增量读: REST 与 MCP 读消息一律带 `after_id` 游标, 按 `(instance_id, chat_id, id)` 建索引, 每次最多返回 100 条, 不做全表扫描, 不把历史消息常驻内存
+- 消息表增量读: REST 与 MCP 读消息一律按规格第 7.1 节的 cursor 增量读, 走 `(instance_id, chat_id, id)` 索引, 每次最多返回 200 条, 不做全表扫描, 不把历史消息常驻内存
 - 群成员信息只在群管理操作时按需拉取, 结果缓存 6 小时, 不全量预加载, 针对 issue 556 的内存增长点
 - 关闭 NapCat 的 debug 输出与不用的网络端点 ; 现有配置已经关闭 websocket 与 SSE, 保持现状
 - Xvfb 保持当前 16 位色深, 不提高分辨率
@@ -270,48 +275,40 @@ chat_id 由本服务构造, 格式固定为 `qq:<self_id>:<kind>:<peer>`, 各部
 
 ### 7.1 类型定义
 
+QQ provider 实现 ADR 0005 第 4 节的 `MessagingProvider` 协议, `SessionRef`, `OutboundPayload`, `SendResult`, `ProviderLimits` 以 ADR 为准, 本节只补充 QQ 专有的类型
+
 ```python
 from dataclasses import dataclass, field
-from typing import Literal, Mapping, Protocol, Callable
+from typing import Literal, Mapping, Callable, Protocol
 
-ChatKind = Literal["p", "g", "t"]
-SendStatus = Literal["sent", "duplicate", "rate_limited", "unknown", "failed", "circuit_open"]
+QQSessionType = Literal["private", "group", "temp"]
 LoginPhase = Literal["stopped", "starting", "awaiting_scan", "online", "offline", "frozen", "error"]
+Transport = Literal["ok", "timeout", "connect_error", "http_error"]
 
 
 @dataclass(frozen=True)
-class ChatRef:
-    chat_id: str            # qq:<self_id>:<kind>:<peer>
-    self_id: str
-    kind: ChatKind
-    peer_user_id: str = ""  # p, t
-    peer_group_id: str = ""  # g, t
+class QQSession:
+    address: str            # qq:<instance_id>:<session_type>:<peer>
+    instance_id: int
+    session_type: QQSessionType
+    peer_user_id: str = ""  # private, temp
+    peer_group_id: str = ""  # group, temp
 
 
 @dataclass(frozen=True)
-class SendRequest:
-    client_msg_id: str      # UUID v4, 24 小时幂等
-    chat_id: str
-    text: str
-    reply_to_platform_message_id: str = ""
-
-
-@dataclass(frozen=True)
-class SendResult:
-    status: SendStatus
-    client_msg_id: str
-    platform_message_id: str = ""
-    retry_after_s: int = 0
-    error_code: str = ""
-    error_message: str = ""
+class OneBotCallResult:
+    transport: Transport
+    http_status: int = 0
+    retcode: int = 0
+    wording: str = ""
+    data: Mapping[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
 class ProviderHealth:
     phase: LoginPhase
     self_id: str
-    last_event_at: str      # ISO 8601, UTC
-    circuit_open_until: str  # ISO 8601, UTC, 空串表示未熔断
+    last_event_at: str      # ISO 8601 UTC, Z 结尾
     sent_last_minute: int
     sent_today: int
 
@@ -322,46 +319,44 @@ class ProviderEvent:
     instance_id: int
     type: Literal[
         "message.received",
-        "message.sent",
         "message.recalled",
         "login.changed",
-        "risk.circuit_opened",
-        "risk.circuit_closed",
     ]
-    occurred_at: str        # ISO 8601, UTC
-    chat_id: str = ""
+    occurred_at: str        # ISO 8601 UTC, Z 结尾
+    session: str = ""
     payload: Mapping[str, object] = field(default_factory=dict)
 
 
 EventSink = Callable[[ProviderEvent], None]
 ```
 
+- `OneBotCallResult` 是 `OneBotAdapter` 新增公开方法 `call_action(action, params)` 的返回值, 它不抛业务异常, 把现有 `_call` 里被统一包成 `MessagingError` 文案的超时, 连接错误, HTTP 状态与 retcode 分开交出来, 见规格第 9.5 节
+- 熔断的打开与关闭, 发送计数都由路由层维护并写入实例事件, 不再由 provider 发出 `risk.*` 与 `message.sent` 事件
+
 ### 7.2 provider 必须实现的方法
 
 ```python
 class QQNapCatProvider(Protocol):
-    kind: Literal["qq"]
+    platform: Literal["qq"]
 
-    def start(self) -> None: ...
-    def stop(self) -> None: ...
-    def health(self) -> ProviderHealth: ...
-    def begin_login(self) -> LoginTicket: ...
-    def login_state(self) -> LoginState: ...
-    def resolve_chat(self, chat_id: str) -> ChatRef: ...
-    def build_chat_id(self, self_id: str, kind: ChatKind, peer_user_id: str, peer_group_id: str) -> str: ...
-    def send(self, request: SendRequest) -> SendResult: ...
-    def handle_onebot_event(self, payload: Mapping[str, object]) -> list[ProviderEvent]: ...
-    def backfill(self, chat_id: str, limit: int = 20) -> list[MessagingMessage]: ...
-    def list_conversations(self) -> list[MessagingConversation]: ...
-    def list_groups(self) -> list[MessagingGroup]: ...
-    def group_action(self, group_id: str, action: GroupAction) -> bool: ...
+    # MessagingProvider 协议, 签名以 ADR 0005 第 4 节为准
+    def list_sessions(self, instance_id: int) -> list[SessionRef]: ...
+    def send(self, session: SessionRef, payload: OutboundPayload) -> SendResult: ...
+    def parse_event(self, instance_id: int, headers: dict[str, str], body: bytes) -> list[dict[str, object]]: ...
+    def verify_event(self, instance_id: int, headers: dict[str, str], body: bytes) -> bool: ...
+
+    # QQ 专有
+    def resolve_session(self, address: str) -> QQSession: ...
+    def health(self, instance_id: int) -> ProviderHealth: ...
+    def backfill(self, address: str, limit: int = 20) -> list[dict[str, object]]: ...
     def subscribe(self, sink: EventSink) -> None: ...
 ```
 
-- `LoginTicket`, `LoginState`, `MessagingMessage`, `MessagingConversation`, `MessagingGroup`, `GroupAction` 沿用 `server/messaging/types.py` 中的现有定义
-- 现有 `MessagingAdapter.send_message(target, text) -> str` 保留为兼容层: 内部生成 `client_msg_id` 后调用 `send`, 非 `sent` 状态抛出 `MessagingError`
-- `handle_onebot_event` 是事件回调路由的唯一入口, 负责鉴权之后的全部工作: 归一化, chat_id 构造, 去重, 状态机推进; 路由只做 token 校验
-- `send` 内部顺序固定: 幂等检查, 熔断检查, 令牌桶, 调用 OneBot, 错误分类, 写出站记录, 发出 `message.sent` 事件
+- 登录, 二维码, 群管理沿用现有 `OneBotAdapter` 与 `/api/v1/messaging` 路由, 不进入 provider 协议
+- 现有 `MessagingAdapter.send_message(target, text) -> str` 保留给旧前端路径, 但其 REST 入口 `POST /api/v1/messaging/instances/{id}/send` 改为调用 `facade.send`, 由服务端生成 `idempotency_key`, 与 MCP 共享整形与幂等
+- `send` 只做 provider 的部分, 顺序固定: 解析 session, 把 `text` 与 `reply_to` 组装成 OneBot 消息段数组, 调用 `call_action`, 按第 5.5 节分类成 `SendResult`; 幂等检查, 熔断检查, 令牌桶与出站记录由路由层在调用 `send` 之前和之后完成
+- 分类规则: `transport=timeout` 为 `status="unknown"`; `connect_error` 与 HTTP 502, 503, 504 为 `status="retry"`; retcode 1400, 1404, 目标不存在, 被禁言为 `status="failed"`; HTTP 401, 403 与 retcode 1401, 1403 为 `failed` 并把实例标记 `error`; `wording` 含风控类文案时为 `failed` 且 `risk_signal=true`
+- `parse_event` 产出的 envelope 必须带 `session`, `dedup_key` 与 ISO 8601 UTC 的 `occurred_at`, 事件先落库再交给 sink, sink 抛错只记日志, 不回滚落库
 
 ### 7.3 事件结构示例
 
@@ -371,32 +366,32 @@ class QQNapCatProvider(Protocol):
   "instance_id": 3,
   "type": "message.received",
   "occurred_at": "2026-11-02T14:05:00Z",
-  "chat_id": "qq:2000001:g:600001",
+  "session": "qq:3:group:600001",
   "payload": {
     "platform_message_id": "1838273",
+    "dedup_key": "qq:1838273:1793628300",
     "sender_id": "3000001",
     "sender_name": "测试成员",
     "text": "你好",
     "segments": [{"type": "text", "data": {"text": "你好"}}],
-    "reply_to_platform_message_id": ""
+    "reply_to": ""
   }
 }
 ```
 
 - `login.changed` 的 payload 为 `{"from": <LoginPhase>, "to": <LoginPhase>, "reason": <字符串>}`
-- `risk.circuit_opened` 的 payload 为 `{"until": <ISO 8601>, "trigger": <错误码或文案>, "count_today": <整数>}`
-- 事件先落库再交给 sink, sink 抛错只记日志, 不回滚落库
+- 熔断状态由路由层写入实例事件, 消费者在 `sources_list` 的 `outbound` 与 `held_until` 中读取
 
 ## 8. 分阶段落地
 
 ### 阶段一: 修正现有链路, 做到可用
 
-- 范围: G1, G3, G4, G7, G8, G9, G13, G14; chat_id 新规则与数据迁移; 上行唯一索引; 下行改为消息段数组; OneBot 端口只绑 127.0.0.1 且 token 必填; 镜像固定到一个已验证的具体版本标签; 事件鉴权头按抓包结果确认
+- 范围: G1, G3, G4, G7, G8, G9, G13, G14; session 地址新规则与数据迁移; 上行 dedup_key 唯一索引; 下行改为消息段数组; OneBot 端口只绑 127.0.0.1 且 token 必填; 镜像固定到一个已验证的具体版本标签; 事件鉴权头按抓包结果确认
 - 里程碑: 用测试小号完成扫码登录; 同一事件重复 POST 两次只入库一次; 私聊对象号码与群号相同时形成两个不同会话; 回复群临时会话成功; 宿主机外网扫描不到 OneBot 端口
 
 ### 阶段二: 防封与稳定性
 
-- 范围: 第 5 节全部内容, 包括令牌桶, 群发队列, 幂等键, 失败分类, 熔断, 心跳掉线检测, 重连退避, 二维码刷新上限; G5, G6, G12
+- 范围: 第 5 节全部内容, 包括路由层令牌桶的 QQ 参数, 事实群发限制, 幂等键, 失败分类, 熔断, 心跳掉线检测, 重连退避, 二维码刷新上限; G5, G6, G12
 - 里程碑: 连续发送 100 条到 5 个会话, 无重复, 无超速; 第 21 条每分钟请求返回 `rate_limited`; 手动 `docker stop` 容器后 90 秒内状态变为 offline; 恢复后补拉历史无重复; 测试小号连续运行 14 天无风控提示
 
 ### 阶段三: 资源收敛

@@ -1,8 +1,10 @@
 # 消息路由网关实现规格 (Messaging Router)
 
 本文是 `docs/adr/0005-messaging-router-gateway.md` 的实现规格, 面向实现者
-决策理由与被否方案见 ADR 与 `.agents/notes/proposed/feature/2026-11-02-messaging-router-gateway.md`
-平台调研, 适配器接口, NapCat 内置引擎与既有 REST 路由仍以 `docs/messaging-plugins.md` 为准, 本文只描述在其之上新增的路由层
+本文是消息路由全套文档的唯一契约: 会话地址, 幂等, 重试, 限流, 内存口径以本文为准, ADR 讲方向与理由, `docs/providers/qq-napcat.md` 与 `docs/providers/github-app.md` 只描述各自 provider 如何实现本文的契约, 三者与本文冲突时以本文为准
+决策记录见 `.agents/notes/proposed/feature/2026-11-02-messaging-router-gateway.md`
+平台调研, NapCat 内置引擎与既有 REST 路由仍以 `docs/messaging-plugins.md` 为准, 本文只描述在其之上新增的路由层
+凡标注 "需复核" 的数字都不是本项目实测值, 复核方法写在同一处, 实现前必须逐条核对
 
 ## 1. 目录与模块划分
 
@@ -10,22 +12,22 @@
 
 现状约束
 - `server/src/hx_email/server/messaging/` 已有 engine, onebot, registry, store, types 共 5 个 py 文件, 已满, 路由层不能放进去
-- `server/src/hx_email/api/impl/messaging/` 已有 5 个 py 文件, 同样已满
-- `server/src/hx_email/models/` 已有 5 个迁移文件, 新表的迁移写进现有 `models/messaging.py`, 不新增文件
+- `server/src/hx_email/api/impl/messaging/` 已有 action_routes, event_routes, routes, schemas, serializers 共 5 个 py 文件, 同样已满
+- `server/src/hx_email/models/` 已有 5 个迁移文件, 新表与新列的迁移写进现有 `models/messaging.py` 的 `migrate_messaging_schema`, 不新增文件
 
 新增目录与文件
 
 | 路径 | 职责 | 预计行数 |
 | --- | --- | --- |
-| `server/src/hx_email/server/router/types.py` | envelope, SessionRef, Route, Delivery, Cursor 等数据类与 `MessagingProvider` 协议 | 180 |
+| `server/src/hx_email/server/router/types.py` | envelope, SessionRef, Route, Delivery, Cursor 等数据类与 `MessagingProvider` 协议 | 200 |
 | `server/src/hx_email/server/router/facade.py` | 路由层唯一公开入口, 被 MCP 与 REST 共同调用 | 260 |
 | `server/src/hx_email/server/router/registry.py` | provider 注册表, 按 platform 字符串查找 provider | 90 |
 | `server/src/hx_email/server/router/hub.py` | 进程内订阅信号分发, 每订阅者有界队列 | 150 |
-| `server/src/hx_email/server/router/impl/outbox.py` | 出站排队, 令牌桶整形, 退避重试, 风控熔断 | 260 |
-| `server/src/hx_email/server/router/impl/store.py` | router_routes 与 router_outbox 读写, cursor 增量查询 | 280 |
-| `server/src/hx_email/server/router/impl/envelope.py` | envelope 序列化, raw 大字段落盘, cursor 编解码 | 160 |
-| `server/src/hx_email/server/router/providers/qq.py` | 包装现有 `OneBotAdapter` 与 `ingest_event` 的 QQ provider | 180 |
-| `server/src/hx_email/server/router/providers/github.py` | GitHub App provider, webhook 解析与评论发送 | 260 |
+| `server/src/hx_email/server/router/impl/outbox.py` | 出站排队, 令牌桶整形, 退避重试, 风控熔断 | 280 |
+| `server/src/hx_email/server/router/impl/store.py` | router 各表读写, cursor 增量查询, 保留期清理 | 290 |
+| `server/src/hx_email/server/router/impl/envelope.py` | envelope 序列化, raw 大字段落盘与回收, cursor 编解码 | 180 |
+| `server/src/hx_email/server/router/providers/qq.py` | QQ provider, 调用 `OneBotAdapter` 的结构化动作接口并复用事件归一化 | 220 |
+| `server/src/hx_email/server/router/providers/github.py` | GitHub App provider, webhook 解析与评论发送 | 280 |
 | `server/src/hx_email/server/router/providers/impl/github_auth.py` | App JWT 签发与 installation token 缓存 | 140 |
 | `server/src/hx_email/server/router/providers/impl/webhook_sign.py` | 入站 HMAC 校验与出站 webhook 签名 | 80 |
 | `server/src/hx_email/api/impl/router/rest_routes.py` | `/api/v1/router` REST 兼容面 | 280 |
@@ -51,43 +53,56 @@
 - `PyJWT[crypto]`, 只用于 GitHub App 的 RS256 JWT, 复用已有的 `cryptography`
 - 不引入 Redis, 消息队列或机器人框架
 
-## 2. 地址语法
+## 2. 会话地址语法
 
-source 与 sink 共用同一套地址, 统一叫 session 地址
+source 与 sink 共用同一套地址, 统一叫 session 地址, 这是全套文档唯一的会话标识, 也是写入 `messaging_messages.chat_id` 的值
 
-| 平台 | 地址格式 | 示例 |
-| --- | --- | --- |
-| QQ 私聊 | `qq:<instance_id>:private:<user_id>` | `qq:3:private:10001` |
-| QQ 群 | `qq:<instance_id>:group:<group_id>` | `qq:3:group:123456789` |
-| GitHub 仓库 | `github:<instance_id>:repo:<owner>/<repo>` | `github:7:repo:hx/HX-Email` |
-| GitHub issue 或 PR | `github:<instance_id>:issue:<owner>/<repo>#<number>` | `github:7:issue:hx/HX-Email#42` |
+格式固定为 `<platform>:<instance_id>:<session_type>:<peer>`, 各段用英文冒号分隔, 前三段只含小写字母与数字
 
-- 地址中的 `instance_id` 就是 `messaging_instances.id`, 天然实现会话粘性
-- 仓库地址只能作为 source, 向仓库地址发送等价于建 issue, 需要在 payload 中带 `title`
-- route 的 source 选择器允许前缀匹配, 例如 `qq:3:group:` 表示该账号下全部群
+| 平台 | session_type | peer | 示例 |
+| --- | --- | --- | --- |
+| QQ 好友私聊 | `private` | 对方 QQ 号 | `qq:3:private:10001` |
+| QQ 群 | `group` | 群号 | `qq:3:group:123456789` |
+| QQ 群临时会话 | `temp` | `<群号>-<对方 QQ 号>` | `qq:3:temp:123456789-10001` |
+| GitHub 仓库 | `repo` | `<owner>/<repo>` | `github:7:repo:hx/HX-Email` |
+| GitHub issue 或 PR 线程 | `issue` | `<owner>/<repo>#<number>` | `github:7:issue:hx/HX-Email#42` |
+
+- `instance_id` 就是 `messaging_instances.id`, 一个实例对应一个平台账号 (一个 QQ 号或一个 GitHub App), 地址天然实现会话粘性, 同一个群被两个 QQ 号加入时是两个不同地址
+- 不使用平台账号号码 (例如 QQ 的 self_id) 作地址前缀, 因为换号即换实例, 而协议端从 NapCat 换成备用实现时实例行不变, 地址也不变
+- QQ 号与群号是两套独立编号, 数值可以相同, 地址第三段把它们分开, 这是修复现有 `impl/events.py` 里 `chat_id = group_id or user_id` 混淆的方式
+- `temp` 会话的回复必须同时带群号与对方 QQ 号, 所以 peer 里两者都有
+- GitHub 的 issue 与 PR 共用 `#<number>` 编号空间, 同一仓库内不会冲突, 是 issue 还是 PR 记在 `raw.gh_thread_kind`
+- 仓库地址只能作为 source (用于前缀订阅与建 issue), 向仓库地址发送等价于建 issue, 需要在 payload 中带 `title`
+- route 的 source 选择器允许前缀匹配, 例如 `qq:3:group:` 表示该账号下全部群, `github:7:issue:hx/HX-Email#` 表示该仓库全部线程
+- 反向解析规则唯一: 按前三个冒号拆成 4 段, 第 4 段原样作为 peer, 解析失败返回 `session_not_found`
+- 现有 `MessagingMessage.chat_type` 列与 `ChatType` 字面量 (`private`, `group`, `channel`) 只为旧前端保留, 路由层不读它; 写入时 `private` 与 `temp` 记为 `private`, `group`, `repo`, `issue` 记为 `group`, 路由层从不产生 `channel`
 
 ## 3. 统一 envelope
 
 ### 3.1 字段定义
 
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| `id` | string | 网关内全局 ID, 形如 `m_<messaging_messages.id>` |
-| `cursor` | string | 读到这一条之后的续读位置 |
-| `platform` | string | `qq`, `github` 等 |
-| `instance_id` | integer | 所属账号实例 |
-| `session` | string | session 地址 |
-| `session_type` | string | `private`, `group`, `channel`, `repo`, `issue` |
-| `direction` | string | `inbound` 或 `outbound` |
-| `sender` | object | `{id, name, is_self}` |
-| `text` | string | 纯文本正文, 富文本段落拍平, 非文本段落写成 `[image]` 这类占位 |
-| `reply_to` | string | 被回复消息的 `platform_message_id`, 没有则为空串 |
-| `platform_message_id` | string | 平台原生消息 ID, 入站去重键的一部分 |
-| `attachments` | array | `{kind, url, name, size}` 列表, 只存引用不存内容 |
-| `occurred_at` | string | 平台侧时间, ISO 8601 UTC |
-| `received_at` | string | 网关落库时间, ISO 8601 UTC |
-| `raw` | object 或 null | provider 私有原始载荷, 默认不返回, `include_raw=true` 时返回 |
-| `raw_ref` | string | raw 超过 16 KB 时落盘的相对路径, 小于阈值时为空串 |
+| 字段 | 类型 | 说明 | 存储位置 |
+| --- | --- | --- | --- |
+| `id` | string | 网关内全局 ID, 形如 `m_<messaging_messages.id>` | 主键 `id` |
+| `cursor` | string | 读到这一条之后的续读位置 | 由 `id` 编码 |
+| `platform` | string | `qq` 或 `github` | 由 `chat_id` 第 1 段解析 |
+| `instance_id` | integer | 所属账号实例 | 列 `instance_id` |
+| `session` | string | session 地址 | 列 `chat_id` |
+| `session_type` | string | `private`, `group`, `temp`, `repo`, `issue` 之一 | 由 `chat_id` 第 3 段解析 |
+| `direction` | string | `inbound` 或 `outbound` | 列 `direction` |
+| `sender` | object | `{id, name, is_self}` | 列 `sender_id`, `sender_name`, 新列 `is_self` |
+| `text` | string | 纯文本正文, 富文本段落拍平, 非文本段落写成 `[image]` 这类占位 | 列 `text` |
+| `reply_to` | string | 被回复消息的 `platform_message_id`, 没有则为空串 | 新列 `reply_to` |
+| `platform_message_id` | string | 平台原生消息 ID | 列 `message_id` |
+| `attachments` | array | `{kind, url, name, size}` 列表, 只存引用不存内容 | 新列 `attachments_json` |
+| `occurred_at` | string | 平台侧时间, ISO 8601 UTC, 以 `Z` 结尾 | 新列 `occurred_at` |
+| `received_at` | string | 网关落库时间, ISO 8601 UTC, 以 `Z` 结尾 | 列 `created_at`, 序列化时转换格式 |
+| `raw` | object 或 null | provider 私有原始载荷, 默认不返回, `include_raw=true` 时返回 | 列 `raw_json` 或落盘文件 |
+| `raw_ref` | string | raw 超过 16 KB 时落盘的相对路径, 小于阈值时为空串 | 新列 `raw_ref` |
+
+- 每个字段都有确定的存储位置, 读取时不需要按 provider 解析 `raw`, 这让 `filter.exclude_self` 与 `reply_to` 能直接走 SQL, 也让 raw 落盘后 envelope 仍然完整
+- 现有 `created_at` 列由 SQLite `datetime('now')` 生成, 格式为 `YYYY-MM-DD HH:MM:SS` 且为 UTC, 序列化时补成 `YYYY-MM-DDTHH:MM:SSZ`
+- 16 KB 是本项目自定的阈值, 不是外部数字
 
 ### 3.2 公共示例
 
@@ -105,24 +120,27 @@ source 与 sink 共用同一套地址, 统一叫 session 地址
   "reply_to": "",
   "platform_message_id": "1873992211",
   "attachments": [],
-  "occurred_at": "2026-11-02T13:20:05Z",
-  "received_at": "2026-11-02T13:20:05Z",
+  "occurred_at": "2026-11-02T15:20:05Z",
+  "received_at": "2026-11-02T15:20:06Z",
   "raw": null,
   "raw_ref": ""
 }
 ```
 
-### 3.3 QQ 映射 (OneBot 11 群消息事件)
+### 3.3 QQ 映射 (OneBot 11 消息事件)
 
 | OneBot 字段 | envelope 字段 |
 | --- | --- |
 | `message_type="group"`, `group_id` | `session_type="group"`, `session="qq:<iid>:group:<group_id>"` |
+| `message_type="private"`, `sub_type="friend"`, `user_id` | `session_type="private"`, `session="qq:<iid>:private:<user_id>"` |
+| `message_type="private"`, `sub_type="group"`, 来源群号, `user_id` | `session_type="temp"`, `session="qq:<iid>:temp:<group_id>-<user_id>"`, 来源群号的字段位置需复核, 见 qq-napcat 第 4 节 |
 | `user_id`, `sender.nickname` | `sender.id`, `sender.name` |
 | `self_id == user_id` | `sender.is_self=true` |
 | `message` 段落数组 | `text` 由现有 `_segments_text` 逻辑拍平, `image` 段落进入 `attachments` |
 | `message` 中的 `reply` 段落 | `reply_to` |
 | `message_id` | `platform_message_id` |
 | `time` (Unix 秒) | `occurred_at` |
+| `message_id` 与 `time` | 入站去重键 `dedup_key="qq:<message_id>:<time>"`, 见第 7 节 |
 
 ```json
 {
@@ -139,21 +157,33 @@ source 与 sink 共用同一套地址, 统一叫 session 地址
   },
   "session": "qq:3:group:123456789",
   "sender": {"id": "10001", "name": "alice", "is_self": false},
-  "platform_message_id": "1873992211"
+  "platform_message_id": "1873992211",
+  "occurred_at": "2026-11-02T15:20:05Z"
 }
 ```
 
-### 3.4 GitHub 映射 (issue_comment 事件)
+### 3.4 GitHub 映射
+
+订阅的事件集合以本节为准, ADR 与 github-app 文档与之一致
+
+| 事件 (X-GitHub-Event) | action | 产出 | session | platform_message_id 与 dedup_key |
+| --- | --- | --- | --- | --- |
+| `issue_comment` | created, edited | 一条消息, edited 只覆盖同 dedup_key 记录的 `text` | `github:<iid>:issue:<full_name>#<issue.number>` | `ic:<comment.id>` |
+| `pull_request_review_comment` | created, edited | 同上, `reply_to` 取 `rc:<in_reply_to_id>` | `github:<iid>:issue:<full_name>#<pull_request.number>` | `rc:<comment.id>` |
+| `pull_request_review` | submitted | 一条消息, `text` 为结论加正文 | 同上 | `rv:<review.id>` |
+| `issues` | opened | 一条消息, `text` 为标题加空行加正文 | `github:<iid>:issue:<full_name>#<issue.number>` | `is:<issue.id>` |
+| `issues` | closed, reopened | 一条状态消息, `text` 用固定模板 | 同上 | `is:<issue.id>:<action>:<X-GitHub-Delivery>` |
+| `pull_request` | opened | 一条消息, `text` 为标题加空行加正文 | `github:<iid>:issue:<full_name>#<number>` | `pr:<pull_request.id>` |
+| `pull_request` | closed, reopened, ready_for_review | 一条状态消息 | 同上 | `pr:<pull_request.id>:<action>:<X-GitHub-Delivery>` |
+| `installation`, `installation_repositories` | 全部 | 不产出消息, 只更新 installation 与仓库映射 | 无 | 无 |
 
 | GitHub 字段 | envelope 字段 |
 | --- | --- |
-| `repository.full_name`, `issue.number` | `session="github:<iid>:issue:<full_name>#<number>"`, `session_type="issue"` |
-| `comment.user.login`, `comment.user.id` | `sender.name`, `sender.id` |
-| `comment.performed_via_github_app.id == 本 App` | `sender.is_self=true` |
-| `comment.body` | `text` |
-| `comment.id` | `platform_message_id` |
-| `comment.created_at` | `occurred_at` |
-| 请求头 `X-GitHub-Delivery` | 写入 `raw.delivery_id`, 作为第二道去重键 |
+| 评论或 review 的 `user.login`, `user.id` | `sender.name`, `sender.id` |
+| `performed_via_github_app.id == 本 App` 或 `user.login == "<app-slug>[bot]"` | `sender.is_self=true` |
+| `comment.body` | `text`, 去掉末尾的 `<!-- hx-router delivery=... -->` 标记 |
+| `comment.created_at` 等 GitHub 给出的时间 | `occurred_at`, 原样保留 GitHub 的 `Z` 结尾 UTC 字符串 |
+| 请求头 `X-GitHub-Delivery` | 写入 `raw.gh_delivery`, 并进入 ingress 去重表, 见第 7 节 |
 
 ```json
 {
@@ -163,21 +193,32 @@ source 与 sink 共用同一套地址, 统一叫 session 地址
   "session_type": "issue",
   "sender": {"id": "583231", "name": "octocat", "is_self": false},
   "text": "复现了, 附上日志",
-  "platform_message_id": "2449601123",
-  "occurred_at": "2026-11-02T13:31:40Z",
-  "raw": {"action": "created", "delivery_id": "72d3162e-cc78-11e3-81ab-4c9367dc0958"}
+  "platform_message_id": "ic:2449601123",
+  "occurred_at": "2026-11-02T13:31:00Z",
+  "raw": {"gh_event": "issue_comment", "gh_action": "created", "gh_delivery": "72d3162e-cc78-11e3-81ab-4c9367dc0958"}
 }
 ```
 
-`issues` 与 `pull_request` 的 `opened` 事件映射为一条以标题加正文为 `text` 的 envelope, `platform_message_id` 取 `issue:<id>` 或 `pr:<id>`, 其它 action 只更新会话元数据不产出消息
+- 未列出的事件与 action 返回 2xx 后丢弃, 不入库
+- `push` 事件不订阅, 因此不申请 Contents 权限
 
 ## 4. 数据模型增量
 
-迁移全部写进现有 `server/src/hx_email/models/messaging.py` 的 `migrate_messaging_schema`
+迁移全部写进现有 `server/src/hx_email/models/messaging.py` 的 `migrate_messaging_schema`; SQLite 的 `ALTER TABLE ... ADD COLUMN` 没有 `IF NOT EXISTS`, 迁移先读 `PRAGMA table_info(messaging_messages)` 再只补缺的列
 
 ```sql
-CREATE UNIQUE INDEX IF NOT EXISTS uq_messaging_messages_platform_id
-ON messaging_messages(instance_id, message_id) WHERE message_id <> '';
+ALTER TABLE messaging_messages ADD COLUMN is_self INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE messaging_messages ADD COLUMN reply_to TEXT NOT NULL DEFAULT '';
+ALTER TABLE messaging_messages ADD COLUMN attachments_json TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE messaging_messages ADD COLUMN occurred_at TEXT NOT NULL DEFAULT '';
+ALTER TABLE messaging_messages ADD COLUMN raw_ref TEXT NOT NULL DEFAULT '';
+ALTER TABLE messaging_messages ADD COLUMN dedup_key TEXT NOT NULL DEFAULT '';
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_messaging_messages_dedup
+ON messaging_messages(instance_id, dedup_key) WHERE dedup_key <> '';
+
+CREATE INDEX IF NOT EXISTS idx_messaging_messages_created
+ON messaging_messages(created_at);
 
 CREATE TABLE IF NOT EXISTS router_routes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -194,104 +235,153 @@ CREATE TABLE IF NOT EXISTS router_routes (
 
 CREATE TABLE IF NOT EXISTS router_outbox (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  instance_id INTEGER NOT NULL REFERENCES messaging_instances(id),
+  user_id INTEGER NOT NULL REFERENCES users(id),
   kind TEXT NOT NULL,
-  session TEXT NOT NULL,
+  instance_id INTEGER REFERENCES messaging_instances(id),
+  route_id INTEGER REFERENCES router_routes(id),
+  session TEXT NOT NULL DEFAULT '',
   payload_json TEXT NOT NULL,
   idempotency_key TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'queued',
   attempts INTEGER NOT NULL DEFAULT 0,
   next_attempt_at TEXT NOT NULL DEFAULT (datetime('now')),
+  give_up_at TEXT NOT NULL,
   platform_message_id TEXT NOT NULL DEFAULT '',
   last_error TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-  UNIQUE(instance_id, kind, idempotency_key)
+  CHECK (
+    (kind = 'send' AND instance_id IS NOT NULL AND route_id IS NULL AND session <> '')
+    OR (kind = 'webhook' AND route_id IS NOT NULL AND instance_id IS NULL)
+  )
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_router_outbox_send
+ON router_outbox(instance_id, idempotency_key) WHERE kind = 'send';
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_router_outbox_webhook
+ON router_outbox(route_id, idempotency_key) WHERE kind = 'webhook';
 
 CREATE INDEX IF NOT EXISTS idx_router_outbox_due
 ON router_outbox(status, next_attempt_at);
+
+CREATE TABLE IF NOT EXISTS router_ingress_deliveries (
+  instance_id INTEGER NOT NULL REFERENCES messaging_instances(id),
+  delivery_id TEXT NOT NULL,
+  event TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'pending',
+  payload_encrypted TEXT NOT NULL DEFAULT '',
+  received_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (instance_id, delivery_id)
+);
+
+CREATE TABLE IF NOT EXISTS router_api_keys (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  name TEXT NOT NULL,
+  key_prefix TEXT NOT NULL,
+  key_hash TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  last_used_at TEXT,
+  revoked_at TEXT
+);
 ```
 
-- `router_outbox.kind` 为 `send` 或 `webhook`, 前者是平台出站, 后者是向外部 URL 投递 envelope
-- `status` 取值 `queued`, `sending`, `sent`, `failed`, `dead`, `held`, 其中 `held` 表示风控熔断暂停
-- 唯一索引建立前, 迁移先按 `(instance_id, message_id)` 保留最小 id 删除重复行
-- `delivery` 取值 `mcp`, `sse`, `webhook`, `poll`
+- 新列全部带默认值, 旧行不需要回填; 旧行的 `dedup_key` 为空串, 不受唯一索引约束, 因此建索引前不需要清理已有重复行
+- `router_outbox.kind` 为 `send` 或 `webhook`: `send` 是平台出站, 属于一个账号实例与一个 session; `webhook` 是向外部 URL 投递 envelope, 属于一条 route, route 的 source 前缀可以跨实例 (例如 `qq:`), 因此 webhook 行不带 `instance_id`, 由 CHECK 约束保证两类行各自的必填列
+- `router_outbox.user_id` 让两类行都能按用户隔离与清理
+- `router_outbox.status` 取值 `queued`, `sending`, `sent`, `unknown`, `failed`, `dead`, `held`, 含义见第 7 节与第 9 节
+- `router_routes.delivery` 取值 `mcp`, `sse`, `webhook`, `poll`, 含义见第 5.7 节
+- `router_routes.status` 取值 `active`, `paused_backlog`, `expired`
+- `router_ingress_deliveries` 只给 GitHub 这类带投递 ID 的平台用, `status` 取 `pending`, `done`, `ignored`, 进程重启时重新处理 `pending` 行
+- `router_api_keys` 见第 8.2 节
 
 ## 5. MCP tool 清单
 
 MCP server 名为 `hx-router`, 传输为 streamable HTTP (`/mcp`) 与 stdio (`hx-email mcp`), 每个调用都以路由 API Key 绑定到一个用户
-所有 tool 失败时返回 MCP 标准 `isError=true`, 内容中带 `{code, message}`, `code` 取值见第 9 节
+所有 tool 失败时返回 MCP 标准 `isError=true`, 内容中带 `{code, message, retryable}`, `code` 取值见第 9 节
 
 ### 5.1 `sources_list`
 
-列出当前用户可用的平台, 账号实例及其在线与熔断状态
+列出当前用户可用的平台, 账号实例及其在线与出站状态
 
 ```json
-{"type": "object", "properties": {"platform": {"type": "string", "description": "只看某个平台, 例如 qq"}}, "additionalProperties": false}
+{"type": "object", "properties": {"platform": {"type": "string", "enum": ["qq", "github"], "description": "只看某个平台"}}, "additionalProperties": false}
 ```
 
-返回 `{"sources": [{"platform": "qq", "instance_id": 3, "name": "运维小号", "state": "online", "account_id": "20002", "outbound": "open", "risk_level": "third_party"}]}`, 其中 `outbound` 取 `open`, `held`, `manual_hold`
+返回 `{"sources": [{"platform": "qq", "instance_id": 3, "name": "运维小号", "state": "online", "account_id": "20002", "outbound": "open", "held_until": "", "risk_level": "third_party"}]}`
+- `state` 取现有 `AdapterState` 的 `stopped`, `connecting`, `online`, `error`
+- `outbound` 取 `open` (正常出站), `held` (自动熔断中, `held_until` 给出自动恢复时间), `manual_hold` (自动熔断当天第三次触发, 或用户在前端手动暂停, 只能由用户调用第 6 节的 resume 接口解除, `held_until` 为空串)
 
 ### 5.2 `sessions_list`
 
 列出某个账号实例下可以监听与发送的会话
 
 ```json
-{"type": "object", "properties": {"instance_id": {"type": "integer"}, "session_type": {"type": "string", "enum": ["private", "group", "channel", "repo", "issue"]}, "query": {"type": "string", "description": "按名称模糊过滤"}, "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}}, "required": ["instance_id"], "additionalProperties": false}
+{"type": "object", "properties": {"instance_id": {"type": "integer"}, "session_type": {"type": "string", "enum": ["private", "group", "temp", "repo", "issue"]}, "query": {"type": "string", "description": "按名称模糊过滤"}, "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}}, "required": ["instance_id"], "additionalProperties": false}
 ```
 
 返回 `{"sessions": [{"session": "qq:3:group:123456789", "session_type": "group", "title": "发布群", "last_cursor": "c1.3.10452"}]}`
 
 ### 5.3 `session_select`
 
-选定一个会话并返回它的元数据与当前游标, 作为后续 pull 与 subscribe 的起点
+选定一个会话并返回它的元数据, 当前游标与限流参数, 作为后续 pull 与 subscribe 的起点; 服务端不保存 "选定" 状态, 返回的 cursor 由调用方保存
 
 ```json
 {"type": "object", "properties": {"session": {"type": "string", "description": "session 地址"}, "from": {"type": "string", "enum": ["now", "earliest"], "default": "now"}}, "required": ["session"], "additionalProperties": false}
 ```
 
-返回 `{"session": "qq:3:group:123456789", "title": "发布群", "can_send": true, "cursor": "c1.3.10452", "limits": {"per_session_interval_seconds": 3.0, "per_account_per_minute": 20}}`, `from="now"` 时 cursor 指向最新一条之后
+返回 `{"session": "qq:3:group:123456789", "title": "发布群", "can_send": true, "cursor": "c1.3.10452", "limits": {"per_session_interval_seconds": 3.0, "per_account_per_minute": 20, "max_text_length": 1500}}`, `from="now"` 时 cursor 指向最新一条之后, `from="earliest"` 时为 `c1.<iid>.0`
 
 ### 5.4 `messages_pull`
 
 按 cursor 读取一个会话或一个前缀下的增量消息, 同步, 只读数据库
 
 ```json
-{"type": "object", "properties": {"source": {"type": "string", "description": "session 地址或地址前缀"}, "cursor": {"type": "string", "description": "上次返回的 next_cursor, 为空则从 session_select 给出的位置读"}, "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}, "direction": {"type": "string", "enum": ["inbound", "outbound", "both"], "default": "inbound"}, "include_raw": {"type": "boolean", "default": false}}, "required": ["source", "cursor"], "additionalProperties": false}
+{"type": "object", "properties": {"source": {"type": "string", "description": "session 地址或地址前缀"}, "cursor": {"type": "string", "description": "session_select 或上次 messages_pull 返回的 cursor"}, "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}, "direction": {"type": "string", "enum": ["inbound", "outbound", "both"], "default": "inbound"}, "include_raw": {"type": "boolean", "default": false}}, "required": ["source", "cursor"], "additionalProperties": false}
 ```
 
-返回 `{"messages": [<envelope>], "next_cursor": "c1.3.10460", "has_more": false}`, 消息按 cursor 升序
+返回 `{"messages": [<envelope>], "next_cursor": "c1.3.10460", "has_more": false}`, 消息按 cursor 升序; cursor 必填, 服务端不保存调用方的读位置, 没有 cursor 的调用方先调 `session_select`
 
 ### 5.5 `message_send`
 
 向一个 sink 发送消息, 写入 outbox, 在整形器允许时同步投递并等待结果
 
 ```json
-{"type": "object", "properties": {"sink": {"type": "string", "description": "session 地址"}, "text": {"type": "string", "minLength": 1, "maxLength": 4000}, "title": {"type": "string", "description": "只在向 GitHub 仓库地址建 issue 时必填"}, "reply_to": {"type": "string", "default": ""}, "idempotency_key": {"type": "string", "minLength": 8, "maxLength": 64}, "wait_seconds": {"type": "number", "minimum": 0, "maximum": 5, "default": 5}}, "required": ["sink", "text", "idempotency_key"], "additionalProperties": false}
+{"type": "object", "properties": {"sink": {"type": "string", "description": "session 地址"}, "text": {"type": "string", "minLength": 1, "maxLength": 4000}, "title": {"type": "string", "description": "只在向 GitHub 仓库地址建 issue 时必填"}, "reply_to": {"type": "string", "default": ""}, "idempotency_key": {"type": "string", "minLength": 8, "maxLength": 64, "pattern": "^[A-Za-z0-9_.:-]+$"}, "wait_seconds": {"type": "number", "minimum": 0, "maximum": 5, "default": 5}}, "required": ["sink", "text", "idempotency_key"], "additionalProperties": false}
 ```
 
-返回 `{"delivery_id": "d_881", "status": "sent", "platform_message_id": "1873992260", "queued_until": ""}`, 被整形推迟时 `status="queued"` 且 `queued_until` 给出预计投递时间
+返回 `{"delivery_id": "d_881", "status": "sent", "deduplicated": false, "platform_message_id": "1873992260", "queued_until": ""}`
+- 被整形推迟时 `status="queued"` 且 `queued_until` 给出预计投递时间
+- `idempotency_key` 由调用方生成, 推荐 UUID v4 但不强制, 语义见第 7.2 节; 命中已有记录时返回首次的 `delivery_id` 与当前状态, 并带 `deduplicated=true`
+- `text` 的 4000 是跨平台入参上限; 各平台单条上限以 `session_select` 返回的 `max_text_length` 为准, QQ 为 1500, 超过时返回 `text_too_long`, 路由层不拆条
 
 ### 5.6 `delivery_status`
 
-查询一次发送或一次 webhook 投递的状态
+查询一次发送或一次 webhook 投递的状态, 支持按 `delivery_id` 查或按 `idempotency_key` 加 `sink` 查
 
 ```json
 {"type": "object", "properties": {"delivery_id": {"type": "string"}, "idempotency_key": {"type": "string"}, "sink": {"type": "string"}}, "oneOf": [{"required": ["delivery_id"]}, {"required": ["idempotency_key", "sink"]}], "additionalProperties": false}
 ```
 
-返回 `{"delivery_id": "d_881", "status": "sent", "attempts": 1, "platform_message_id": "1873992260", "last_error": "", "updated_at": "2026-11-02T13:21:00Z"}`
+返回 `{"delivery_id": "d_881", "kind": "send", "status": "sent", "attempts": 1, "platform_message_id": "1873992260", "last_error": "", "updated_at": "2026-11-02T13:21:00Z"}`
+- 按 `idempotency_key` 查只适用于 `kind=send`, `sink` 用于定位实例, 对应唯一索引 `(instance_id, idempotency_key)`
 
 ### 5.7 `route_subscribe`
 
-创建一条订阅规则, 让某个 source 前缀的新消息推送给当前 MCP 会话, SSE 或外部 webhook
+创建一条订阅规则, 让某个 source 前缀的新消息交给当前 MCP 会话, SSE 连接, 外部 webhook, 或留给消费者自己长轮询
 
 ```json
 {"type": "object", "properties": {"source": {"type": "string", "description": "session 地址或前缀"}, "delivery": {"type": "string", "enum": ["mcp", "sse", "webhook", "poll"], "default": "mcp"}, "webhook_url": {"type": "string", "format": "uri"}, "filter": {"type": "object", "properties": {"sender_ids": {"type": "array", "items": {"type": "string"}}, "keywords": {"type": "array", "items": {"type": "string"}}, "exclude_self": {"type": "boolean", "default": true}}, "additionalProperties": false}, "from_cursor": {"type": "string"}, "ttl_seconds": {"type": "integer", "minimum": 60, "maximum": 2592000}}, "required": ["source"], "additionalProperties": false}
 ```
 
-返回 `{"route_id": "r_12", "resource_uri": "hx-router://routes/r_12", "cursor": "c1.3.10452", "webhook_secret": "只在 delivery=webhook 时返回一次"}`, `delivery="mcp"` 时服务端自动对 `resource_uri` 执行 `resources/subscribe`
+返回 `{"route_id": "r_12", "resource_uri": "hx-router://routes/r_12", "cursor": "c1.3.10452", "webhook_secret": "只在 delivery=webhook 时返回一次"}`
+
+四种 delivery 的定义
+- `mcp`: 服务端自动对 `resource_uri` 执行 `resources/subscribe`, 有新数据时发 `notifications/resources/updated`, 客户端再读 resource 或调用 `messages_pull`
+- `sse`: 消费者连接 `GET /api/v1/router/routes/{route_id}/stream`, 服务端按帧推送 envelope
+- `webhook`: 服务端经 outbox 向 `webhook_url` 投递 envelope 批次, `webhook_url` 必填, 重试规则见第 7.4 节
+- `poll`: 服务端不主动推送任何东西, 消费者用 `events_wait` 或 `GET /routes/{route_id}/wait` 长轮询, 用 `route_ack` 推进位置, 给不支持 resource 订阅也不便保持 SSE 的客户端使用
 
 ### 5.8 `route_unsubscribe`
 
@@ -311,17 +401,17 @@ MCP server 名为 `hx-router`, 传输为 streamable HTTP (`/mcp`) 与 stdio (`hx
 {"type": "object", "properties": {"status": {"type": "string", "enum": ["active", "paused_backlog", "expired", "all"], "default": "active"}}, "additionalProperties": false}
 ```
 
-返回 `{"routes": [{"route_id": "r_12", "source": "qq:3:group:", "delivery": "mcp", "status": "active", "ack_cursor": "c1.3.10452", "backlog": 0, "expires_at": ""}]}`
+返回 `{"routes": [{"route_id": "r_12", "source": "qq:3:group:", "delivery": "mcp", "status": "active", "ack_cursor": "c1.0.10452", "backlog": 0, "expires_at": ""}]}`
 
 ### 5.10 `events_wait`
 
-长轮询, 阻塞到某条订阅有新数据或超时, 给不支持 resource 订阅的 MCP 客户端使用
+长轮询, 阻塞到某条订阅有新数据或超时, 适用于任何 delivery 的 route, 是 `poll` 类 route 的唯一读取方式之一
 
 ```json
 {"type": "object", "properties": {"route_id": {"type": "string"}, "cursor": {"type": "string"}, "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 55, "default": 25}, "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 20}}, "required": ["route_id", "cursor"], "additionalProperties": false}
 ```
 
-返回 `{"messages": [<envelope>], "next_cursor": "c1.3.10461", "gap": false, "timed_out": false}`, 等待期间不占用线程, 由 `hub.py` 的 asyncio 条件变量唤醒
+返回 `{"messages": [<envelope>], "next_cursor": "c1.0.10461", "gap": false, "timed_out": false}`, 等待期间不占用线程, 由 `hub.py` 的 asyncio 条件变量唤醒, 不使用定时器
 
 ### 5.11 `route_ack`
 
@@ -331,7 +421,7 @@ MCP server 名为 `hx-router`, 传输为 streamable HTTP (`/mcp`) 与 stdio (`hx
 {"type": "object", "properties": {"route_id": {"type": "string"}, "cursor": {"type": "string"}}, "required": ["route_id", "cursor"], "additionalProperties": false}
 ```
 
-返回 `{"route_id": "r_12", "ack_cursor": "c1.3.10461"}`
+返回 `{"route_id": "r_12", "ack_cursor": "c1.0.10461"}`
 
 ### 5.12 MCP resource
 
@@ -341,7 +431,7 @@ MCP server 名为 `hx-router`, 传输为 streamable HTTP (`/mcp`) 与 stdio (`hx
 
 ## 6. REST 兼容面
 
-前缀 `/api/v1/router`, 鉴权统一为 `Authorization: Bearer <路由 API Key>`, 前端会话 Cookie 同样被接受, 平台回调入口例外
+前缀 `/api/v1/router`, 鉴权统一为 `Authorization: Bearer <路由 API Key>`, 前端会话 token 同样被接受; 平台回调入口与 API Key 管理接口例外
 
 | 方法 | 路径 | 入参 | 返回 | 鉴权 | 对应 MCP tool |
 | --- | --- | --- | --- | --- | --- |
@@ -350,83 +440,220 @@ MCP server 名为 `hx-router`, 传输为 streamable HTTP (`/mcp`) 与 stdio (`hx
 | POST | `/sessions/select` | body 同 `session_select` | 同 `session_select` | API Key | `session_select` |
 | GET | `/messages` | query `source`, `cursor`, `limit`, `direction`, `include_raw` | 同 `messages_pull` | API Key | `messages_pull` |
 | POST | `/messages` | body 同 `message_send`, 也可用 `Idempotency-Key` 头代替 `idempotency_key` | 同 `message_send`, 排队时 HTTP 202 | API Key | `message_send` |
-| GET | `/deliveries/{delivery_id}` | 无 | 同 `delivery_status` | API Key | `delivery_status` |
+| GET | `/deliveries/{delivery_id}` | 无 | 同 `delivery_status` | API Key | `delivery_status` 按 delivery_id 查 |
+| GET | `/deliveries` | query `idempotency_key`, `sink`, 两者必填 | 同 `delivery_status`, 无记录时 404 | API Key | `delivery_status` 按幂等键查 |
 | POST | `/routes` | body 同 `route_subscribe` | 同 `route_subscribe`, HTTP 201 | API Key | `route_subscribe` |
 | DELETE | `/routes/{route_id}` | 无 | 同 `route_unsubscribe` | API Key | `route_unsubscribe` |
 | GET | `/routes` | query `status` | 同 `routes_list` | API Key | `routes_list` |
 | GET | `/routes/{route_id}/wait` | query `cursor`, `timeout_seconds`, `limit` | 同 `events_wait` | API Key | `events_wait` |
 | POST | `/routes/{route_id}/ack` | body `{cursor}` | 同 `route_ack` | API Key | `route_ack` |
 | GET | `/routes/{route_id}/stream` | 头 `Last-Event-ID` 为 cursor | `text/event-stream`, 每帧 `id` 为 cursor | API Key | 对应 resource 订阅 |
-| POST | `/ingress/qq/{instance_id}` | OneBot 11 事件 | `{stored}` | `X-Messaging-Token` | 无 |
-| POST | `/ingress/github/{instance_id}` | GitHub webhook | `{stored}` | `X-Hub-Signature-256` | 无 |
+| POST | `/instances/{instance_id}/outbound/hold` | 无 | `{outbound: "manual_hold"}` | 前端会话 | 无 |
+| POST | `/instances/{instance_id}/outbound/resume` | 无 | `{outbound: "open"}` | 前端会话 | 无 |
+| POST | `/api-keys` | body `{name}` | `{id, name, key, key_prefix, created_at}`, `key` 只返回这一次, HTTP 201 | 前端会话 | 无 |
+| GET | `/api-keys` | 无 | `{keys: [{id, name, key_prefix, created_at, last_used_at, revoked_at}]}` | 前端会话 | 无 |
+| DELETE | `/api-keys/{id}` | 无 | `{id, revoked: true}` | 前端会话 | 无 |
+| POST | `/ingress/qq/{instance_id}` | OneBot 11 事件 | `{stored}` | `X-Messaging-Token`, NapCat 实际携带的头名需复核 | 无 |
+| POST | `/ingress/github/{instance_id}` | GitHub webhook | 见 github-app 第 5.4 节 | `X-Hub-Signature-256` | 无 |
 
+- outbound hold 与 resume 以及 API Key 管理只接受前端会话 token, 不接受路由 API Key, 防止一把泄漏的 Key 自己解除熔断或签发新 Key
 - 现有 `POST /api/v1/messaging/events/{kind}` 保留, 内部改为转发到同一套 ingress 处理, NapCat 配置不需要立即变更
-- 现有 `POST /api/v1/messaging/instances/{id}/send` 保留给前端, 内部改为调用 `facade.send` 以共享整形与幂等
-- SSE 每 25 秒发送一次注释心跳 `:`, 只在有活跃 SSE 连接时存在, 无连接时没有任何定时器
+- 现有 `POST /api/v1/messaging/instances/{id}/send` 保留给前端, 内部改为调用 `facade.send`, 由服务端生成 `idempotency_key`, 共享整形与幂等
+- SSE 每 25 秒发送一次注释心跳 `:`, 只在有活跃 SSE 连接时存在, 无连接时没有任何定时器, 这一心跳计入 ADR 0005 的验收项 A2 的允许量
 
 出站 webhook 投递格式
-- `POST <webhook_url>`, body 为 `{"route_id", "messages": [<envelope>], "next_cursor"}`
+- `POST <webhook_url>`, body 为 `{"route_id", "messages": [<envelope>], "next_cursor"}`, 每批至多 50 条
 - 头 `X-HX-Router-Signature: sha256=<hex>`, 以 route 创建时返回的 `webhook_secret` 做 HMAC-SHA256
 - 头 `X-HX-Router-Delivery: <delivery_id>`, 接收方据此去重
 - 接收方返回 2xx 视为成功并推进该 route 的 `ack_cursor`
 
-## 7. cursor 语义与一致性边界
+## 7. cursor, 去重, 幂等与重试
+
+### 7.1 cursor 与一致性边界
 
 - cursor 格式为 `c1.<instance_id>.<messaging_messages.id>`, 跨实例前缀订阅使用 `c1.0.<id>` 表示全局位置, 对调用方保持不透明
 - `messaging_messages.id` 是 SQLite 自增主键, 只在单写者单实例部署下保证单调, 这与 ADR 0002 的部署形态一致
-- 读取语义为 `WHERE id > <cursor_id> ORDER BY id ASC LIMIT n`, 走 `(instance_id, chat_id, id)` 索引
-- 投递语义为至少一次, 推送, SSE, webhook 都可能重复, 消费者以 envelope 的 `id` 去重
-- 入站去重键为 `(instance_id, platform_message_id)`, GitHub 额外用 `X-GitHub-Delivery` 在 ingress 层做一次短期去重, 两者都命中时直接返回 `stored=false`
-- 出站去重键为 `(instance_id, kind, idempotency_key)`, 重复请求返回首次的 `delivery_id` 与当前状态
+- 读取语义为 `WHERE id > <cursor_id> ORDER BY id ASC LIMIT n`, 单会话读取走 `(instance_id, chat_id, id)` 索引
+- 投递语义为至少一次, MCP 通知, SSE, webhook 都可能重复, 消费者以 envelope 的 `id` 去重
 - 重启续读: route 的 `ack_cursor` 持久化在 `router_routes`, 进程启动后 SSE 与 webhook 从 `ack_cursor` 续推, MCP 客户端重连后用自己保存的 cursor 调 `messages_pull`
-- 重启时 `router_outbox` 中处于 `sending` 的行回退为 `queued` 并增加 attempts, 由于平台侧可能已经收到, 这是唯一可能出现重复出站的窗口, QQ 与 GitHub 都没有平台侧幂等键, 规格接受这一窗口并在 `delivery_status` 中以 `attempts>1` 暴露
 - 一致性边界: 同一 session 内按 id 有序, 跨 session 只保证每条最终可读, 不保证全局因果序
+- cursor 指向已被保留期清理删除的位置时, 读取从现存最小 id 开始, 并在返回中带 `gap=true`
 
-## 8. 配置与密钥存储
+### 7.2 出站幂等
 
-所有密钥都进入 `messaging_instances.config_encrypted`, 整体 JSON 用 `security.encrypt_secret(settings, value)` 加密, 读取用 `security.decrypt_secret`
+- 字段名统一为 `idempotency_key`, 8 到 64 个字符, 由调用方生成, 推荐 UUID v4
+- 平台出站 (`kind=send`) 的唯一键为 `(instance_id, idempotency_key)`, 实例由 `sink` 地址第 2 段确定
+- webhook 投递 (`kind=webhook`) 的唯一键为 `(route_id, idempotency_key)`, 这类键由服务端生成, 取值为批次首尾 envelope id, 形如 `m_10452-m_10460`
+- 幂等窗口等于 outbox 行的保留期, 终态行 (`sent`, `unknown`, `failed`, `dead`) 保留 7 天, 7 天内同键重复调用返回首次的 `delivery_id` 与当前状态并带 `deduplicated=true`, 不新建投递, 也没有单独的 `duplicate` 状态
+- 平台侧幂等键: QQ (OneBot 11) 没有; GitHub REST 写接口也没有, GitHub provider 用评论正文末尾的隐藏标记 `<!-- hx-router delivery=<delivery_id> -->` 在结果未知时按标记查重, 这是模拟出来的幂等, 不是平台保证
+
+### 7.3 结果未知与重启语义
+
+- 平台调用超时, 或进程在调用期间退出, 都属于结果未知: 平台可能已经收到
+- 结果未知的 `kind=send` 行一律置为 `unknown`, 不自动重发; 进程启动时仍处于 `sending` 的 `kind=send` 行同样置为 `unknown`
+- 例外是 GitHub: 对 `unknown` 行, GitHub provider 按 7.2 的标记在目标线程最近 100 条评论中查找, 找到即回填 `platform_message_id` 并置为 `sent`, 确认找不到才按 7.4 的平台出站规则重发一次, 查找本身失败则保持 `unknown`
+- QQ 的 `unknown` 行由调用方决定是否用新的 `idempotency_key` 再发, 路由层不替它决定
+- 进程启动时仍处于 `sending` 的 `kind=webhook` 行回退为 `queued`, 因为接收方按 `X-HX-Router-Delivery` 去重, 重复投递是安全的
+- 因此路由层唯一可能出现重复出站的情况是调用方主动换键重发, 这与 qq-napcat 与 github-app 两份文档的说法一致
+
+### 7.4 重试矩阵
+
+| 类别 | 可重试的情形 | 退避 | 次数与时长上限 | 用尽后 |
+| --- | --- | --- | --- | --- |
+| 平台出站 `kind=send` | 连接被拒绝, HTTP 502, 503, 504, 容器正在重启, GitHub 5xx | 2 秒起步翻倍, 单次上限 60 秒, 叠加 20% 随机抖动 | 最多重试 3 次 (共 4 次尝试), 约 15 秒内结束 | `failed` |
+| 平台出站的限流等待 | 本地令牌桶不足, GitHub 返回 `Retry-After` 或 `X-RateLimit-Remaining=0` | 等到令牌或平台给出的时间点 | 不计入重试次数, 单次等待上限 15 分钟, `give_up_at` 为创建后 24 小时 | 超过 `give_up_at` 置 `failed` |
+| webhook 投递 `kind=webhook` | 连接失败, 超时, 非 2xx | 10 秒起步翻倍, 单次上限 1 小时, 叠加 20% 随机抖动 | 不限次数, 以时长为界, `give_up_at` 为首次尝试后 24 小时 | `dead` |
+| 入站事件补投 | QQ 上报丢失, GitHub 投递失败 | 不由路由层重试 | QQ 在实例回到 online 时按会话补拉最近 20 条, GitHub 只在用户手动触发时经 deliveries 接口补投 | 走同一套入站去重 |
+
+- 401 (GitHub installation token 失效) 先强制刷新 token 再重试 1 次, 计入平台出站的重试次数
+- 不可重试错误 (参数错误, 目标不存在, 权限不足, 风控类错误) 直接进入终态, 风控类错误另外触发第 9.3 节的熔断
+- webhook 按 route 串行投递, 同一 route 的下一批要等上一批成功或 `dead`, 不同 route 之间互不阻塞
+- webhook 时长核算: 10, 20, 40, ..., 2560 秒共 9 次退避约 1.4 小时, 之后每小时 1 次直到 24 小时, 因此接收端停机 1 小时后恢复, 最迟在下一次退避到点时 (不超过 1 小时) 收到补投, 停机超过 24 小时的批次进入 `dead`
+- 一条 webhook route 进入 `dead` 的批次之后, route 继续从下一批投递, `dead` 批次可在前端手动重投
+
+### 7.5 入站去重
+
+- 入站唯一键为 `(instance_id, dedup_key)`, 唯一索引是永久的, 不表达时间窗口
+- QQ 的 `dedup_key` 为 `qq:<message_id>:<time>`: NapCat 重投同一事件时两者都相同会被吸收; NapCat 的 `message_id` 是否在容器重启后复用需复核, 即使复用, 不同时间的新消息因 `time` 不同不会被误吸收, 这替代了 qq-napcat 早先提出的 10 分钟窗口
+- GitHub 的 `dedup_key` 见第 3.4 节, edited 事件命中已有 `dedup_key` 时只覆盖 `text`, 不新增行
+- GitHub 另有投递层去重: `router_ingress_deliveries` 以 `(instance_id, X-GitHub-Delivery)` 为主键, 命中直接返回 200 且不再处理
+- 入库统一用 `INSERT ... ON CONFLICT DO NOTHING` (edited 用 `DO UPDATE SET text`), 命中时返回 `stored=false`
+- 保留期清理 (第 10 节) 删除的旧行不再参与去重, 超过保留期的重投会被当作新消息, 这一窗口对 QQ 由 `time` 保证无害, 对 GitHub 由投递层去重表的 7 天保留覆盖手动重投的常见窗口
+
+## 8. 配置, 密钥与 API Key
+
+### 8.1 配置与密钥存储
+
+所有平台密钥都进入 `messaging_instances.config_encrypted`, 整体 JSON 用 `security.encrypt_secret(settings, value)` 加密, 读取用 `security.decrypt_secret`
 
 | 配置键 | 平台 | 说明 | API 返回 |
 | --- | --- | --- | --- |
-| `event_token` | QQ | NapCat 上报时携带的 `X-Messaging-Token`, 沿用现有生成逻辑 | `***` |
+| `event_token` | QQ | NapCat 上报时携带的鉴权 token, 沿用现有生成逻辑 | `***` |
 | `api_base_url` | QQ | 内置引擎容器的 OneBot HTTP 地址 | 原值 |
 | `rate_profile` | QQ | `conservative` 或 `default`, 决定令牌桶参数 | 原值 |
 | `app_id` | GitHub | GitHub App ID | 原值 |
-| `installation_id` | GitHub | 安装 ID | 原值 |
+| `client_id` | GitHub | GitHub App Client ID | 原值 |
+| `app_slug` | GitHub | App slug, 决定 bot 登录名 `<app-slug>[bot]` | 原值 |
 | `private_key_pem` | GitHub | App 私钥 PEM 全文 | `***` |
 | `webhook_secret` | GitHub | App webhook secret | `***` |
+| `webhook_secret_previous` | GitHub | 轮换期间的上一个 secret, 轮换完成后删除 | `***` |
 
+全局开关
+- 设置项 `router_enabled`, 取值 `true` 或 `false`, 默认 `true`; 为 `false` 时不挂载 `/mcp` 与 `/api/v1/router`, 不启动 housekeeping, 用于 ADR 0005 的 A1 到 A3 对照测量
+- 设置项 `router_message_retention_days`, 默认 90, 最小 7, 见第 10 节
+
+其它
 - route 的外部 webhook URL 与其 `webhook_secret` 加密存入 `router_routes.target_encrypted`
-- 路由 API Key 只存 SHA-256 哈希, 明文只在创建时返回一次
 - GitHub installation token 只在内存缓存, 不落库, 进程重启后重新换取
 - `.env` 与日志中不出现任何上述明文, 日志里的 session 地址保留, 消息 `text` 默认不写日志
 
-## 9. 速率整形与错误码
+### 8.2 路由 API Key
 
-QQ 默认参数对应 `rate_profile=default`
-- 同一 session 最小间隔 3 秒, 账号级每分钟 20 条, 突发 3 条, 每日 1000 条, 每次附加 0.5 到 1.5 秒抖动
-- `conservative` 档为同一 session 最小间隔 6 秒, 账号级每分钟 8 条, 每日 300 条
+- 现有外部 API 的 Key 存在全局设置 `external_api_key` 与 `external_api_keys` 里且为明文比较, 不绑定用户, 不能复用为路由 API Key
+- 路由 API Key 按用户签发, 明文格式为 `hxr_` 加 32 字节随机数的 base64url 编码, 只在 `POST /api/v1/router/api-keys` 的响应里返回一次
+- 服务端只存 SHA-256 哈希 (`key_hash`) 与明文前 8 个字符 (`key_prefix`, 用于前端辨认), 校验时对传入值求哈希后按唯一索引查找
+- 每个用户最多 20 把未吊销的 Key, 超出时创建返回 409
+- 吊销即在 `revoked_at` 写入时间, 立即生效, 已建立的 SSE 连接与 MCP 会话在下一次请求或下一帧时断开; 吊销不可撤销, 吊销后的行保留用于审计
+- 每次成功鉴权更新 `last_used_at`, 同一 Key 每分钟最多写一次, 避免把读请求变成写请求
+- 删除用户时级联吊销其全部 Key
 
-GitHub 默认参数
-- 账号级每分钟 30 次写操作, 突发 5 次, 不设每日上限
+## 9. 速率整形, 熔断与错误码
 
-| code | 含义 | 是否可重试 |
+### 9.1 QQ 限流
+
+令牌桶按实例计算, REST, MCP, 前端发送与内部自动化共用同一个桶; 以下全部是本项目经验值, 腾讯不公开风控阈值, 这些数字不是平台限制; 上线后以测试小号 14 天运行记录为依据调整, 只允许往更保守的方向调, 放宽必须有记录支撑
+
+| 维度 | `default` | `conservative` |
 | --- | --- | --- |
-| `session_not_found` | 地址无效或不属于当前用户 | 否 |
-| `session_not_sendable` | 仓库地址缺少 title, 或 QQ 目标不在好友与群列表中 | 否 |
-| `rate_limited` | 本地整形拒绝且 `wait_seconds` 内无法投递, 消息已入队 | 不需要, 已排队 |
-| `outbound_held` | 账号处于风控熔断或人工暂停 | 否, 恢复后自动继续 |
-| `provider_offline` | 账号实例离线 | 是 |
-| `provider_error` | 平台返回错误 | 视 `retryable` |
-| `cursor_invalid` | cursor 无法解析或属于其它实例 | 否 |
+| 同一 session 最小间隔 | 3 秒 | 6 秒 |
+| 同一 session 每分钟 | 10 条 | 5 条 |
+| 账号级突发 | 3 条, 之后每秒补 1 个令牌 | 2 条, 之后每 3 秒补 1 个令牌 |
+| 账号级每分钟 | 20 条 | 8 条 |
+| 账号级每小时 | 300 条 | 120 条 |
+| 账号级每天 (自然日按 Asia/Shanghai) | 1000 条 | 300 条 |
+| 每次发送附加随机抖动 | 0.5 到 1.5 秒 | 1 到 3 秒 |
+| 单条长度 | 1500 字符 | 1500 字符 |
 
-## 10. 分阶段落地
+- 单条 1500 字符是保守取值, QQ 客户端的实际单条上限需复核, 复核方法是用测试小号分别发送 1500, 3000, 4500 字符的纯文本并记录是否截断或失败
+- 同一内容发往多个会话 (内容相同以去除空白后的 SHA-256 判定) 额外受限: 相邻两个会话间隔不少于 8 秒再加 0 到 4 秒抖动, 同一内容每天最多发往 20 个会话, 超出返回 `rate_limited`
+
+### 9.2 GitHub 限流
+
+- 账号级 (每个 installation) 每分钟 30 次写操作, 突发 5 次, 不设每日上限, 同一 installation 的写入串行执行
+- 这是本项目经验值, 目的是给 GitHub 的二级速率限制留余量; GitHub 主速率与二级速率限制的当前数字需复核, 复核方法是查阅 docs.github.com 的 "Rate limits for the REST API" 页面并记录日期, 实现上以响应头 `Retry-After`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` 为准, 不硬编码平台数字
+- 单条评论正文上限按 65536 字符处理, 需复核, 复核方法是用测试仓库提交超长评论观察 422 的边界; `max_text_length` 取 4000 (入参上限) 与该值的较小者
+
+### 9.3 风控熔断
+
+- provider 的 `SendResult.risk_signal=true` (OneBot 返回含风控, 频繁, 账号异常, 冻结等文案, 或收到下线, 冻结通知) 计为一次风控类失败
+- 5 分钟内 3 次风控类失败, 或收到一次冻结与下线通知, 该实例出站置为 `held` 30 分钟; 当天第二次进入 `held` 时暂停 6 小时; 当天第三次直接置为 `manual_hold`
+- `held` 到期自动恢复为 `open`; `manual_hold` 只能由用户调用 `POST /instances/{instance_id}/outbound/resume` 解除; 用户也可以随时调用 `hold` 接口进入 `manual_hold`
+- 熔断期间接收照常, 只停发送; 期间新提交的 `kind=send` 行以 `held` 状态入队, 恢复后按原顺序继续, 仍受 7.4 的 `give_up_at` 约束
+- 熔断与解除都写入实例事件, 并在 `sources_list` 中可见
+- GitHub 实例同样适用 `manual_hold`, 自动熔断对 GitHub 只由 `abuse` 类 403 触发
+
+### 9.4 错误码
+
+| code | 含义 | retryable |
+| --- | --- | --- |
+| `session_not_found` | 地址无效或不属于当前用户 | false |
+| `session_not_sendable` | 仓库地址缺少 title, 或 QQ 目标不在好友与群列表中, 或向陌生号首发私聊 | false |
+| `text_too_long` | 超过该平台的 `max_text_length` | false |
+| `rate_limited` | 本地整形拒绝且 `wait_seconds` 内无法投递, 消息已入队 | false, 已排队无需重试 |
+| `outbound_held` | 账号处于 `held` 或 `manual_hold`, 消息已以 `held` 入队 | false, 恢复后自动继续 |
+| `provider_offline` | 账号实例离线 | true |
+| `provider_error` | 平台返回错误 | 由 `SendResult.retryable` 决定 |
+| `delivery_unknown` | 平台调用结果未知, 状态为 `unknown`, 见第 7.3 节 | false |
+| `cursor_invalid` | cursor 无法解析或属于其它实例 | false |
+
+### 9.5 provider 结果从哪来
+
+- `MessagingProvider.send` 返回 `SendResult{status, platform_message_id, retryable, risk_signal, error_code, error_message, retry_after_seconds}`, 字段定义见 ADR 0005 第 4 节
+- 现有 `MessagingAdapter.send_message(target, text) -> str` 不能提供这些字段: 它没有 `reply_to` 入参, `OneBotAdapter` 把全部网络异常与非零 retcode 都包成只带文案的 `MessagingError`, 超时与连接被拒绝无法区分, retcode 与 `wording` 也不再是结构化字段
+- 因此 QQ provider 不包装 `send_message`, 而是调用 `OneBotAdapter` 新增的公开方法 `call_action(action, params)`, 它不抛业务异常, 返回 `{transport, http_status, retcode, wording, data}`, 其中 `transport` 取 `ok`, `timeout`, `connect_error`, `http_error`; QQ provider 按 qq-napcat 第 5.5 节把它映射成 `SendResult`
+- 抽象基类 `MessagingAdapter` 的签名不改, 现有前端路径与其它适配器不受影响; 改动的是 `OneBotAdapter` 多出一个公开方法, 这需要在实现提交里带上对应 note
+- GitHub provider 是新代码, 直接按 `SendResult` 返回, 不经过 `MessagingAdapter.send_message`
+
+## 10. 保留期, 清理与 SQLite 写入
+
+### 10.1 保留期
+
+| 对象 | 保留期 | 依据 |
+| --- | --- | --- |
+| `messaging_messages` | `router_message_retention_days`, 默认 90 天, 按 `created_at` | 用户可调, 最小 7 天 |
+| `router_outbox` 终态行 | 7 天, 按 `updated_at` | 等于出站幂等窗口 |
+| `router_outbox` 非终态行 | 不清理, 由 `give_up_at` 推进到终态后再计 7 天 | 防止删掉仍在投递的行 |
+| `router_ingress_deliveries` | 7 天, 按 `received_at` | 覆盖 GitHub 手动重投的常见窗口 |
+| `router_routes` 中 `expired` 行 | 过期后 7 天删除, 连同其 `kind=webhook` 的 outbox 行 | 便于用户查看最近过期的订阅 |
+| `router_api_keys` 已吊销行 | 不删除 | 审计 |
+
+### 10.2 清理方式
+
+- 由 60 秒一次的 housekeeping 执行, 不新增定时器; 每次 tick 每张表最多删除 500 行, 一张表一个短事务, 删除量大时分多个 tick 完成, 避免长时间持有写锁
+- 消息行按 `created_at` 索引删除, 删除前读出该批行的非空 `raw_ref`
+
+### 10.3 raw 落盘文件的回收
+
+- 落盘路径固定为数据目录下的 `router_raw/<yyyy>/<mm>/<dd>/<messaging_messages.id>.json`, 日期取落库日期 UTC
+- 消息行删除事务提交之后再删除对应文件; 文件删除失败只记日志, 由下面的孤儿扫描兜底
+- 孤儿扫描每天一次, 由 housekeeping 在 UTC 03:00 之后的第一个 tick 执行: 删除早于保留期的整个日期目录, 并删除日期目录内找不到对应消息行的文件
+- 写入顺序是先写文件再提交消息行, 提交失败时立即删除刚写的文件
+
+### 10.4 SQLite 写锁与 busy_timeout
+
+- 现有 `database.connect` 以 `sqlite3.connect(..., timeout=30)` 打开连接并设置 `PRAGMA journal_mode=WAL`, 即每个连接的 busy timeout 为 30 秒, 路由层沿用同一个 `connect`, 不另开连接池
+- WAL 下读不阻塞写, 但同一时刻只有一个写事务; 路由层所有写事务必须短: 不在事务内做网络调用, 不在事务内写 raw 文件
+- 入站一条消息一个事务; outbox 领取到期行用 `BEGIN IMMEDIATE` 加 `UPDATE ... SET status='sending' WHERE id=? AND status IN ('queued','held')` 的比较并交换, 拿到行后提交, 平台调用完成后再开新事务写结果
+- 等锁超过 30 秒抛出 `database is locked` 时: 入站返回 HTTP 503 让平台按自身行为重投 (QQ 的补拉与 GitHub 的手动重投都走入站去重), outbox 与 housekeeping 记日志后在下一个 tick 重试
+- 路由层不调用 `VACUUM`; WAL checkpoint 沿用 SQLite 默认的自动 checkpoint
+
+## 11. 分阶段落地
 
 ### 阶段 1: QQ 收发与 GitHub 事件监听
 
-- 范围: `server/router/` 骨架, QQ provider, GitHub provider 的入站部分, `messages_pull`, `message_send` (仅 QQ), `sources_list`, `sessions_list`, `session_select`, `delivery_status`, 去重唯一索引与 outbox 表
+- 范围: `server/router/` 骨架, QQ provider, GitHub provider 的入站部分 (第 3.4 节全部事件), `messages_pull`, `message_send` (仅 QQ), `sources_list`, `sessions_list`, `session_select`, `delivery_status`, 新列与去重唯一索引, outbox 表, ingress 去重表, API Key 表与管理接口, 保留期清理
 - 里程碑: 用 MCP Inspector 连接 `/mcp`, 选定一个 QQ 群, 调用 `message_send` 发出消息并在 QQ 客户端看到, 群里回复后用返回的 cursor 调 `messages_pull` 只读到这条回复, 对测试仓库评论后同样能 pull 到对应 envelope
-- 验收: 同一 `idempotency_key` 调用两次只发出一条, NapCat 重投同一事件只落库一行, 连发 5 条时相邻两条的发送间隔不小于 3 秒
+- 验收: 同一 `idempotency_key` 调用两次只发出一条且第二次带 `deduplicated=true`, NapCat 重投同一事件只落库一行, 连发 5 条时相邻两条的发送间隔不小于 3 秒, 模拟平台超时后该行为 `unknown` 且不自动重发
 
 ### 阶段 2: 订阅与推送
 
@@ -436,9 +663,9 @@ GitHub 默认参数
 
 ### 阶段 3: 出站 webhook 与 GitHub 发送
 
-- 范围: webhook 类型 route 及其签名与退避, GitHub provider 的评论与建 issue, 风控熔断
-- 里程碑: 一条 webhook route 把 QQ 群消息投递到外部接收端并通过签名校验, 接收端停机 1 小时后恢复, 积压消息按序补投, 通过 MCP 对 issue 发评论并在 GitHub 上看到由 App 身份发出
-- 验收: ADR 0005 的 A4, A5 通过, 模拟 OneBot 频率类错误后该账号出站进入 `held` 并在 30 分钟后自动恢复
+- 范围: webhook 类型 route 及其签名与退避, GitHub provider 的评论, 回复行内评论与建 issue, 结果未知时的标记查重, 风控熔断与 hold, resume 接口
+- 里程碑: 一条 webhook route 把 QQ 群消息投递到外部接收端并通过签名校验; 接收端停机 1 小时后恢复, 积压消息在恢复后 1 小时内按序补投完成; 通过 MCP 对 issue 发评论并在 GitHub 上看到由 App 身份发出
+- 验收: ADR 0005 的 A4, A5 通过; 模拟 5 分钟内 3 次 OneBot 风控类错误后该账号出站进入 `held` 并在 30 分钟后自动恢复; 模拟 GitHub 评论请求超时且评论实际已创建时, 该行经标记查重回填为 `sent` 且 GitHub 上只有一条评论
 
 ### 阶段 4: 前端切换与新平台
 
@@ -446,10 +673,11 @@ GitHub 默认参数
 - 里程碑: 新增一个 provider 的变更只涉及 `server/router/providers/` 与注册表一行, `server/router/` 其余文件零改动
 - 验收: 新 provider 的 pull 与 send 通过阶段 1 的同一套用例
 
-## 11. 测试清单
+## 12. 测试清单
 
-- `server/tests/test_router_cursor.py` 覆盖 cursor 编解码, 增量读, 越界与跨实例 cursor 拒绝
-- `server/tests/test_router_outbox.py` 覆盖幂等, 令牌桶间隔, 退避次数上限, 熔断与恢复, 重启时 sending 回退
-- `server/tests/test_router_ingress.py` 覆盖 OneBot 事件去重, GitHub 签名校验失败返回 401, delivery 去重
+- `server/tests/test_router_cursor.py` 覆盖 cursor 编解码, 增量读, 越界与跨实例 cursor 拒绝, 清理后 cursor 的 `gap=true`
+- `server/tests/test_router_outbox.py` 覆盖两类幂等键, 令牌桶间隔, 重试矩阵的次数与 `give_up_at`, 熔断与恢复, 重启时 send 行置 `unknown` 与 webhook 行回退 `queued`
+- `server/tests/test_router_ingress.py` 覆盖 OneBot 事件去重, 同 `message_id` 不同 `time` 不被吸收, GitHub 签名校验失败返回 401, delivery 去重, edited 覆盖 text
 - `server/tests/test_router_mcp.py` 用 MCP SDK 的内存传输调用全部 tool, 校验入参 schema 拒绝多余字段
-- `server/tests/test_router_idle.py` 在 CI 中只校验 "无订阅时没有除 housekeeping 外的定时任务", 真实 CPU 与内存验收项 A1 到 A6 在部署机上手工执行并记录到实现 note
+- `server/tests/test_router_retention.py` 覆盖保留期删除分批, raw 文件随行删除与孤儿扫描, API Key 吊销后立即拒绝
+- `server/tests/test_router_idle.py` 在 CI 中只校验 "无订阅时路由层除 housekeeping 外没有定时任务", 真实 CPU 与内存验收项 A1 到 A6 在部署机上手工执行并记录到实现 note
