@@ -51,6 +51,6 @@ bash scripts/verify.sh
 5. note 被完全取代时用 `npm run notes:archive` 归档; rejected 提案不再能拦住一个
    有人可能重犯的错误时, 直接删除。
 
-推送前跑 `npm run verify-notes`。受保护的源码 (`server/**` `web/**` `scripts/**`)
-改动若同一次改动里没有 note, 门禁会失败; 要刻意豁免, 写 `.agents/notes/NOTE-EXEMPT.md`,
-内容为 `note-exempt: <为什么这次不需要 note>`。规则细节见 `.agents/notes/AGENTS.md`。
+推送前跑 `npm run verify-notes`. 受保护的源码 (`server/**` `web/**` `scripts/**`) 改动若同一次改动里没有 note, 门禁会失败
+新门禁不接受 NOTE-EXEMPT 豁免, 未建 note 的受保护目录会报 unowned-directory
+规则细节见 `.agents/notes/AGENTS.md`

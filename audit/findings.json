@@ -1,0 +1,225 @@
+{
+  "audited": [
+    "8d1849c",
+    "938e199",
+    "c22c4aa"
+  ],
+  "base": "c1eda91",
+  "verdicts": {
+    "8d1849c": "ok_with_reservations",
+    "938e199": "ok_with_reservations",
+    "c22c4aa": "broken"
+  },
+  "findings": [
+    {
+      "id": "F1",
+      "severity": "阻塞",
+      "location": ".github/workflows/agent-notes.yml:43",
+      "summary": "CI 仍执行 `.agents/skills/hx-agent-notes/scripts/verify-all.ts`, 该文件已在 af7eb02 搬走, 8d1849c 未同步",
+      "commit": "8d1849c"
+    },
+    {
+      "id": "F2",
+      "severity": "阻塞",
+      "location": ".agents/notes/proposed/feature/2026-11-02-messaging-router-gateway.md:9",
+      "summary": "c22c4aa 的 proposed note 引用三个找不到 AST 锚点的文件, 模拟暂存 3 错 3 待审",
+      "commit": "c22c4aa"
+    },
+    {
+      "id": "F3",
+      "severity": "阻塞",
+      "location": ".agents/skills/hx-agent-notes/scripts/redline/verify.py:78",
+      "summary": "`ok=not issues` 让待审项也判失败, 72 个未建 note 目录的任何改动都被挡",
+      "commit": "8d1849c"
+    },
+    {
+      "id": "F3b",
+      "severity": "阻塞",
+      "location": "AGENTS.md:55",
+      "summary": "文档仍指引写 `NOTE-EXEMPT.md` 豁免, 新门禁把它判为 note-format 错误",
+      "commit": "8d1849c"
+    },
+    {
+      "id": "F4",
+      "severity": "高",
+      "location": "server/src/hx_email/server/temp_mail/cf_provider.py",
+      "summary": "`create_mailbox(\"me@a.com\")` 在 a.com 已排除时仍把该域名发给 Worker",
+      "commit": "938e199"
+    },
+    {
+      "id": "F5",
+      "severity": "中",
+      "location": "server/src/hx_email/server/settings_service.py",
+      "summary": "归一化只做 `lstrip(\"@\")` 不做小写, `a.com` 排不掉 `A.com`, 剪枝时又静默删掉大小写不同的项",
+      "commit": "938e199"
+    },
+    {
+      "id": "F6",
+      "severity": "中",
+      "location": "server/src/hx_email/server/temp_mail/cf_provider.py",
+      "summary": "默认域名不在同步列表内时 options 与 create 仍使用它",
+      "commit": "938e199"
+    },
+    {
+      "id": "F7",
+      "severity": "低",
+      "location": "server/src/hx_email/server/settings_service.py",
+      "summary": "排除列表接受空串, 纯空白, `@` 与重复项, 剪枝后重复仍保留",
+      "commit": "938e199"
+    },
+    {
+      "id": "F8",
+      "severity": "低",
+      "location": "server/src/hx_email/api/impl/temp_mail",
+      "summary": "全部排除时 options 返回空, create 返回 502, API 调用方得不到 4xx 语义",
+      "commit": "938e199"
+    },
+    {
+      "id": "F9",
+      "severity": "低",
+      "location": "docs/ref_api.md",
+      "summary": "cf-worker-sync-domains 响应描述漏了 `message` 字段",
+      "commit": "938e199"
+    },
+    {
+      "id": "F10",
+      "severity": "高",
+      "location": "docs/messaging-router.md:60",
+      "summary": "会话地址在 spec, `qq-napcat.md:130`, `github-app.md:111` 中是三套互不兼容的语法",
+      "commit": "c22c4aa"
+    },
+    {
+      "id": "F11",
+      "severity": "高",
+      "location": "docs/messaging-router.md:382",
+      "summary": "重启把 sending 回退为 queued 会重发, 与 `qq-napcat.md:195` 的超时不自动重发相反, ADR:161 的幂等键还少了 kind",
+      "commit": "c22c4aa"
+    },
+    {
+      "id": "F12",
+      "severity": "高",
+      "location": "docs/adr/0005-messaging-router-gateway.md:180",
+      "summary": "A5 要求 NapCat `--memory=512m`, 而 `qq-napcat.md:237` 估算约 500 MiB, 目标 p95 700 MiB",
+      "commit": "c22c4aa"
+    },
+    {
+      "id": "F13",
+      "severity": "中",
+      "location": "docs/adr/0005-messaging-router-gateway.md:177",
+      "summary": "A2 每分钟唤醒不超过 2 次, 但 3 条 SSE 各 25 秒心跳加邮件轮询默认 30 秒已远超",
+      "commit": "c22c4aa"
+    },
+    {
+      "id": "F14",
+      "severity": "中",
+      "location": "docs/adr/0005-messaging-router-gateway.md:84",
+      "summary": "webhook 重试 8 次从 2 秒翻倍约 8.5 分钟用尽, 与 \"24 小时 dead\" 及阶段 3 停机 1 小时补投矛盾",
+      "commit": "c22c4aa"
+    },
+    {
+      "id": "F15",
+      "severity": "中",
+      "location": "docs/messaging-router.md:174",
+      "summary": "envelope 的 reply_to, occurred_at, attachments, is_self 在 `messaging_messages` 无列, 迁移也未加列",
+      "commit": "c22c4aa"
+    },
+    {
+      "id": "F16",
+      "severity": "中",
+      "location": "docs/messaging-router.md:108",
+      "summary": "示例 `occurred_at` 写成本地化时间串, 与字段定义 ISO 8601 UTC 不符",
+      "commit": "c22c4aa"
+    },
+    {
+      "id": "F17",
+      "severity": "中",
+      "location": "docs/messaging-router.md:197",
+      "summary": "`router_outbox.instance_id NOT NULL`, 但 webhook 投递属于 route 且可跨实例",
+      "commit": "c22c4aa"
+    },
+    {
+      "id": "F18",
+      "severity": "中",
+      "location": "docs/messaging-router.md:407",
+      "summary": "QQ 限流每日 1000 无每小时项, `qq-napcat.md:173` 为每日 2000 加每小时 300, 单条长度 4000 对 1500",
+      "commit": "c22c4aa"
+    },
+    {
+      "id": "F19",
+      "severity": "中",
+      "location": "docs/messaging-router.md:179",
+      "summary": "入站去重是永久唯一索引, `qq-napcat.md:197` 要求 10 分钟窗口, 部分索引无法表达窗口",
+      "commit": "c22c4aa"
+    },
+    {
+      "id": "F20",
+      "severity": "低",
+      "location": "docs/adr/0005-messaging-router-gateway.md:186",
+      "summary": "GitHub 回调路径与 `github-app.md:213` 不同, 事件集与权限集也与 `github-app.md:96` 不一致",
+      "commit": "c22c4aa"
+    },
+    {
+      "id": "F21",
+      "severity": "低",
+      "location": "docs/messaging-router.md:219",
+      "summary": "delivery 有 `poll` 而 ADR:47 只有三种, `manual_hold` 与 `channel` 无定义, delivery_status 的第二种查法无 REST 对应",
+      "commit": "c22c4aa"
+    },
+    {
+      "id": "F22",
+      "severity": "低",
+      "location": "server/src/hx_email/server/messaging/types.py:142",
+      "summary": "`send_message(target, text)` 无 reply_to 也无错误分类, \"不改签名的薄包装\" 给不出 SendResult 所需字段",
+      "commit": "c22c4aa"
+    },
+    {
+      "id": "F23",
+      "severity": "低",
+      "location": "docs/adr/0005-messaging-router-gateway.md:191",
+      "summary": "ADR 与 spec 中 0 处 \"需复核\", 但 GitHub 写限额等外部数字未注明来源",
+      "commit": "c22c4aa"
+    },
+    {
+      "id": "F24",
+      "severity": "低",
+      "location": "docs/messaging-router.md:385",
+      "summary": "未规定消息保留期, raw 落盘文件清理与 SQLite 写并发",
+      "commit": "c22c4aa"
+    },
+    {
+      "id": "F25",
+      "severity": "中",
+      "location": ".agents/skills/hx-agent-notes/SKILL.md:36",
+      "summary": "SKILL.md, verify.md, pre-commit 资产, install.py 仍写 `scripts/redlines/agent_notes.py`",
+      "commit": "8d1849c"
+    },
+    {
+      "id": "F26",
+      "severity": "低",
+      "location": ".agents/notes.config.json:1",
+      "summary": "v1 到 v2 迁移丢了 tests 与 md 的豁免语义, commit message 只说保留五个目录 (推断)",
+      "commit": "8d1849c"
+    },
+    {
+      "id": "F27",
+      "severity": "低",
+      "location": ".agents/skills/hx-agent-notes/scripts/redline/run.ts:1",
+      "summary": "只导出 `runGate` 无顶层调用, 直接 `node run.ts` 静默退出 0",
+      "commit": "8d1849c"
+    },
+    {
+      "id": "F28",
+      "severity": "低",
+      "location": "web/src/pages/Settings.tsx:59",
+      "summary": "删除只改本地状态需点保存, 同步按钮直写服务端, 未保存的删除可能被同步响应覆盖 (推断, 未实测)",
+      "commit": "938e199"
+    },
+    {
+      "id": "F29",
+      "severity": "低",
+      "location": "web/tsconfig.app.tsbuildinfo",
+      "summary": "构建产物已被跟踪, 由 a156075 引入, 不属于三笔",
+      "commit": "none"
+    }
+  ]
+}
