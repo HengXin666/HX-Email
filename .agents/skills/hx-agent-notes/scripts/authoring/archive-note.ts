@@ -1,7 +1,7 @@
 /**
  * Archive one implemented note: move it to archived/<class>/, stamp the seal line,
  * repair inbound links, and re-seal the frozen manifest.
- * Usage: npx tsx scripts/archive-note.ts <note-path> [--date YYYY-MM-DD] [--repo <dir>] [--dry-run]
+ * Usage: npx tsx .agents/skills/hx-agent-notes/scripts/authoring/archive-note.ts <note-path> [--date YYYY-MM-DD] [--repo <dir>] [--dry-run]
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
@@ -11,7 +11,7 @@ import { ARCHIVED_LINE_RE, describe, isNestedWorkTree, loadNotes, manifestPathFo
 const argv = process.argv.slice(2)
 const parsed = parseArgv(argv, ['--date', '--repo'])
 if (parsed.positionals.length === 0) {
-  console.error('Usage: npx tsx scripts/archive-note.ts <path-to-note> [--date YYYY-MM-DD] [--repo <dir>] [--dry-run]')
+  console.error('Usage: npx tsx .agents/skills/hx-agent-notes/scripts/authoring/archive-note.ts <path-to-note> [--date YYYY-MM-DD] [--repo <dir>] [--dry-run]')
   process.exit(2)
 }
 function flag(name: string): string | null {

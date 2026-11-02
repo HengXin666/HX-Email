@@ -1,10 +1,10 @@
 /**
  * Write the Agent Notes board.
  * Usage:
- *   npx tsx scripts/build-board.ts --init [board.html] ["Project name"]
+ *   npx tsx .agents/skills/hx-agent-notes/scripts/authoring/build-board.ts --init [board.html] ["Project name"]
  *     Lightweight shell (~one file). Open it, click \"Connect notes folder\", pick the
  *     notes directory, and it reads the tree directly — zero rebuild while you write.
- *   npx tsx scripts/build-board.ts --bundle [notesDir] [demo.html] ["Project name"]
+ *   npx tsx .agents/skills/hx-agent-notes/scripts/authoring/build-board.ts --bundle [notesDir] [demo.html] ["Project name"]
  *     Self-contained copy with every note embedded, for offline sharing or Pages.
  */
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
@@ -15,8 +15,8 @@ const argv = process.argv.slice(2)
 const parsed = parseArgv(argv, ['--repo'])
 const mode = parsed.flags.has('--bundle') ? 'bundle' : parsed.flags.has('--init') ? 'init' : null
 if (mode === null) {
-  console.error('Usage: npx tsx scripts/build-board.ts --init [board.html] ["Project name"]')
-  console.error('       npx tsx scripts/build-board.ts --bundle [notesDir] [demo.html] ["Project name"]')
+  console.error('Usage: npx tsx .agents/skills/hx-agent-notes/scripts/authoring/build-board.ts --init [board.html] ["Project name"]')
+  console.error('       npx tsx .agents/skills/hx-agent-notes/scripts/authoring/build-board.ts --bundle [notesDir] [demo.html] ["Project name"]')
   process.exit(2)
 }
 const cwd = parsed.values['--repo'] !== undefined && parsed.values['--repo'] !== '' ? resolve(parsed.values['--repo'] as string) : process.cwd()

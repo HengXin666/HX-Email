@@ -2,7 +2,7 @@
  * Gate 2 — format: the three-line header, status/lifecycle agreement, first section
  * `## Problem`, lifecycle-specific sections, the mandatory Alternatives section,
  * present-tense discipline in implemented notes, and translation skeleton parity.
- * Usage: npx tsx scripts/verify-format.ts [--repo <dir>]
+ * Usage: npx tsx .agents/skills/hx-agent-notes/scripts/cli/verify-format.ts [--repo <dir>]
  */
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'

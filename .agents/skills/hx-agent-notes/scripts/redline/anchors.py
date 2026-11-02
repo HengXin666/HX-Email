@@ -88,9 +88,43 @@ def docstring(node, data):
     return None
 
 
+def jsx_ampersand(node):
+    """
+    Match the one known grammar gap: tree-sitter-typescript 0.23.2 tsx only accepts & as the start of a complete
+    character reference, so a bare & in JSX text or a JSX attribute string becomes an ERROR node that tsc accepts.
+    """
+    if node.type != 'ERROR' or not node.children or node.children[0].type != '&':
+        return False
+    parent = node.parent
+    if parent is None:
+        return False
+    if parent.type == 'jsx_element':
+        return True
+    return parent.type == 'string' and parent.parent is not None and parent.parent.type == 'jsx_attribute'
+
+
+def parse(language, data):
+    """Parse once; for tsx, blank only bare JSX ampersands, keep byte offsets, and require a clean reparse."""
+    parser = parser_for(language)
+    tree = parser.parse(data)
+    if language != 'tsx':
+        return tree
+    masked = bytearray(data)
+    for _ in range(256):
+        if not tree.root_node.has_error:
+            return tree
+        bad = [n for n in walk(tree.root_node) if n.type == 'ERROR' or n.is_missing]
+        if not all(jsx_ampersand(n) for n in bad):
+            break
+        for node in bad:
+            masked[node.start_byte] = 0x20
+        tree = parser.parse(bytes(masked))
+    return parser.parse(data) if tree.root_node.has_error else tree
+
+
 def scan(path, text):
     data = text.encode()
-    tree = parser_for(LANGUAGES[PurePosixPath(path).suffix]).parse(data)
+    tree = parse(LANGUAGES[PurePosixPath(path).suffix], data)
     errors, sites = [], []
     if tree.root_node.has_error:
         bad = next((n for n in walk(tree.root_node) if n.type == 'ERROR' or n.is_missing), tree.root_node)

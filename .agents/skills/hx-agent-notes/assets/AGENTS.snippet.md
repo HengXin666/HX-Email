@@ -4,7 +4,7 @@
 
 代码或 note 改动必须在同一 diff 配对, 同目录兄弟代码也算该决策的代码端. 单边改动必须 review, 不可用无关 note 或豁免文本放行. 过时事实就地改写, 废弃 note 直接删除并修复所有引用. `## Alternatives considered` 必须包含什么都不做 / 复用现有, 每项先给最强理由再否决
 
-完成改动运行 `uv run scripts/redlines/agent_notes.py --diff`, 全量调研用 `--all`, 提交前用 `--staged`. AST 必须支持 cpp/ts/tsx/js/mjs/go/py/rs, 缺依赖或解析失败即失败. 规则见 `.agents/notes/AGENTS.md`
+完成改动运行 `uv run scripts/redline/agent_notes.py --diff`, 全量调研用 `--all`, 提交前用 `--staged`. AST 必须支持 cpp/ts/tsx/js/mjs/go/py/rs, 缺依赖或解析失败即失败. 规则见 `.agents/notes/AGENTS.md`
 
 受保护的非 AST 资源改动报告 resource-review, 由人工核对决策和引用
 

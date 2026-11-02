@@ -3,7 +3,7 @@
 先确认仓库根, 现有质量红线目录和实际代码目录. 不启动项目程序. 将 skill 自身复制到项目 `.agents/skills/hx-agent-notes`, 所有脚本随仓库版本化, 再执行安装器. 外部路径运行安装器时也会复制 skill
 
 ```sh
-uv run .agents/skills/hx-agent-notes/scripts/setup/install.py --repo . --guarded src --guarded packages/client --redline-dir scripts/redlines --github
+uv run .agents/skills/hx-agent-notes/scripts/setup/install.py --repo . --guarded src --guarded packages/client --redline-dir scripts/redline --github
 ```
 
 安装器写入精确路径配置, 项目红线入口, `.agents/notes/AGENTS.md` 和根 `AGENTS.md` 的带标记短块. 有 package.json 时补上 verify-notes, `verify-notes:all` 和 `verify-notes:staged`. 不覆盖冲突文件, 相同参数重跑幂等. 自定义红线目录会同步到 AGENTS 命令, GitHub 工作流直接调用同一 skill 实现
@@ -17,10 +17,10 @@ uv run .agents/skills/hx-agent-notes/scripts/setup/install.py --repo . --guarded
 需要 Python 3.10+, Git 和 uv. 第一次运行 uv 下载固定版本的 Tree-sitter 依赖, 以后可以使用本地缓存. 离线环境先准备 uv 缓存, 然后设置 `UV_OFFLINE=1` 继续使用相同 uv 命令. 缺依赖不会跳过检查
 
 ```sh
-uv run scripts/redlines/agent_notes.py --diff
-uv run scripts/redlines/agent_notes.py --all
-uv run scripts/redlines/agent_notes.py --staged
-uv run scripts/redlines/agent_notes.py --diff --base <base-commit> --head <head-commit> --json /tmp/notes-report.json
+node .agents/skills/hx-agent-notes/scripts/cli/verify-all.ts --diff
+node .agents/skills/hx-agent-notes/scripts/cli/verify-all.ts --all
+node .agents/skills/hx-agent-notes/scripts/cli/verify-all.ts --staged
+node .agents/skills/hx-agent-notes/scripts/cli/verify-all.ts --diff --base <base-commit> --head <head-commit> --json /tmp/notes-report.json
 ```
 
 | 模式 | 读取内容 | 检查范围 |

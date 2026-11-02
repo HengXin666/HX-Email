@@ -32,10 +32,10 @@ CI 工作流始终容错完成, 有问题就在对应代码片段评论, 并保�
 | 整理或废弃 | 读 references/mechanism.md, 清单调研后保留, 更新, 合并或直接删除, 修复入站引用 |
 
 ```sh
-uv run .agents/skills/hx-agent-notes/scripts/setup/install.py --guarded src --redline-dir scripts/redlines --github
-uv run scripts/redlines/agent_notes.py --diff
-uv run scripts/redlines/agent_notes.py --all
-uv run scripts/redlines/agent_notes.py --staged
+uv run .agents/skills/hx-agent-notes/scripts/setup/install.py --guarded src --redline-dir scripts/redline --github
+node .agents/skills/hx-agent-notes/scripts/cli/verify-all.ts --diff
+node .agents/skills/hx-agent-notes/scripts/cli/verify-all.ts --all
+node .agents/skills/hx-agent-notes/scripts/cli/verify-all.ts --staged
 ```
 
 安装器将简短约束写入项目根 AGENTS.md, 项目红线入口只委托 vendored skill/scripts. 不启动项目程序. 旧配置须显式迁移, 不把 v1 宽松检查伪装成 v2 通过

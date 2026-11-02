@@ -40,4 +40,4 @@ jobs:
           echo "comparing against $BASE"
 
       - name: Agent Notes gates
-        run: npx --yes tsx@4 .agents/skills/hx-agent-notes/scripts/verify-all.ts --base "$AGENT_NOTES_BASE_REF"
+        run: npx --yes tsx@4 .agents/skills/hx-agent-notes/scripts/cli/verify-all.ts --base "$AGENT_NOTES_BASE_REF"

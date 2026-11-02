@@ -1,7 +1,7 @@
 /**
  * Gate 1 — structure: lifecycle/class/filename rules for every note, no root INDEX.md,
  * and relative markdown links inside the active tree that still resolve.
- * Usage: npx tsx scripts/verify-tree.ts [--repo <dir>]
+ * Usage: npx tsx .agents/skills/hx-agent-notes/scripts/cli/verify-tree.ts [--repo <dir>]
  */
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'

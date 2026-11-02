@@ -72,7 +72,7 @@ gate = repo / '.agents/skills/hx-agent-notes/scripts/redline'
 os.execvp('uv', ['uv', 'run', '--with-requirements', str(gate / 'requirements.txt'), 'python', str(gate / 'verify.py'), '--repo', str(repo), *sys.argv[1:]])
 '''
     write_wrapper(repo / entry, wrapper)
-    snippet = (SKILL / 'assets/AGENTS.snippet.md').read_text().replace('scripts/redlines/agent_notes.py', entry)
+    snippet = (SKILL / 'assets/AGENTS.snippet.md').read_text().replace('scripts/redline/agent_notes.py', entry)
     agents = repo / 'AGENTS.md'
     content = agents.read_text() if agents.exists() else ''
     if (BEGIN in content) != (END in content):
@@ -108,7 +108,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--repo', type=Path, default=Path.cwd())
     parser.add_argument('--guarded', action='append', required=True, help='Exact protected file or directory, repeatable')
-    parser.add_argument('--redline-dir', default='scripts/redlines')
+    parser.add_argument('--redline-dir', default='scripts/redline')
     parser.add_argument('--github', action='store_true')
     parser.add_argument('--main-branch', default='main', help='Default branch for the full-scan push trigger')
     args = parser.parse_args()

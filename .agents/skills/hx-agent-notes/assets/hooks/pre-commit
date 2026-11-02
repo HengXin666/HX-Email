@@ -1,4 +1,4 @@
 #!/bin/sh
 set -eu
-# Install uv first; inspect the staged tree, not unstaged repairs
-uv run scripts/redlines/agent_notes.py --staged
+# Needs node and uv; same entry as lefthook, inspects the staged tree, not unstaged repairs
+exec node .agents/skills/hx-agent-notes/scripts/cli/verify-all.ts --staged

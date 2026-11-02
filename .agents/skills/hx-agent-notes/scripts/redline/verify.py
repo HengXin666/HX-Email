@@ -75,10 +75,16 @@ def check(args):
         base_commit = None
     deleted = sorted(changed & (set(before.modes) - set(after.modes)))
     return dict(version=2, mode='all' if args.all else 'diff', base=base, base_commit=base_commit,
-                head=args.head, changed=sorted(changed), deleted=deleted, issues=issues, ok=not issues)
+                head=args.head, changed=sorted(changed), deleted=deleted, issues=issues,
+                ok=not any(issue['severity'] == 'error' for issue in issues))
 
 
 def main():
+    """
+    退出码只由 severity=error 决定, review 级诊断照常写入 JSON 并全部打印, 但不改变退出码
+    旧实现 ok=not issues 把待审核项与错误混算, 存量 unowned-directory 让门禁能跑但必挡, 真正的错误被淹没
+    .agents/notes/implemented/process/2026-11-02-note-gate-error-vs-review-severity.md
+    """
     args = arguments()
     try:
         result = check(args)
@@ -94,7 +100,11 @@ def main():
         level = '错误' if issue['severity'] == 'error' else '待审核'
         print(f"{level} {issue['path']}:{issue['line']} [{issue['rule']}] {issue['message']}")
     errors = sum(issue['severity'] == 'error' for issue in result['issues'])
-    print(f"Agent Notes: {'通过' if result['ok'] else '需处理'}, {errors} 项错误, {len(result['issues']) - errors} 项待审核")
+    reviews = len(result['issues']) - errors
+    if result['ok']:
+        print(f"Agent Notes: 通过 ({reviews} 项待审核, {errors} 项错误)")
+    else:
+        print(f"Agent Notes: 需处理, {errors} 项错误, {reviews} 项待审核")
     return code
 
 

@@ -1,4 +1,4 @@
 {
   "version": 2,
-  "guarded": ["server", "web", "scripts", "extension", "tampermonkey"]
+  "guarded": ["server", "web", "scripts", "extension", "tampermonkey", ".agents/skills/hx-agent-notes/scripts/redline/verify.py"]
 }
