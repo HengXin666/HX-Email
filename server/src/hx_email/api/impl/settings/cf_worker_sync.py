@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from hx_email.api.dependencies import require_admin
 from hx_email.config import Settings
+from hx_email.server.mail.impl.temp_mail.temp_mail_options import normalize_domains
 from hx_email.server.settings_service import get_setting, set_setting
 
 # Cloudflare bot protection (error 1010) rejects the default Python-urllib
@@ -53,16 +54,16 @@ def _parse_domains(data: dict[str, Any]) -> tuple[list[str], str]:
 
 
 def prune_excluded_domains(settings: Settings, domains: list[str]) -> list[str]:
-    """Drop excluded domains the Worker no longer serves, persist and return the rest."""
+    """Drop excluded domains the Worker no longer serves; persist the rest normalized."""
     try:
         stored: Any = json.loads(get_setting(settings, "cf_worker_excluded_domains") or "[]")
     except ValueError:
         stored = []
-    synced: set[str] = {domain.lstrip("@") for domain in domains}
+    synced: set[str] = set(normalize_domains(domains))
     kept: list[str] = [
-        str(item).strip()
-        for item in (stored if isinstance(stored, list) else [])
-        if str(item or "").strip().lstrip("@") in synced
+        domain
+        for domain in normalize_domains(stored if isinstance(stored, list) else [])
+        if domain in synced
     ]
     set_setting(settings, "cf_worker_excluded_domains", json.dumps(kept, ensure_ascii=False))
     return kept

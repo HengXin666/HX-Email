@@ -195,14 +195,15 @@ def stringify_setting_value(value: object) -> str:
 
 
 def normalize_domain_list(key: str, value: str) -> str:
-    """Validate that a setting holds a JSON array of strings; empty means no domains."""
+    from hx_email.server.mail.impl.temp_mail.temp_mail_options import normalize_domains
+
     try:
         parsed: object = json.loads(value or "[]")
-    except ValueError as error:
-        raise ValueError(f"{key} must be a JSON array of strings") from error
+    except ValueError:
+        parsed = None
     if not isinstance(parsed, list) or not all(isinstance(item, str) for item in parsed):
         raise ValueError(f"{key} must be a JSON array of strings")
-    return value or "[]"
+    return json.dumps(normalize_domains(parsed), ensure_ascii=False)
 
 
 def normalize_settings_updates(

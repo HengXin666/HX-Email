@@ -3,8 +3,7 @@
  * 应该写回的排除列表。
  *
  * `cf_worker_excluded_domains` 与 `cf_worker_domains` 正交: 前者是用户的减法。域名比较
- * 忽略前导 `@`, 因为 CF Worker 的 `open_api/settings` 返回的是 `@example.com` 形式。
- * (see the [temp mail excluded domains note](../../../../../.agents/notes/implemented/feature/2026-10-19-temp-mail-excluded-domains.md))
+ * 忽略前导 `@` 与大小写, 因为 CF Worker 的 `open_api/settings` 返回的是 `@example.com` 形式。
  */
 
 interface DomainSplit {
@@ -14,9 +13,9 @@ interface DomainSplit {
   excluded: string[];
 }
 
-/** 域名比较用的归一化: 去掉首尾空白与前导 `@` (不折叠大小写, 与后端保持一致)。 */
+/** 域名比较用的归一化: 去掉首尾空白与前导 `@` 并转小写 (与后端 normalize_domain 一致)。 */
 function normalizeDomain(domain: string): string {
-  return domain.trim().replace(/^@+/, "");
+  return domain.trim().replace(/^@+/, "").trim().toLowerCase();
 }
 
 /** 把设置里的 JSON 字符串数组解析成域名列表; 非法 JSON 或非字符串项一律丢弃。 */
@@ -38,7 +37,10 @@ export function isDomainExcluded(domain: string, excluded: readonly string[]): b
   return excluded.some((item: string): boolean => normalizeDomain(item) === target);
 }
 
-/** 按排除列表把同步来的域名切成「可用」与「已删除」两半。 */
+/**
+ * 按排除列表把同步来的域名切成「可用」与「已删除」两半。
+ * 排除列表是对同步全集的本地减法, 决策见 .agents/notes/implemented/feature/2026-10-19-temp-mail-excluded-domains.md
+ */
 export function splitDomainsByExclusion(
   domains: readonly string[],
   excluded: readonly string[],

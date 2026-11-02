@@ -90,6 +90,18 @@ test("恢复域名后回到可用列表并写出空排除列表", () => {
   expect(screen.queryByText(/已删除的域名/)).toBeNull();
 });
 
+test("排除列表与域名大小写不同仍视为同一域名, 恢复时一并移除", () => {
+  const { setSetting } = renderTab({ excluded: ["@B.COM"] });
+
+  expect(screen.queryByRole("button", { name: "删除域名 b.com" })).toBeNull();
+  expect(screen.getByText("已删除的域名 (1)")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "恢复域名 b.com" }));
+
+  expect(setSetting).toHaveBeenCalledWith("cf_worker_excluded_domains", JSON.stringify([]));
+  expect(screen.getByRole("button", { name: "删除域名 b.com" })).toBeInTheDocument();
+});
+
 test("全部删除时给出创建会被拒绝的警告, 且不渲染空的默认域名下拉", () => {
   const { setSetting } = renderTab({ domains: ["a.com"], defaultDomain: "a.com" });
 

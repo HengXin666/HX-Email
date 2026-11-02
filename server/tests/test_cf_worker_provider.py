@@ -1,5 +1,6 @@
 """CF Worker temp mail provider: create mailbox, list messages, error mapping."""
 
+import importlib
 import json
 from unittest.mock import patch
 
@@ -255,10 +256,12 @@ def test_create_mailbox_raises_when_all_synced_domains_excluded(tmp_path) -> Non
 
     with (
         patch(MOCK_TARGET) as http,
-        pytest.raises(TempMailProviderError, match="已被删除"),
+        pytest.raises(Exception, match="已被删除") as excinfo,
     ):
         provider.create_mailbox(None)
 
+    assert excinfo.type.__name__ == "NoUsableTempMailDomainError"
+    assert excinfo.value.status_code == 409
     http.assert_not_called()
 
 
@@ -271,3 +274,109 @@ def test_create_mailbox_without_synced_domains_lets_worker_choose(tmp_path) -> N
         provider.create_mailbox(None)
 
     assert "domain" not in http.call_args[0][3]
+
+
+OPTIONS_MODULE = "hx_email.server.mail.impl.temp_mail.temp_mail_options"
+CREATED = json.dumps({"address": "x@b.com", "jwt": "j", "id": 1})
+
+
+def test_normalize_domains_trims_lowercases_filters_and_dedupes() -> None:
+    normalize_domains = importlib.import_module(OPTIONS_MODULE).normalize_domains
+
+    values = [" @@A.com ", "a.com", "", "   ", "@", "@@", "B.com", "@b.COM", "c.com"]
+
+    assert normalize_domains(values) == ["a.com", "b.com", "c.com"]
+
+
+def test_create_mailbox_rejects_explicit_address_on_excluded_domain(tmp_path) -> None:
+    provider, settings = make_provider(tmp_path)
+    set_setting(settings, "cf_worker_domains", '["@a.com", "@b.com"]')
+    set_setting(settings, "cf_worker_excluded_domains", '["a.com"]')
+
+    with (
+        patch(MOCK_TARGET, return_value=(200, CREATED)) as http,
+        pytest.raises(Exception, match=r"a\.com") as excinfo,
+    ):
+        provider.create_mailbox("me@A.com")
+
+    assert excinfo.type.__name__ == "NoUsableTempMailDomainError"
+    assert excinfo.value.status_code == 409
+    http.assert_not_called()
+
+
+def test_create_mailbox_sends_normalized_explicit_domain(tmp_path) -> None:
+    provider, settings = make_provider(tmp_path)
+    set_setting(settings, "cf_worker_domains", '["@a.com", "@b.com"]')
+    set_setting(settings, "cf_worker_excluded_domains", '["a.com"]')
+
+    with patch(MOCK_TARGET, return_value=(200, CREATED)) as http:
+        provider.create_mailbox("me@ @B.com")
+
+    assert http.call_args[0][3] == {"name": "me", "enablePrefix": False, "domain": "b.com"}
+
+
+def test_options_exclusion_ignores_case(tmp_path) -> None:
+    _provider, settings = make_provider(tmp_path)
+    set_setting(settings, "cf_worker_domains", '["@A.com", "@b.com"]')
+    set_setting(settings, "cf_worker_excluded_domains", '["a.COM"]')
+    set_setting(settings, "cf_worker_default_domain", "@A.com")
+
+    options = get_temp_mail_options(settings, "cf")
+
+    assert options["domains"] == ["@b.com"]
+    assert options["default_domain"] == "@b.com"
+
+
+def test_create_mailbox_excluded_default_ignores_case(tmp_path) -> None:
+    provider, settings = make_provider(tmp_path)
+    set_setting(settings, "cf_worker_domains", '["a.com", "b.com"]')
+    set_setting(settings, "cf_worker_excluded_domains", '["A.COM"]')
+    set_setting(settings, "cf_worker_default_domain", "A.com")
+
+    with patch(MOCK_TARGET, return_value=(200, CREATED)) as http:
+        provider.create_mailbox(None)
+
+    assert http.call_args[0][3]["domain"] == "b.com"
+
+
+def test_default_domain_outside_synced_list_falls_back_to_first_usable(tmp_path) -> None:
+    provider, settings = make_provider(tmp_path)
+    set_setting(settings, "cf_worker_domains", '["@a.com", "@b.com"]')
+    set_setting(settings, "cf_worker_excluded_domains", '["a.com"]')
+    set_setting(settings, "cf_worker_default_domain", "stale.com")
+
+    options = get_temp_mail_options(settings, "cf")
+    with patch(MOCK_TARGET, return_value=(200, CREATED)) as http:
+        provider.create_mailbox(None)
+
+    assert options["domains"] == ["@b.com"]
+    assert options["default_domain"] == "@b.com"
+    assert http.call_args[0][3]["domain"] == "b.com"
+
+
+def test_options_dirty_and_duplicate_synced_values_are_cleaned(tmp_path) -> None:
+    _provider, settings = make_provider(tmp_path)
+    set_setting(settings, "cf_worker_domains", '["@a.com", "A.com", "@", " ", "@b.com", "b.com"]')
+    set_setting(settings, "cf_worker_excluded_domains", '["", "@", "@b.com", "B.com"]')
+
+    options = get_temp_mail_options(settings, "cf")
+
+    assert options["domains"] == ["@a.com"]
+    assert options["default_domain"] == "@a.com"
+
+
+def test_create_mailbox_all_excluded_raises_no_usable_domain_error(tmp_path) -> None:
+    provider, settings = make_provider(tmp_path)
+    set_setting(settings, "cf_worker_domains", '["@a.com", "@B.com"]')
+    set_setting(settings, "cf_worker_excluded_domains", '["A.com", "b.com"]')
+    set_setting(settings, "cf_worker_default_domain", "stale.com")
+
+    with (
+        patch(MOCK_TARGET, return_value=(200, CREATED)) as http,
+        pytest.raises(Exception, match="已被删除") as excinfo,
+    ):
+        provider.create_mailbox(None)
+
+    assert excinfo.type.__name__ == "NoUsableTempMailDomainError"
+    assert excinfo.value.status_code == 409
+    http.assert_not_called()

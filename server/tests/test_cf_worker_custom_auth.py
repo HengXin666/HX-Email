@@ -6,8 +6,11 @@ from fastapi.testclient import TestClient
 from hx_email.app import create_app
 from hx_email.config import Settings
 from hx_email.database import connect, migrate
+from hx_email.server.settings_service import set_setting
 
 API = "/api/v1"
+SYNC_TARGET = "hx_email.api.impl.settings.cf_worker_sync._json_get"
+PROVIDER_HTTP = "hx_email.server.mail.impl.temp_mail.cf_provider._http_request"
 
 
 def login_admin(client: TestClient, settings: Settings) -> dict[str, str]:
@@ -204,9 +207,9 @@ def test_sync_domains_prunes_stale_excluded_domains(tmp_path) -> None:
 
     body = response.json()
     assert body["success"] is True
-    assert body["excluded_domains"] == ["@b.com"]
+    assert body["excluded_domains"] == ["b.com"]
     fetched = client.get(f"{API}/settings", headers=headers).json()
-    assert fetched["cf_worker_excluded_domains"] == '["@b.com"]'
+    assert fetched["cf_worker_excluded_domains"] == '["b.com"]'
 
 
 def test_put_settings_rejects_invalid_excluded_domains(tmp_path) -> None:
@@ -220,3 +223,99 @@ def test_put_settings_rejects_invalid_excluded_domains(tmp_path) -> None:
         )
         assert response.status_code == 422
         assert "cf_worker_excluded_domains" in response.json()["detail"]
+
+
+def sync_domains(client: TestClient, headers: dict[str, str], domains_json: str) -> dict:
+    with patch(SYNC_TARGET, return_value=(200, f'{{"domains": {domains_json}}}')):
+        response = client.post(
+            f"{API}/settings/cf-worker-sync-domains",
+            json={"worker_url": "https://w.example.dev"},
+            headers=headers,
+        )
+    return response.json()
+
+
+def configure_cf_worker(client: TestClient, headers: dict[str, str], excluded: str) -> None:
+    saved = client.put(
+        f"{API}/settings",
+        json={
+            "cf_worker_base_url": "https://worker.example.dev",
+            "cf_worker_admin_key": "admin-key",
+            "cf_worker_domains": '["@a.com", "@b.com"]',
+            "cf_worker_excluded_domains": excluded,
+        },
+        headers=headers,
+    )
+    assert saved.status_code == 200
+
+
+def test_put_settings_cleans_and_dedupes_excluded_domains(tmp_path) -> None:
+    client, _settings, headers = make_client(tmp_path)
+
+    saved = client.put(
+        f"{API}/settings",
+        json={
+            "cf_worker_excluded_domains": (
+                '["", "   ", "@", "@@", " A.com ", "@a.com", "b.com", "@@B.COM"]'
+            )
+        },
+        headers=headers,
+    )
+
+    assert saved.status_code == 200
+    fetched = client.get(f"{API}/settings", headers=headers).json()
+    assert fetched["cf_worker_excluded_domains"] == '["a.com", "b.com"]'
+
+
+def test_sync_prune_keeps_excluded_domain_that_differs_only_in_case(tmp_path) -> None:
+    client, _settings, headers = make_client(tmp_path)
+    set_setting(_settings, "cf_worker_excluded_domains", '["A.com", "gone.com"]')
+
+    body = sync_domains(client, headers, '["@a.com", "@b.com"]')
+
+    assert body["success"] is True
+    assert body["excluded_domains"] == ["a.com"]
+    fetched = client.get(f"{API}/settings", headers=headers).json()
+    assert fetched["cf_worker_excluded_domains"] == '["a.com"]'
+
+
+def test_sync_prune_writes_back_clean_deduplicated_form(tmp_path) -> None:
+    client, settings, headers = make_client(tmp_path)
+    set_setting(settings, "cf_worker_excluded_domains", '["@a.com", "a.com", "", "@", "@A.COM"]')
+
+    body = sync_domains(client, headers, '["@a.com", "@b.com"]')
+
+    assert body["excluded_domains"] == ["a.com"]
+    with connect(settings) as connection:
+        row = connection.execute(
+            "SELECT value FROM system_settings WHERE key = 'cf_worker_excluded_domains'"
+        ).fetchone()
+    assert row["value"] == '["a.com"]'
+
+
+def test_create_mailbox_returns_409_when_all_domains_excluded(tmp_path) -> None:
+    client, _settings, headers = make_client(tmp_path)
+    configure_cf_worker(client, headers, '["a.com", "B.com"]')
+
+    with patch(PROVIDER_HTTP) as http:
+        response = client.post(f"{API}/temp-mail/cf/mailboxes", json={}, headers=headers)
+
+    assert response.status_code == 409
+    assert "已被删除" in response.json()["detail"]
+    http.assert_not_called()
+
+
+def test_create_mailbox_returns_409_for_explicit_excluded_address(tmp_path) -> None:
+    client, _settings, headers = make_client(tmp_path)
+    configure_cf_worker(client, headers, '["a.com"]')
+
+    created = '{"address": "me@a.com", "jwt": "j", "id": 1}'
+    with patch(PROVIDER_HTTP, return_value=(200, created)) as http:
+        response = client.post(
+            f"{API}/temp-mail/cf/mailboxes", json={"address": "me@A.com"}, headers=headers
+        )
+
+    assert response.status_code == 409
+    assert "a.com" in response.json()["detail"]
+    assert "被删除" in response.json()["detail"]
+    http.assert_not_called()
