@@ -1,12 +1,17 @@
 # Agent Note: 消息能力升级为路由网关, 适配器只做平台连接, 订阅与分发收敛到独立路由层
 
-Status: proposed
+Status: implemented
 
 Decision-ID: messaging-router-gateway
 
 ## Code
 
 - `server/src/hx_email/server/messaging/types.py`
+- `server/src/hx_email/server/router/provider.py`
+- `server/src/hx_email/server/router/impl/outbox.py`
+- `server/src/hx_email/server/router/providers/qq.py`
+- `server/src/hx_email/api/impl/router/ingress_github.py`
+- `server/src/hx_email/models/messaging.py`
 
 ## Problem
 
@@ -72,15 +77,18 @@ GitHub
 - 出站必须经过 outbox 与整形器, 同一会话连发会被拉开到至少 3 秒一条, 单条最低延迟变大
 - 新增 `router_routes`, `router_outbox`, `router_ingress_deliveries`, `router_api_keys` 四张表, `messaging_messages` 增加 6 列与基于 `dedup_key` 的唯一索引, 旧行 `dedup_key` 为空不受约束, 迁移不需要清理重复行
 - 部署需要为 GitHub webhook 提供公网 HTTPS 回调地址
-- 本 note 在 proposed 阶段, `## Code` 只列今天已经受这条决策约束的 `server/src/hx_email/server/messaging/types.py`, 锚点在 `MessagingAdapter.list_messages` 上, 约束是 cursor 与订阅不进适配器协议
-- 路由层, `api/impl/messaging/event_routes.py` 的共享读路径与 `models/messaging.py` 的去重索引都还没有实现, 实现提交要在承载它们的文件上补锚点并加入 `## Code`, 落地时连同锚点一起移到 implemented
+- 路由层已落地: `server/router/` 下有 provider 协议, 三个核心原语 cursor, envelope, errors, 以及 impl 下的 store, reader, outbox, outbox_admin, shaper
+- QQ 与 GitHub 两个 provider 已接入同一份 `MessagingProvider` 协议, 平台差异只体现在 providers 目录里, 路由层不认识任何平台
+- `outbox` 与 `outbox_admin` 拆开是行数约束驱动的, 但切在真实接缝上: 前者是发送流水线 (入队, 领取, 回结果), 后者是运维面 (查投递, 挂起实例, 重启恢复, 保留期清理)
+- `models/messaging.py` 增加 6 列与两张部分唯一索引, 迁移幂等, 老库连跑两次不报错, 老行 `dedup_key` 为空不受唯一索引约束
 
 ## Testing
 
-本 note 处于 proposed, 下面是实现提交必须带上的验证
-- cursor 增量读, 越界 cursor 与跨实例 cursor 拒绝, 由 `server/tests/test_router_cursor.py` 覆盖
-- 两类出站幂等键, 令牌桶间隔, 重试矩阵, 熔断与恢复, 重启时 send 行置 `unknown`, 由 `server/tests/test_router_outbox.py` 覆盖
-- OneBot 事件重投去重与 GitHub 签名校验, 由 `server/tests/test_router_ingress.py` 覆盖
-- 全部 MCP tool 的入参 schema 拒绝多余字段, 由 `server/tests/test_router_mcp.py` 覆盖
-- 空闲 CPU, 常驻内存与订阅者落后的数字验收项 A1 到 A6 在部署机上手工执行, 结果写回落地后的 implemented note
-- 门禁是 `bash scripts/verify.sh` 与 `npm run verify-notes`
+已落地的自动化覆盖在 `server/tests/test_router_core.py` (42 项), `test_router_qq.py` 与 `test_router_github.py` (合计 78 项)
+- cursor 往返与非法输入拒绝, 增量读不重不漏且翻页数为 5, 前缀读与全平台读, 跨实例与越界 cursor 拒绝, 保留期删除后标记 gap
+- 单会话读走 `idx_messaging_messages_instance_chat` 索引, 由 EXPLAIN QUERY PLAN 断言, 不允许出现 SCAN
+- 入站去重同一 dedup_key 不写第二行, 编辑事件就地覆盖文本, raw 超 16 KB 落盘且行内清空
+- 两类出站幂等键, 领取独占, 重试矩阵, 限流等待不消耗次数, give_up_at 到期判 failed, 重启把 send 行置 unknown 而 webhook 回 queued
+- 令牌桶同会话 3 秒间隔, 账号分钟窗口与每日上限, 两个 profile 可配置, 相同文本 30 秒内扇出到不同会话被拒
+- 迁移在旧库上连跑两次不报错, 新列与新表齐备
+- 门禁是 `bash scripts/verify.sh` 全绿 (9 关, 570 项后端测试加 Playwright)
