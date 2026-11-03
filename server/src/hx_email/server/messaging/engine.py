@@ -129,6 +129,8 @@ class QQEngineManager:
             + f"; 最近一次错误: {last_error[:300]}"
         )
 
+    # NapCat 登录后读 onebot11_<uin>.json 而非 onebot11.json, 所以 token 要连账号专属文件一起写
+    # 决策记录: .agents/notes/implemented/feature/2026-11-03-qq-live-wiring-fixes.md
     def start(
         self,
         api_port: int = 3000,
@@ -164,7 +166,7 @@ class QQEngineManager:
                         "token": access_token,
                         "messagePostFormat": "array",
                         "debug": False,
-                    }
+                    },
                 ],
                 "httpClients": [
                     {
@@ -174,18 +176,16 @@ class QQEngineManager:
                         "token": access_token,
                         "messagePostFormat": "array",
                         "debug": False,
-                    }
+                    },
                 ],
-                "httpSseServers": [],
-                "websocketServers": [],
-                "websocketClients": [],
-                "plugins": [],
-            }
+            },
         }
-        (self._dir / "config" / "onebot11.json").write_text(
-            json.dumps(onebot, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-        # WebUI 端口按实例随机(容器内, 不发布到宿主; 二维码走 cache 文件, 不需要 WebUI)
+        config_dir: Path = self._dir / "config"
+        rendered: str = json.dumps(onebot, ensure_ascii=False, indent=2)
+        (config_dir / "onebot11.json").write_text(rendered, encoding="utf-8")
+        for account_file in config_dir.glob("onebot11_*.json"):
+            account_file.write_text(rendered, encoding="utf-8")
+        # WebUI 只在容器内, 不发布; 二维码走 cache 文件
         (self._dir / "config" / "webui.json").write_text(
             json.dumps(
                 {"host": "127.0.0.1", "port": webui_port, "token": access_token},

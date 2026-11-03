@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 import requests
@@ -24,6 +25,7 @@ from hx_email.server.messaging.types import (
     MessagingInstance,
     MessagingMessage,
 )
+from hx_email.server.router.providers.impl.qq_types import OneBotCallResult
 
 CAPABILITIES: Capabilities = Capabilities(
     supports_qr_login=True,
@@ -82,6 +84,50 @@ class OneBotAdapter(MessagingAdapter):
             raise MessagingError(f"OneBot 调用 {action} 失败: {detail}")
         data: Any = payload.get("data")
         return data if isinstance(data, dict) else {}
+
+    def call_action(self, action: str, params: Mapping[str, object]) -> OneBotCallResult:
+        """Structured OneBot action: transport outcome, retcode and raw data, no exception.
+
+        `_call` collapses every failure into `MessagingError`, which loses the retcode
+        and the distinction between "never left the machine" and "OneBot answered with
+        an error". The router needs both to decide retry vs. terminal vs. risk signal.
+        """
+        if not self._base_url:
+            return OneBotCallResult(transport="connect_error", wording="api_base_url 未配置")
+        try:
+            response: requests.Response = self._session.post(
+                f"{self._base_url}/{action}",
+                json=dict(params),
+                headers=self._headers(),
+                timeout=self._timeout,
+            )
+        except requests.Timeout as error:
+            return OneBotCallResult(transport="timeout", wording=str(error))
+        except requests.RequestException as error:
+            return OneBotCallResult(transport="connect_error", wording=str(error))
+        payload: object
+        try:
+            payload = response.json()
+        except ValueError:
+            return OneBotCallResult(
+                transport="http_error",
+                http_status=response.status_code,
+                wording="OneBot 响应不是 JSON",
+            )
+        if not isinstance(payload, dict):
+            return OneBotCallResult(
+                transport="http_error",
+                http_status=response.status_code,
+                wording="OneBot 响应格式无效",
+            )
+        retcode: int = int(payload.get("retcode") or 0)
+        return OneBotCallResult(
+            transport="ok" if response.status_code < 400 else "http_error",
+            http_status=response.status_code,
+            retcode=retcode,
+            wording=str(payload.get("wording") or payload.get("msg") or ""),
+            data=payload.get("data") if payload.get("data") is not None else {},
+        )
 
     def start(self) -> None:
         status: AdapterStatus = self.status()

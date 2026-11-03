@@ -19,11 +19,11 @@ from dataclasses import dataclass
 
 from hx_email.config import Settings
 from hx_email.database import connect
+from hx_email.server.router.bounds import ensure_no_gap_ahead, oldest_id
 from hx_email.server.router.cursor import (
     Cursor,
     decode_cursor,
     encode_cursor,
-    ensure_not_ahead,
     ensure_scope,
     has_gap,
 )
@@ -42,6 +42,8 @@ MAX_LIMIT = 200
 BOUNDARY = 0
 MAX_STORED_POSITION = 2**31 - 1
 PLATFORMS = ("qq", "github")
+# 旧写入路径只存纯号, 补地址时要一个平台名; messaging_instances.kind 到这里只有 qq.
+PLATFORM_OF_KIND: str = "qq"
 COLUMNS = (
     "id, instance_id, direction, chat_id, chat_type, sender_id, sender_name, text, "
     "reply_to, message_id, attachments_json, occurred_at, raw_json, raw_ref, is_self, "
@@ -94,6 +96,12 @@ def parse_source(source: str) -> Source:
     return Source(platform, instance_id, session_type=address.session_type, chat_id=source)
 
 
+def peer_of(address: str) -> str:
+    """Peer id from a full address; a bare id comes back unchanged."""
+    parts: list[str] = address.split(":")
+    return parts[3] if len(parts) >= 4 else address
+
+
 def build_query(
     scope: Source, instance_ids: list[int], start: int, direction: str, limit: int
 ) -> tuple[str, list[object]]:
@@ -110,8 +118,12 @@ def build_query(
     else:
         clauses.append("1 = 0")
     if scope.chat_id:
-        clauses.append("chat_id = ?")
+        # 两条写入路径的 chat_id 格式不同: 事件端点 (messaging/store.save_message) 存纯号,
+        # 路由层 (router/impl/store.store_inbound) 存完整地址. 两种都认, 否则同一个会话
+        # 会因为写入方不同而查不到.
+        clauses.append("(chat_id = ? OR chat_id = ?)")
         params.append(scope.chat_id)
+        params.append(peer_of(scope.chat_id))
     elif scope.session_type:
         clauses.append("chat_id LIKE ?")
         params.append(f"{scope.platform}:%:{scope.session_type}:%")
@@ -130,12 +142,11 @@ def build_query(
 
 
 def _clamp(limit: int) -> int:
-    if limit < 1:
-        return 1
-    return min(limit, MAX_LIMIT)
+    return max(1, min(limit, MAX_LIMIT))
 
 
-def _attachment_items(raw: str) -> tuple[dict[str, object], ...]:
+def _attachments(raw: str) -> tuple[Attachment, ...]:
+    """Decode the stored attachment list; a malformed value yields none rather than an error."""
     if not raw:
         return ()
     try:
@@ -144,23 +155,30 @@ def _attachment_items(raw: str) -> tuple[dict[str, object], ...]:
         return ()
     if not isinstance(parsed, list):
         return ()
-    return tuple(item for item in parsed if isinstance(item, dict))
-
-
-def _to_attachment(item: dict[str, object]) -> Attachment:
-    size_value: object = item.get("size") or 0
-    return Attachment(
-        kind=str(item.get("kind") or ""),
-        url=str(item.get("url") or ""),
-        name=str(item.get("name") or ""),
-        size=size_value if isinstance(size_value, int) else 0,
-    )
+    out: list[Attachment] = []
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        size_value: object = item.get("size") or 0
+        out.append(
+            Attachment(
+                kind=str(item.get("kind") or ""),
+                url=str(item.get("url") or ""),
+                name=str(item.get("name") or ""),
+                size=size_value if isinstance(size_value, int) else 0,
+            )
+        )
+    return tuple(out)
 
 
 def _row_to_envelope(settings: Settings, row: sqlite3.Row, include_raw: bool) -> Envelope:
     message_id: int = int(row["id"])
     instance_id: int = int(row["instance_id"])
     chat_id: str = str(row["chat_id"])
+    if ":" not in chat_id:
+        # 旧写入路径存的是纯号, 补齐成完整地址再解析, 否则整页都读不出来.
+        stored_type: str = str(row["chat_type"] or "private")
+        chat_id = f"{PLATFORM_OF_KIND}:{instance_id}:{stored_type}:{chat_id}"
     address = parse_session(chat_id)
     raw: dict[str, object] | None = None
     if include_raw:
@@ -187,9 +205,7 @@ def _row_to_envelope(settings: Settings, row: sqlite3.Row, include_raw: bool) ->
         text=str(row["text"] or ""),
         reply_to=str(row["reply_to"] or ""),
         platform_message_id=str(row["message_id"] or ""),
-        attachments=tuple(
-            _to_attachment(item) for item in _attachment_items(str(row["attachments_json"] or ""))
-        ),
+        attachments=_attachments(str(row["attachments_json"] or "")),
         occurred_at=str(row["occurred_at"] or row["created_at"] or ""),
         received_at=iso_utc_from_sqlite(str(row["created_at"] or "")),
         raw=raw,
@@ -219,6 +235,8 @@ def _start_position(scope: Source, cursor: str, owned: list[int]) -> tuple[int, 
     return parsed.position, parsed.instance_id
 
 
+# chat_id 纯号与完整地址两种格式并存, 查询两种都认; 边界探测在 bounds.py, 两边有循环导入
+# 决策记录: .agents/notes/implemented/feature/2026-11-03-qq-live-wiring-fixes.md
 def read_messages(
     settings: Settings,
     user_id: int,
@@ -239,7 +257,7 @@ def read_messages(
         start, cursor_instance = _start_position(scope, cursor, owned)
         if scope.instance_id is None and start and not owned:
             raise CursorInvalidError("no instance is readable for this account")
-        _ensure_not_ahead(connection, scope, owned, start)
+        ensure_no_gap_ahead(connection, scope, owned, start)
         sql, params = build_query(scope, owned, start, direction, size)
         rows: list[sqlite3.Row] = connection.execute(sql, params).fetchall()
         has_more: bool = len(rows) > size
@@ -248,39 +266,13 @@ def read_messages(
             _row_to_envelope(settings, row, include_raw) for row in page_rows
         ]
         position: int = int(page_rows[-1]["id"]) if page_rows else start
-        oldest: int | None = _oldest(connection, scope, owned)
+        oldest: int | None = oldest_id(connection, scope, owned)
     return ReadPage(
         messages=messages,
         next_cursor=encode_cursor(cursor_instance, position),
         has_more=has_more,
         gap=has_gap(Cursor(cursor_instance, start), oldest),
     )
-
-
-def _ensure_not_ahead(
-    connection: sqlite3.Connection, scope: Source, owned: list[int], start: int
-) -> None:
-    """A cursor past the newest stored id means the caller mixed up instances."""
-    newest: int | None = _newest(connection, scope, owned)
-    ensure_not_ahead(Cursor(scope.instance_id or 0, start), newest or 0)
-
-
-def _newest(connection: sqlite3.Connection, scope: Source, owned: list[int]) -> int | None:
-    probe, params = build_query(scope, owned, BOUNDARY - 1, "both", 1)
-    sql: str = probe.replace(COLUMNS, "MAX(id) AS newest").replace("ORDER BY id ASC LIMIT ?", "")
-    row: sqlite3.Row | None = connection.execute(sql, params[:-1]).fetchone()
-    if row is None or row["newest"] is None:
-        return None
-    return int(row["newest"])
-
-
-def _oldest(connection: sqlite3.Connection, scope: Source, owned: list[int]) -> int | None:
-    probe, params = build_query(scope, owned, BOUNDARY - 1, "both", 1)
-    sql: str = probe.replace(COLUMNS, "MIN(id) AS oldest").replace("ORDER BY id ASC LIMIT ?", "")
-    row: sqlite3.Row | None = connection.execute(sql, params[:-1]).fetchone()
-    if row is None or row["oldest"] is None:
-        return None
-    return int(row["oldest"])
 
 
 def latest_cursor(settings: Settings, instance_id: int) -> str:
