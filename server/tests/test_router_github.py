@@ -13,8 +13,8 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from hx_email.api.impl.router.ingress_github import build_github_ingress_router
-from hx_email.api.impl.router.ingress_queue import IngressWorker, MemoryDeliveryLedger
+from hx_email.api.impl.router.ingress.ingress_github import build_github_ingress_router
+from hx_email.api.impl.router.ingress.ingress_queue import IngressWorker, MemoryDeliveryLedger
 from hx_email.config import Settings
 from hx_email.server.router.providers.github import (
     GitHubAppProvider,

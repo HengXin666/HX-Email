@@ -76,6 +76,8 @@ def add_missing_message_columns(connection: sqlite3.Connection) -> None:
 
 # 路由层订阅与分发的决策记录, 实现规格见 docs/messaging-router.md
 # .agents/notes/implemented/feature/2026-11-02-messaging-router-gateway.md
+# GitHub App 一键创建与秘密字段只写不读的决策
+# 决策记录: .agents/notes/implemented/feature/2026-11-03-github-app-manifest-flow.md
 def migrate_router_schema(connection: sqlite3.Connection) -> None:
     """Router layer: dedup index, routes, outbox, ingress deliveries, API keys."""
     add_missing_message_columns(connection)
@@ -178,5 +180,22 @@ def migrate_router_schema(connection: sqlite3.Connection) -> None:
             last_used_at TEXT,
             revoked_at TEXT
         )
+        """
+    )
+    # GitHub App Manifest 一键创建的一次性 state, 10 分钟有效, 回调用 UPDATE ... WHERE used = 0 消费
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS router_github_app_states (
+            state TEXT PRIMARY KEY,
+            created_at TEXT NOT NULL,
+            used INTEGER NOT NULL DEFAULT 0,
+            instance_id INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_router_github_app_states_created
+        ON router_github_app_states(created_at)
         """
     )

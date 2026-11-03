@@ -10,7 +10,7 @@ Decision-ID: messaging-router-gateway
 - `server/src/hx_email/server/router/provider.py`
 - `server/src/hx_email/server/router/impl/outbox.py`
 - `server/src/hx_email/server/router/providers/qq.py`
-- `server/src/hx_email/api/impl/router/ingress_github.py`
+- `server/src/hx_email/api/impl/router/ingress/ingress_github.py`
 - `server/src/hx_email/models/messaging.py`
 
 ## Problem

@@ -41,6 +41,7 @@ from hx_email.api.impl.plugins import (
     register_plugin_crud_routes,
 )
 from hx_email.api.impl.router.assembly import register_router_ingress
+from hx_email.api.impl.router.github_connect import register_github_connect_routes
 from hx_email.api.impl.settings.cf_worker_sync import register_cf_worker_sync_route
 from hx_email.api.impl.settings.settings_routes import register_settings_routes
 from hx_email.api.impl.settings.settings_test_routes import register_settings_test_routes
@@ -109,6 +110,7 @@ def register_routes(
     register_messaging_action_routes(api, settings)
     register_messaging_event_routes(api, settings)
     register_router_ingress(app, settings)
+    register_github_connect_routes(api, settings)
 
     app.include_router(api)
     register_external_routes(app, settings, mailbox_provider, temp_mail_providers)

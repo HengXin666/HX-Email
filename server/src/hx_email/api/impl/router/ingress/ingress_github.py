@@ -13,7 +13,7 @@ from typing import Protocol
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 
-from hx_email.api.impl.router.ingress_queue import DeliveryLedger, IngressJob, IngressWorker
+from hx_email.api.impl.router.ingress.ingress_queue import DeliveryLedger, IngressJob, IngressWorker
 from hx_email.server.router.providers.impl.github.github_events import (
     DELIVERY_HEADER,
     EVENT_HEADER,

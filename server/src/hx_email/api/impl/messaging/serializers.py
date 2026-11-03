@@ -19,6 +19,10 @@ from hx_email.server.messaging.types import (
     MessagingInstance,
     MessagingMessage,
 )
+from hx_email.server.router.providers.impl.github.github_auth import SECRET_CONFIG_KEYS
+
+# GitHub 私钥与 webhook secret 和 QQ 的 event_token 一样只写不读
+MASKED_CONFIG_KEYS: frozenset[str] = frozenset({"event_token"}) | SECRET_CONFIG_KEYS
 
 
 def require_instance(
@@ -128,8 +132,11 @@ def group_dict(value: MessagingGroup) -> dict[str, object]:
     }
 
 
+# GitHub App 一键创建与秘密字段只写不读的决策
+# 决策记录: .agents/notes/implemented/feature/2026-11-03-github-app-manifest-flow.md
 def public_config(config: dict[str, str]) -> dict[str, str]:
     """Mask secrets before returning instance config to the browser."""
     return {
-        key: ("***" if key == "event_token" and value else value) for key, value in config.items()
+        key: ("***" if key in MASKED_CONFIG_KEYS and value else value)
+        for key, value in config.items()
     }

@@ -20,8 +20,8 @@ from collections.abc import Callable
 
 from fastapi import APIRouter
 
-from hx_email.api.impl.router.ingress_github import build_github_ingress_router
-from hx_email.api.impl.router.ingress_queue import (
+from hx_email.api.impl.router.ingress.ingress_github import build_github_ingress_router
+from hx_email.api.impl.router.ingress.ingress_queue import (
     DeliveryLedger,
     IngressWorker,
     MemoryDeliveryLedger,
