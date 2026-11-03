@@ -6,8 +6,10 @@ import type {
 import { request } from "../core";
 
 export const routerGithubApi = {
-  githubManifestStart: (baseUrl: string): Promise<GithubManifestStart> =>
-    request<GithubManifestStart>(`/router/github/manifest?base_url=${encodeURIComponent(baseUrl)}`),
+  // The server decides the public root: a browser opened on localhost says nothing about
+  // whether GitHub can reach it, so the address is not ours to infer here.
+  githubManifestStart: (): Promise<GithubManifestStart> =>
+    request<GithubManifestStart>("/router/github/manifest"),
 
   githubVerify: (instanceId: number): Promise<GithubVerifyResult> =>
     request<GithubVerifyResult>("/router/github/verify", {

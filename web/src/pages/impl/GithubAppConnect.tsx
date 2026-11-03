@@ -148,7 +148,7 @@ export function GithubAppConnect() {
   const handleStart = async (): Promise<void> => {
     setBusy("start");
     try {
-      const start: GithubManifestStart = await api.githubManifestStart(window.location.origin);
+      const start: GithubManifestStart = await api.githubManifestStart();
       setInstanceId(start.instance_id);
       toast("正在跳转到 GitHub, 请在 GitHub 页面确认创建", "info");
       submitManifest(start);

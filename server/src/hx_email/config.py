@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     # 公网多租户部署可设 HX_EMAIL_ALLOW_PRIVATE_PROXY=false 收紧为白名单
     # (仅 127.0.0.0/8、::1、host.docker.internal 与公网地址)。
     allow_private_proxy: bool = True
+    # GitHub App 的 webhook 与回调需要公网可达地址; 留空则回退到请求自身的 host。
+    # 用户用什么地址打开页面与 GitHub 能否访问到是两件独立的事, 本地开发时页面在
+    # localhost, 而 GitHub 的服务端访问不到 localhost, 所以这两个用途要分开配置。
+    public_base_url: str = ""
 
     @property
     def database_path(self) -> Path:

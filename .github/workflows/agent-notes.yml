@@ -29,6 +29,9 @@ jobs:
         with:
           node-version: "20"
 
+      # 门禁里有一条要起 Python 校验器, 它用 uv 建临时环境; 缺了 uv 整个 job 直接 ENOENT 失败.
+      - uses: astral-sh/setup-uv@v5
+
       - name: Resolve the comparison base
         run: |
           BASE="${{ github.event.pull_request.base.sha }}"

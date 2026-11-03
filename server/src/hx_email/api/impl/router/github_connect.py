@@ -14,9 +14,10 @@ from __future__ import annotations
 import logging
 import sqlite3
 from typing import Annotated, Final
+from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Body, Header, HTTPException, Query, status
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter, Body, Header, HTTPException, Query, Request, status
+from fastapi.responses import HTMLResponse
 
 from hx_email.api.dependencies import require_admin
 from hx_email.config import Settings
@@ -38,9 +39,55 @@ LOGGER: logging.Logger = logging.getLogger("hx_email.router.github.connect")
 PREFIX: Final[str] = "/router/github"
 MANIFEST_ACTION: Final[str] = "https://github.com/settings/apps/new"
 GITHUB_KIND: Final[str] = "github"
-SUCCESS_TARGET: Final[str] = "/messaging?connected=1&slug={slug}"
-FAILURE_TARGET: Final[str] = "/messaging?error={reason}"
 INSTALLATIONS_PAGE: Final[int] = 100
+LOOPBACK_HOSTS: frozenset[str] = frozenset({"localhost", "127.0.0.1", "0.0.0.0", "::1"})
+REASON_TEXT: Final[dict[str, str]] = {
+    "invalid_state": "授权已过期或被重复使用, 请重新点一次创建按钮",
+    "conversion_failed": "向 GitHub 兑换凭据失败, 请重试",
+    "conversion_incomplete": "GitHub 返回的凭据不完整",
+    "encryption_unavailable": "服务端加密密钥不可用, 无法安全保存私钥",
+    "save_failed": "凭据保存失败",
+    "missing_code_or_state": "回调缺少必要参数",
+}
+CALLBACK_CSS: Final[str] = (
+    "body{font-family:system-ui,sans-serif;max-width:34rem;margin:18vh auto;padding:0 1.5rem;"
+    "color:#1f2328;line-height:1.7}h1{font-size:1.15rem;margin:0 0 .75rem}"
+    "p{margin:.4rem 0;color:#57606a}"
+)
+
+
+def pick_base_url(settings: Settings, base_url: str, request: Request) -> str:
+    """Resolve the public root GitHub will call back on.
+
+    A user opening the console on localhost is normal during development, but GitHub's
+    servers cannot reach localhost, so the address the browser used is a poor default.
+    An explicitly configured public root wins; the request is only a last resort.
+    """
+    configured: str = str(getattr(settings, "public_base_url", "") or "")
+    if configured:
+        return configured.rstrip("/")
+    if base_url:
+        return base_url.rstrip("/")
+    return f"{request.url.scheme}://{request.url.netloc}".rstrip("/")
+
+
+def ensure_public(base: str) -> None:
+    """Reject a loopback root before GitHub does, with an actionable message."""
+    if urlsplit(base).hostname in LOOPBACK_HOSTS:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "GitHub webhook 需要公网可达地址, 请设置环境变量 HX_EMAIL_PUBLIC_BASE_URL",
+        )
+
+
+def render_result(title: str, detail: str, ok: bool) -> HTMLResponse:
+    """Self-contained result page: the callback must not depend on where the console is hosted."""
+    body: str = (
+        "<!doctype html><meta charset=utf-8>"
+        f"<title>{title}</title><style>{CALLBACK_CSS}</style>"
+        f"<h1>{title}</h1><p>{detail}</p>"
+    )
+    return HTMLResponse(body, status_code=200 if ok else 400, headers={"Cache-Control": "no-store"})
 
 
 def default_transport() -> HttpTransport:
@@ -109,19 +156,28 @@ def _installation_ids(payload: object) -> list[dict[str, object]]:
 def register_github_connect_routes(router: APIRouter, settings: Settings) -> None:
     """Mount the four manifest-flow endpoints on ``router``."""
 
+    def failure(reason: str) -> HTMLResponse:
+        return render_result(
+            "GitHub 授权失败",
+            REASON_TEXT.get(reason, f"未知原因: {reason}"),
+            False,
+        )
+
     @router.get(f"{PREFIX}/manifest")
     def start_manifest(
+        request: Request,
         base_url: str = Query(default="", max_length=500),
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
         """Mint a one-time state and hand the browser the manifest to POST to GitHub."""
         user: AuthenticatedUser = require_admin(settings, authorization)
         user_id: int = int(user.id)
+        base: str = pick_base_url(settings, base_url, request)
+        ensure_public(base)
         instance_id: int = _ensure_github_instance(settings, user_id)
         now = github_manifest.utc_now()
         state: str = github_manifest.create_state()
         expires = github_manifest.save_state(settings, state, instance_id, now)
-        base: str = (base_url or "http://localhost:8000").rstrip("/")
         manifest = github_manifest.build_manifest(
             base, github_manifest.create_name_suffix(), instance_id
         )
@@ -136,14 +192,14 @@ def register_github_connect_routes(router: APIRouter, settings: Settings) -> Non
     @router.get(f"{PREFIX}/callback")
     def receive_callback(
         code: str = Query(default=""), state: str = Query(default="")
-    ) -> RedirectResponse:
+    ) -> HTMLResponse:
         """Consume the state, spend the code, store the App. No admin check by design."""
         if not code or not state:
-            return RedirectResponse(FAILURE_TARGET.format(reason="missing_code_or_state"), 302)
+            return failure("missing_code_or_state")
         try:
             github_manifest.ensure_encryption_ready(settings)
         except ManifestError as error:
-            return RedirectResponse(FAILURE_TARGET.format(reason=error.reason), 302)
+            return failure(error.reason)
         # The state is consumed before the code is spent: a code works once, so letting
         # the same state retry after a failed conversion would just fail again.
         try:
@@ -151,18 +207,22 @@ def register_github_connect_routes(router: APIRouter, settings: Settings) -> Non
                 settings, state, github_manifest.utc_now()
             )
         except ManifestError as error:
-            return RedirectResponse(FAILURE_TARGET.format(reason=error.reason), 302)
+            return failure(error.reason)
         try:
             body = github_manifest.convert_manifest(code, default_transport())
         except ManifestError as error:
-            return RedirectResponse(FAILURE_TARGET.format(reason=error.reason), 302)
+            return failure(error.reason)
         try:
             config: GitHubAppConfig = github_manifest.config_from_conversion(body)
             github_manifest.store_app_config(settings, instance_id, config)
         except (KeyError, TypeError, ValueError, OSError) as error:
             LOGGER.warning("cannot store GitHub App config: %s", error)
-            return RedirectResponse(FAILURE_TARGET.format(reason="save_failed"), 302)
-        return RedirectResponse(SUCCESS_TARGET.format(slug=config.app_slug), 302)
+            return failure("save_failed")
+        return render_result(
+            f"GitHub App 已创建: {config.app_slug}",
+            "可以关闭本页, 回到 HX-Email 的 Messaging 页面点「验证连接」",
+            True,
+        )
 
     @router.post(f"{PREFIX}/verify")
     def verify_app(

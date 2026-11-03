@@ -113,13 +113,15 @@ def start(client: TestClient, headers: dict[str, str]) -> dict[str, Any]:
 
 
 def callback(client: TestClient, state: str, code: str = "abc123") -> str:
+    """Return the rendered result page body; the callback no longer redirects."""
     response = client.get(
         f"{API}/router/github/callback",
         params={"code": code, "state": state},
         follow_redirects=False,
     )
-    assert response.status_code == 302
-    return str(response.headers["location"])
+    assert response.status_code in {200, 400}
+    assert "location" not in response.headers
+    return response.text
 
 
 def stored_config(settings: Settings, instance_id: int) -> GitHubAppConfig:
@@ -168,8 +170,9 @@ def test_manifest_endpoint_returns_action_and_state(env: Any) -> None:
 def test_callback_success_encrypts_config(env: Any, github: FakeGitHub) -> None:
     client, settings, headers = env
     data = start(client, headers)
-    location = callback(client, data["state"])
-    assert location.startswith("/messaging?connected=1&slug=hx-email-abc123")
+    page = callback(client, data["state"])
+    assert "GitHub App 已创建: hx-email-abc123" in page
+    assert "回到 HX-Email 的 Messaging 页面点「验证连接」" in page
     config = stored_config(settings, data["instance_id"])
     assert config.app_id == "424242"
     assert config.app_slug == "hx-email-abc123"
@@ -184,8 +187,8 @@ def test_callback_success_encrypts_config(env: Any, github: FakeGitHub) -> None:
 def test_state_is_single_use(env: Any, github: FakeGitHub) -> None:
     client, _settings, headers = env
     data = start(client, headers)
-    assert "connected=1" in callback(client, data["state"])
-    assert "error=invalid_state" in callback(client, data["state"])
+    assert "GitHub App 已创建" in callback(client, data["state"])
+    assert "授权已过期或被重复使用" in callback(client, data["state"])
     assert sum("/app-manifests/" in url for _m, url in github.calls) == 1
 
 
@@ -206,14 +209,14 @@ def test_failed_conversion_leaves_state_used(env: Any, github: FakeGitHub) -> No
     client, settings, headers = env
     data = start(client, headers)
     github.conversion_status = 404
-    assert "error=conversion_failed" in callback(client, data["state"])
+    assert "向 GitHub 兑换凭据失败" in callback(client, data["state"])
     with connect(settings) as connection:
         used = connection.execute(
             "SELECT used FROM router_github_app_states WHERE state = ?", (data["state"],)
         ).fetchone()[0]
     assert used == 1
     github.conversion_status = 201
-    assert "error=invalid_state" in callback(client, data["state"])
+    assert "授权已过期或被重复使用" in callback(client, data["state"])
     assert sum("/app-manifests/" in url for _m, url in github.calls) == 1
 
 
@@ -227,7 +230,7 @@ def test_code_not_spent_when_encryption_unavailable(
         raise OSError("key file unreadable")
 
     monkeypatch.setattr(github_manifest, "encrypt_secret", broken)
-    assert "error=encryption_unavailable" in callback(client, data["state"])
+    assert "服务端加密密钥不可用" in callback(client, data["state"])
     assert github.calls == []
     with connect(settings) as connection:
         used = connection.execute(
@@ -268,3 +271,52 @@ def test_attach_rejects_foreign_installation(env: Any) -> None:
         headers=headers,
     )
     assert response.status_code == 404
+
+
+def test_configured_public_base_wins_over_request(tmp_path: Any) -> None:
+    """A localhost request must not leak into the manifest once a public root is configured."""
+    settings = Settings(
+        data_dir=tmp_path,
+        admin_username="admin",
+        admin_password="admin",
+        public_base_url="https://msg.example.com/",
+    )
+    migrate(settings)
+    client = TestClient(create_app(settings))
+    session = client.post(
+        f"{API}/auth/login", json={"username": "admin", "password": "admin"}
+    ).json()
+    headers = {"Authorization": f"Bearer {session['access_token']}"}
+    response = client.get(
+        f"{API}/router/github/manifest",
+        params={"base_url": "http://127.0.0.1:5175"},
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    manifest = response.json()["manifest"]
+    assert manifest["url"] == "https://msg.example.com"
+    assert manifest["redirect_url"] == "https://msg.example.com/api/v1/router/github/callback"
+    assert manifest["hook_attributes"]["url"].startswith("https://msg.example.com/")
+
+
+def test_loopback_base_is_rejected_before_github(env: Any) -> None:
+    """Without a configured root the localhost default must fail loudly, not at GitHub."""
+    client, _settings, headers = env
+    response = client.get(
+        f"{API}/router/github/manifest",
+        params={"base_url": "http://127.0.0.1:5175"},
+        headers=headers,
+    )
+    assert response.status_code == 400
+    assert "HX_EMAIL_PUBLIC_BASE_URL" in response.text
+
+
+def test_localhost_name_is_also_rejected(env: Any) -> None:
+    client, _settings, headers = env
+    response = client.get(
+        f"{API}/router/github/manifest",
+        params={"base_url": "http://localhost:8000"},
+        headers=headers,
+    )
+    assert response.status_code == 400
+    assert "HX_EMAIL_PUBLIC_BASE_URL" in response.text
