@@ -10,6 +10,7 @@ Decision-ID: github-app-manifest-flow
 - `server/src/hx_email/api/impl/router/github_connect.py`
 - `server/src/hx_email/models/messaging.py`
 - `server/src/hx_email/api/impl/messaging/serializers.py`
+- `web/src/pages/impl/GithubAppConnect.tsx`
 
 ## Problem
 

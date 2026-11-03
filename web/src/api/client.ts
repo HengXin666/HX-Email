@@ -14,6 +14,7 @@ import { overviewApi } from "./endpoints/overview";
 import { platformsApi } from "./endpoints/platforms";
 import { poolApi } from "./endpoints/pool";
 import { refreshApi } from "./endpoints/refresh";
+import { routerGithubApi } from "./endpoints/router_github";
 import { settingsApi } from "./endpoints/settings";
 import { tempMailApi } from "./endpoints/temp-mail";
 import { tokenApi } from "./endpoints/token";
@@ -33,4 +34,5 @@ export const api = {
   ...refreshApi,
   ...settingsApi,
   ...auditApi,
+  ...routerGithubApi,
 };

@@ -13,6 +13,7 @@ import type {
   MessagingMessage,
   MessagingPluginInfo,
 } from "../types";
+import { GithubAppConnect } from "./impl/GithubAppConnect";
 
 const STATUS_COLORS: Record<string, string> = {
   stopped: "#6e7681",
@@ -419,6 +420,7 @@ export const Messaging: React.FC = () => {
             ))}
           </div>
 
+          <GithubAppConnect />
           <h2 className="mt-6 mb-2 text-sm font-semibold text-gh-text">我的实例</h2>
           {instances.length === 0 ? (
             <EmptyState message="还没有实例，点右上角「添加 QQ」即可开始" />

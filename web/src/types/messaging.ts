@@ -72,3 +72,36 @@ export interface MessagingLoginProbe {
   api_base_url: string;
   message: string;
 }
+
+export interface GithubManifestStart {
+  action: string;
+  state: string;
+  expires_at: string;
+  instance_id: number;
+  manifest: unknown;
+}
+
+export interface GithubInstallation {
+  id: number;
+  account: string;
+}
+
+export interface GithubAppConfigSummary {
+  app_id: number | string;
+  app_slug: string;
+  client_id: string;
+  has_private_key: boolean;
+  has_webhook_secret: boolean;
+}
+
+export interface GithubVerifyResult {
+  verified: boolean;
+  app?: string;
+  installations?: GithubInstallation[];
+  app_config: GithubAppConfigSummary;
+}
+
+export interface GithubAttachResult {
+  attached: boolean;
+  installation: GithubInstallation;
+}
