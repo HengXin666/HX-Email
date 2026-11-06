@@ -31,6 +31,8 @@ export interface MessagingConversation {
   chat_id: string;
   chat_type: MessagingChatType;
   name: string;
+  /** Router session address (qq:3:group:123, github:7:issue:owner/repo#42). */
+  session?: string;
 }
 
 export interface MessagingMessage {

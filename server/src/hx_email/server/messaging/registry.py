@@ -20,8 +20,8 @@ QQ_CAPABILITIES: Capabilities = Capabilities(
     supports_history=True,
     risk_level="third_party",
     risk_notice=(
-        "QQ 个人号第三方协议存在封号/风控风险,请使用专用小号并控制消息频率;"
-        "登录态由 lagrange-python 本地持久化。"
+        "QQ 个人号第三方协议存在封号/风控风险,请使用专用小号;"
+        "出站经路由层限流与风控熔断, 登录态由 NapCat 本地持久化。"
     ),
 )
 
@@ -48,7 +48,19 @@ PLUGIN_KINDS: tuple[PluginKind, ...] = (
         capabilities=QQ_CAPABILITIES,
         adapter_factory=create_qq_adapter,
         description=(
-            "基于官方 lagrange-python (NTQQ 协议),进程内运行,支持扫码登录、私聊/群聊收发与群管理。"
+            "基于 NapCat (OneBot 11) 独立容器,扫码登录,私聊/群聊收发与群管理,"
+            "经消息路由统一 API 与 MCP 对外提供。"
+        ),
+    ),
+    PluginKind(
+        key="github",
+        display_name="GitHub",
+        available=True,
+        capabilities=Capabilities(risk_level="official"),
+        adapter_factory=None,
+        description=(
+            "GitHub App (官方 API): webhook 监听 issue/PR 评论, installation token 回帖与建 issue;"
+            "用下方「一键创建 GitHub App」接入。"
         ),
     ),
     PluginKind(

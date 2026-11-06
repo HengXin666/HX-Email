@@ -147,6 +147,8 @@ def save_message(
         return last_id
 
 
+# 事件端点改走路由层后 chat_id 是完整地址, 老页面仍传纯号, 两种都要认
+# 决策记录: .agents/notes/implemented/feature/2026-11-06-router-gateway-facade.md
 def list_messages(
     settings: Settings,
     user_id: int,
@@ -165,10 +167,10 @@ def list_messages(
             rows = connection.execute(
                 """
                 SELECT * FROM messaging_messages
-                WHERE instance_id = ? AND chat_id = ?
+                WHERE instance_id = ? AND (chat_id = ? OR chat_id LIKE ?)
                 ORDER BY id DESC LIMIT ?
                 """,
-                (instance_id, chat_id, limit),
+                (instance_id, chat_id, f"%:{instance_id}:%:{chat_id}", limit),
             ).fetchall()
         else:
             rows = connection.execute(

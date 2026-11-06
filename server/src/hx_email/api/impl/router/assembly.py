@@ -28,8 +28,7 @@ from hx_email.api.impl.router.ingress.ingress_queue import (
 )
 from hx_email.config import Settings
 from hx_email.database import connect
-from hx_email.server.router.envelope import validate_inbound
-from hx_email.server.router.impl.store import store_inbound
+from hx_email.server.gateway.listen import store_envelopes
 from hx_email.server.router.providers.github import GitHubAppProvider
 from hx_email.server.router.providers.impl.github.github_auth import (
     GitHubAppConfig,
@@ -67,16 +66,10 @@ def _load_config(settings: Settings, instance_id: int) -> GitHubAppConfig:
 
 
 def _sink(settings: Settings) -> Callable[[int, list[dict[str, object]]], None]:
-    """Store parsed envelopes; a bad envelope is logged rather than killing the worker."""
+    """Store parsed envelopes and wake listeners; bad envelopes are logged and dropped."""
 
     def store(instance_id: int, envelopes: list[dict[str, object]]) -> None:
-        for envelope in envelopes:
-            try:
-                store_inbound(settings, validate_inbound(envelope, instance_id))
-            except (ValueError, OSError) as error:
-                LOGGER.warning(
-                    "dropped invalid inbound envelope for instance %s: %s", instance_id, error
-                )
+        store_envelopes(settings, instance_id, envelopes)
 
     return store
 

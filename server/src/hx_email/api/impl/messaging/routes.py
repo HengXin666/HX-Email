@@ -66,10 +66,10 @@ def register_messaging_routes(router: APIRouter, settings: Settings) -> None:
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
         user = require_user(settings, authorization)
-        if get_kind(payload.kind) is None:
+        if (kind := get_kind(payload.kind)) is None or kind.adapter_factory is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unknown messaging kind: {payload.kind}",
+                detail=f"Messaging kind {payload.kind} cannot be created here",
             )
         name: str = payload.name.strip() or payload.kind
         config: dict[str, str] = dict(payload.config)

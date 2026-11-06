@@ -7,13 +7,12 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Header, HTTPException, status
 
 from hx_email.config import Settings
-from hx_email.server.messaging.impl.events import ingest_event
+from hx_email.server.gateway.listen import ingest_qq_event
 from hx_email.server.messaging.store import (
     find_instance_by_event_token,
-    save_message,
     update_instance_status,
 )
-from hx_email.server.messaging.types import MessagingInstance, MessagingMessage
+from hx_email.server.messaging.types import MessagingInstance
 
 EVENT_TOKEN_HEADER: str = "X-Messaging-Token"
 BEARER_PREFIX: str = "Bearer "
@@ -41,8 +40,7 @@ def register_messaging_event_routes(router: APIRouter, settings: Settings) -> No
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid messaging event token",
             )
-        message: MessagingMessage | None = ingest_event(payload)
-        if message is not None:
-            save_message(settings, instance.id, message)
+        # 入库走路由层: 完整会话地址, (instance_id, dedup_key) 去重, 并唤醒长轮询监听者
+        stored: bool = ingest_qq_event(settings, instance.id, payload)
         update_instance_status(settings, instance.id, "online")
-        return {"success": True, "stored": message is not None}
+        return {"success": True, "stored": stored}

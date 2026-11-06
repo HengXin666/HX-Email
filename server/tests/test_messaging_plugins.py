@@ -19,6 +19,7 @@ API = "/api/v1"
 class FakeOneBotResponse:
     def __init__(self, payload: dict[str, Any]) -> None:
         self._payload: dict[str, Any] = payload
+        self.status_code: int = 200
 
     def raise_for_status(self) -> None:
         return None
@@ -133,7 +134,7 @@ def test_messaging_catalog_lists_four_platforms(tmp_path: Any) -> None:
 
     assert response.status_code == 200
     plugins = response.json()["plugins"]
-    assert [item["key"] for item in plugins] == ["qq", "wechat", "telegram", "discord"]
+    assert [item["key"] for item in plugins] == ["qq", "github", "wechat", "telegram", "discord"]
     qq = next(item for item in plugins if item["key"] == "qq")
     assert qq["available"] is True
     assert qq["capabilities"]["supports_qr_login"] is True
@@ -226,7 +227,9 @@ def test_event_ingest_stores_inbound_message(tmp_path: Any) -> None:
             "user_id": 20001,
             "sender": {"nickname": "alice"},
             "raw_message": "hello from qq",
+            "message": [{"type": "text", "data": {"text": "hello from qq"}}],
             "message_id": "evt-1",
+            "time": 1762400000,
         },
         headers={"X-Messaging-Token": "right-token"},
     )
@@ -264,6 +267,9 @@ def test_send_message_via_onebot_http(
         timeout: float = 10.0,
     ) -> FakeOneBotResponse:
         calls.append((url, json or {}))
+        if url.endswith("/get_group_list"):
+            groups: list[dict[str, Any]] = [{"group_id": 30001, "group_name": "g"}]
+            return FakeOneBotResponse({"status": "ok", "retcode": 0, "data": groups})
         return FakeOneBotResponse({"status": "ok", "retcode": 0, "data": {"message_id": 42}})
 
     monkeypatch.setattr("hx_email.server.messaging.onebot.requests.Session.post", fake_post)
@@ -273,11 +279,13 @@ def test_send_message_via_onebot_http(
         json={"chat_id": "30001", "chat_type": "group", "text": "hi"},
         headers=headers,
     )
-    assert response.status_code == 200
-    assert response.json()["message_id"] == "42"
-    assert calls[0][0].endswith("/send_group_msg")
-    assert calls[0][1]["group_id"] == 30001
-    assert calls[0][1]["message"] == "hi"
+    assert response.status_code == 200, response.text
+    assert response.json()["message_id"] == "42", response.json()
+    # 路由层统一走 send_msg + 段数组, 不拼 CQ 码 (docs/providers/qq-napcat.md 5.3)
+    sends = [body for url, body in calls if url.endswith("/send_msg")]
+    assert len(sends) == 1
+    assert sends[0]["group_id"] == 30001
+    assert sends[0]["message"] == [{"type": "text", "data": {"text": "hi"}}]
 
 
 def test_login_ticket_and_status(

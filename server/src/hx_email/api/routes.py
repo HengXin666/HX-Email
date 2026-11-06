@@ -17,6 +17,7 @@ from hx_email.api.impl.external import (
     register_external_temp_mail_routes,
     register_external_token_routes,
 )
+from hx_email.api.impl.gateway.rest_routes import register_gateway
 from hx_email.api.impl.google_verification.admin_routes import (
     register_google_verification_routes,
 )
@@ -111,6 +112,7 @@ def register_routes(
     register_messaging_event_routes(api, settings)
     register_router_ingress(app, settings)
     register_github_connect_routes(api, settings)
+    register_gateway(app, api, settings)
 
     app.include_router(api)
     register_external_routes(app, settings, mailbox_provider, temp_mail_providers)

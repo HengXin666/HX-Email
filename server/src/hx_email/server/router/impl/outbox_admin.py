@@ -100,6 +100,8 @@ def purge_terminal(settings: Settings, *, now: datetime | None = None) -> int:
     return changed.rowcount
 
 
+# 发送类 failed 直接终态不重试: 对风控中的个人号反复重发正是封号路径
+# 决策记录: .agents/notes/implemented/feature/2026-11-06-router-gateway-facade.md
 def record_result(
     settings: Settings,
     delivery_id: int,
@@ -132,6 +134,13 @@ def record_result(
             )
         elif result.status == "unknown":
             _apply(connection, delivery_id, "unknown", current.attempts, "", result.error_message)
+        elif result.status == "failed" and (
+            current.kind == "send" or result.error_code == "route_gone"
+        ):
+            # A provider "failed" is terminal (risk control, muted, bad target): retrying
+            # it is exactly the repeated hammering that gets a personal account banned.
+            reason: str = result.error_message or result.error_code
+            _apply(connection, delivery_id, "failed", current.attempts, "", reason)
         elif result.status == "retry" and result.retry_after_seconds:
             # A rate-limit hold is not a failure: refund the attempt charged at claim
             # time, so a long backoff never walks the row toward retirement.

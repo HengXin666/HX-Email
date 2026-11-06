@@ -257,7 +257,9 @@ export const Messaging: React.FC = () => {
       if (selectedId === null) return;
       setActiveChat(conversation);
       try {
-        setMessages(await api.messages(selectedId, conversation.chat_id, 50));
+        setMessages(
+          await api.messages(selectedId, conversation.session ?? conversation.chat_id, 50),
+        );
       } catch (error: unknown) {
         toast(error instanceof Error ? error.message : "加载消息失败", "error");
       }
@@ -270,12 +272,12 @@ export const Messaging: React.FC = () => {
     setBusy("send");
     try {
       await api.sendMessage(selectedId, {
-        chat_id: activeChat.chat_id,
+        chat_id: activeChat.session ?? activeChat.chat_id,
         chat_type: activeChat.chat_type,
         text: sendText.trim(),
       });
       setSendText("");
-      setMessages(await api.messages(selectedId, activeChat.chat_id, 50));
+      setMessages(await api.messages(selectedId, activeChat.session ?? activeChat.chat_id, 50));
     } catch (error: unknown) {
       toast(error instanceof Error ? error.message : "发送失败", "error");
     } finally {

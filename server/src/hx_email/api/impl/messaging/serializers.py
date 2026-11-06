@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import HTTPException, status
 
 from hx_email.config import Settings
+from hx_email.server.gateway.impl.github_adapter import GitHubAppAdapter
 from hx_email.server.messaging.registry import get_adapter
 from hx_email.server.messaging.store import get_instance
 from hx_email.server.messaging.types import (
@@ -37,15 +38,22 @@ def require_instance(
             detail="Messaging instance not found",
         )
     try:
-        adapter: MessagingAdapter = get_adapter(settings, instance)
+        adapter: MessagingAdapter = adapter_for(settings, instance)
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
     return instance, adapter
 
 
+def adapter_for(settings: Settings, instance: MessagingInstance) -> MessagingAdapter:
+    """GitHub App instances get a status-only adapter; the rest come from the registry."""
+    if instance.kind == "github":
+        return GitHubAppAdapter(settings, instance)
+    return get_adapter(settings, instance)
+
+
 def safe_adapter(settings: Settings, instance: MessagingInstance) -> MessagingAdapter | None:
     try:
-        return get_adapter(settings, instance)
+        return adapter_for(settings, instance)
     except ValueError:
         return None
 
