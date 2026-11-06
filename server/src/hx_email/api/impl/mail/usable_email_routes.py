@@ -1,3 +1,4 @@
+import re
 from typing import Annotated
 
 from fastapi import APIRouter, Header, HTTPException, status
@@ -237,11 +238,49 @@ def register_usable_email_routes(
         return result
 
 
+_NAIVE_UTC_STAMP = re.compile(r"^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.\d+)?$")
+
+
+def as_utc_iso(value: object) -> object:
+    """Tag stored timestamps as UTC before they leave the API.
+
+    ``parse_date`` stores UTC wall-clock text with no zone (the container runs in
+    UTC), so a browser parses "2026-11-03 12:55:58" as *local* time and every
+    message looks eight hours older than it is on a UTC+8 client.
+    """
+    if not isinstance(value, str):
+        return value
+    match = _NAIVE_UTC_STAMP.match(value.strip())
+    if match is None:
+        return value
+    return f"{match.group(1)}T{match.group(2)}Z"
+
+
+_NAIVE_UTC_STAMP = re.compile(r"^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.\d+)?$")
+
+
+def as_utc_iso(value: object) -> object:
+    """Tag stored timestamps as UTC before they leave the API.
+
+    ``parse_date`` stores UTC wall-clock text with no zone (the container runs in
+    UTC), so a browser parses "2026-11-03 12:55:58" as *local* time and every
+    message looks eight hours older than it is on a UTC+8 client.
+    """
+    if not isinstance(value, str):
+        return value
+    text = value.strip()
+    if len(text) != 19 or text[4] != '-' or text[10] != ' ' or text[13] != ':' or text[16] != ':':
+        return value
+    return text[:10] + "T" + text[11:] + "Z"
+
+
 def message_with_verification_code(message: dict[str, object]) -> dict[str, object]:
     """Attach a conservative per-message verification result for inbox rendering."""
     subject: str = str(message.get("subject") or "")
     body: str = str(message.get("body") or "")
     return {
         **message,
-        "verification_code": extract_verification_code(f"{subject}\n{body}"),
+        "received_at": as_utc_iso(message.get("received_at")),
+        "created_at": as_utc_iso(message.get("created_at")),
+        "verification_code": extract_verification_code(subject + chr(10) + body),
     }
