@@ -21,7 +21,7 @@ from hx_email.server.gateway.catalog import (
     sources_list,
 )
 from hx_email.server.gateway.listen import pull
-from hx_email.server.gateway.sending import delivery_status, send_message
+from hx_email.server.gateway.sending import delivery_status, invoke_action, send_message
 from hx_email.server.router.errors import RouterError, SessionNotFoundError
 
 JsonDict = dict[str, object]
@@ -30,6 +30,10 @@ INT: Final[JsonDict] = {"type": "integer"}
 BOOL: Final[JsonDict] = {"type": "boolean"}
 DIRECTION: Final[JsonDict] = {"type": "string", "enum": ["inbound", "outbound", "both"]}
 PLATFORM: Final[JsonDict] = {"type": "string", "enum": sorted(REGISTRY.platform_names())}
+ACTION: Final[JsonDict] = {
+    "type": "string",
+    "enum": sorted({spec.name for caps in REGISTRY.table.values() for spec in caps.actions}),
+}
 ADDRESS_HINT: Final[str] = "v2 地址如 qq:3/group/123, github:7/repo/o/r/issue/42; v1 仍可用"
 
 
@@ -116,6 +120,23 @@ TOOLS: Final[list[JsonDict]] = [
         ),
     },
     {
+        "name": "action_invoke",
+        "description": (
+            "对地址执行平台声明的动作 (capabilities_list 里的 actions 与 params), "
+            "与 message_send 同样经幂等, 整形与熔断"
+        ),
+        "inputSchema": schema(
+            {
+                "target": STR,
+                "action": ACTION,
+                "params": {"type": "object", "additionalProperties": STR, "maxProperties": 8},
+                "idempotency_key": {"type": "string", "minLength": 8, "maxLength": 64},
+                "wait_seconds": {"type": "number", "minimum": 0, "maximum": 5},
+            },
+            ["target", "action", "idempotency_key"],
+        ),
+    },
+    {
         "name": "delivery_status",
         "description": "查询一次发送的状态: 按 delivery_id, 或按 idempotency_key 加 sink",
         "inputSchema": schema({"delivery_id": STR, "idempotency_key": STR, "sink": STR}, []),
@@ -164,6 +185,13 @@ def int_arg(arguments: JsonDict, key: str, default: int) -> int:
         raise ToolInputError(f"{key} must be a number") from error
 
 
+def dict_arg(arguments: JsonDict, key: str) -> dict[str, str]:
+    value: object = arguments.get(key) or {}
+    if not isinstance(value, dict):
+        raise ToolInputError(f"{key} must be an object")
+    return {str(name): str(item) for name, item in value.items()}
+
+
 def handlers(settings: Settings, user_id: int) -> dict[str, Callable[[JsonDict], JsonDict]]:
     def delivery(args: JsonDict) -> JsonDict:
         found: JsonDict | None = delivery_status(
@@ -208,6 +236,15 @@ def handlers(settings: Settings, user_id: int) -> dict[str, Callable[[JsonDict],
             text_arg(a, "idempotency_key"),
             title=text_arg(a, "title"),
             reply_to=text_arg(a, "reply_to"),
+            wait_seconds=float(a.get("wait_seconds", 5.0) or 0.0),
+        ),
+        "action_invoke": lambda a: invoke_action(
+            settings,
+            user_id,
+            text_arg(a, "target"),
+            text_arg(a, "action"),
+            dict_arg(a, "params"),
+            text_arg(a, "idempotency_key"),
             wait_seconds=float(a.get("wait_seconds", 5.0) or 0.0),
         ),
         "delivery_status": delivery,

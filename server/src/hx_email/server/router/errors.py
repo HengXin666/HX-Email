@@ -98,6 +98,18 @@ class RouteLimitError(RouterError):
     code = "route_limit"
 
 
+class ActionNotSupportedError(RouterError):
+    """The platform declares no such action, or not on this address kind."""
+
+    code = "action_not_supported"
+
+
+class InvalidPayloadError(RouterError):
+    """Action parameters are missing, unknown, or outside what the declaration allows."""
+
+    code = "invalid_payload"
+
+
 ERROR_TYPES: Final[dict[str, type[RouterError]]] = {
     error_type.code: error_type
     for error_type in (
@@ -113,6 +125,8 @@ ERROR_TYPES: Final[dict[str, type[RouterError]]] = {
         RouteNotFoundError,
         RouteInvalidError,
         RouteLimitError,
+        ActionNotSupportedError,
+        InvalidPayloadError,
     )
 }
 

@@ -103,6 +103,11 @@ def failed(code: str, message: str) -> SendResult:
     return SendResult(status="failed", error_code=code, error_message=message)
 
 
+def retryable(code: str, message: str) -> SendResult:
+    """Nothing reached GitHub, or repeating the call is harmless: try again later."""
+    return SendResult(status="retry", retryable=True, error_code=code, error_message=message)
+
+
 def header_value(headers: dict[str, str], name: str) -> str:
     """Header lookup is case-insensitive: HTTP names are, and callers pass raw dicts."""
     lowered: str = name.lower()

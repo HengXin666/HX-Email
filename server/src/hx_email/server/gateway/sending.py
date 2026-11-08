@@ -16,11 +16,20 @@ from typing import Final
 from hx_email.config import Settings
 from hx_email.database import connect
 from hx_email.server.contract.address import address_of_legacy
+from hx_email.server.contract.builtin import REGISTRY
+from hx_email.server.contract.capabilities import (
+    ActionSpec,
+    AddressKind,
+    ParamSpec,
+    PlatformCapabilities,
+)
 from hx_email.server.gateway.impl.breaker import BREAKER
 from hx_email.server.gateway.impl.dispatch import DISPATCHER
 from hx_email.server.gateway.providers import InstanceRow, profile_for, require_owned
 from hx_email.server.router.envelope import SessionAddress, parse_session
 from hx_email.server.router.errors import (
+    ActionNotSupportedError,
+    InvalidPayloadError,
     SessionNotFoundError,
     SessionNotSendableError,
     TextTooLongError,
@@ -29,6 +38,7 @@ from hx_email.server.router.impl.outbox import EnqueueResult, Entry, enqueue_sen
 from hx_email.server.router.impl.outbox_admin import find_send, get_entry, set_instance_held
 
 MAX_WAIT_SECONDS: Final[float] = 5.0
+MAX_PARAM_LENGTH: Final[int] = 65000
 QQ_TYPES: Final[frozenset[str]] = frozenset({"private", "group", "temp", "qzonepost"})
 GITHUB_TYPES: Final[frozenset[str]] = frozenset({"issue", "repo"})
 SENDABLE_BY_KIND: Final[dict[str, frozenset[str]]] = {
@@ -46,6 +56,7 @@ def delivery_view(entry: Entry, deduplicated: bool = False) -> dict[str, object]
     return {
         "delivery_id": entry.delivery_id,
         "kind": entry.kind,
+        "action": str(entry.payload.get("action") or "message_send"),
         "sink": entry.session,
         "address": address_of_legacy(entry.session),
         "status": entry.status,
@@ -88,16 +99,25 @@ def send_message(
     if len(text) > limit:
         raise TextTooLongError(f"text is {len(text)} characters, limit is {limit}")
     check_sendable(instance, address, title)
+    payload: dict[str, object] = {"text": text, "title": title, "reply_to": reply_to}
+    return queue_and_wait(
+        settings, user_id, instance, address, payload, idempotency_key, wait_seconds
+    )
+
+
+def queue_and_wait(
+    settings: Settings,
+    user_id: int,
+    instance: InstanceRow,
+    address: SessionAddress,
+    payload: dict[str, object],
+    idempotency_key: str,
+    wait_seconds: float,
+) -> dict[str, object]:
     key: str = idempotency_key or f"auto-{uuid.uuid4().hex}"
     held: bool = BREAKER.is_manual(instance.id)
     result: EnqueueResult = enqueue_send(
-        settings,
-        user_id,
-        instance.id,
-        address.address,
-        {"text": text, "title": title, "reply_to": reply_to},
-        key,
-        held=held,
+        settings, user_id, instance.id, address.address, payload, key, held=held
     )
     entry: Entry = result.entry
     if not held and entry.status == "queued":
@@ -106,6 +126,79 @@ def send_message(
     if wait > 0 and entry.status in ("queued", "sending"):
         entry = DISPATCHER.wait_for(settings, entry.id, wait) or entry
     return delivery_view(entry, result.deduplicated)
+
+
+def checked_params(spec: ActionSpec, params: dict[str, str]) -> dict[str, str]:
+    """Params exactly as the declaration allows; anything else is ``invalid_payload``."""
+    known: dict[str, ParamSpec] = {param.name: param for param in spec.params}
+    unknown: list[str] = sorted(key for key in params if key not in known)
+    if unknown:
+        raise InvalidPayloadError(f"{spec.name} does not take {', '.join(unknown)}")
+    clean: dict[str, str] = {}
+    for name, param in known.items():
+        value: str = str(params.get(name) or "")
+        if param.required and not value.strip():
+            raise InvalidPayloadError(f"{spec.name} needs {name}")
+        problem: str = param.problem(value) if value else ""
+        if problem or len(value) > MAX_PARAM_LENGTH:
+            raise InvalidPayloadError(problem or f"{name} is too long")
+        if value:
+            clean[name] = value
+    return clean
+
+
+# 动作按能力声明校验 (动作名, 目标地址种类, 参数), 再与 message_send 走同一条 outbox 行
+# 决策记录: .agents/notes/implemented/feature/2026-11-09-github-outbound-actions.md
+def invoke_action(
+    settings: Settings,
+    user_id: int,
+    target: str,
+    action: str,
+    params: dict[str, str],
+    idempotency_key: str = "",
+    *,
+    wait_seconds: float = MAX_WAIT_SECONDS,
+) -> dict[str, object]:
+    address: SessionAddress = parse_session(target)
+    instance: InstanceRow = require_owned(settings, user_id, address.instance_id)
+    if instance.kind != address.platform:
+        raise SessionNotFoundError(f"{target} does not match instance platform {instance.kind}")
+    if action == "message_send":
+        text: str = str(params.get("text") or "")
+        title: str = str(params.get("title") or "")
+        reply_to: str = str(params.get("reply_to") or "")
+        return send_message(
+            settings,
+            user_id,
+            target,
+            text,
+            idempotency_key,
+            title=title,
+            reply_to=reply_to,
+            wait_seconds=wait_seconds,
+        )
+    caps: PlatformCapabilities | None = REGISTRY.get(address.platform)
+    spec: ActionSpec | None = caps.action(action) if caps is not None else None
+    if caps is None or spec is None:
+        raise ActionNotSupportedError(f"{address.platform} has no action {action}")
+    kind: AddressKind | None = caps.legacy_kind(address.session_type)
+    if kind is None or kind.name not in spec.targets:
+        raise ActionNotSupportedError(
+            f"{action} targets {', '.join(spec.targets)}, not {address.session_type}"
+        )
+    clean: dict[str, str] = checked_params(spec, params)
+    limit: int = profile_for(instance, address.session_type).max_text_length
+    if len(clean.get("text", "")) > limit:
+        raise TextTooLongError(f"text is {len(clean['text'])} characters, limit is {limit}")
+    payload: dict[str, object] = {
+        "action": action,
+        "params": clean,
+        "text": clean.get("text", ""),
+        "reply_to": clean.get("reply_to", ""),
+    }
+    return queue_and_wait(
+        settings, user_id, instance, address, payload, idempotency_key, wait_seconds
+    )
 
 
 def owner_of(settings: Settings, delivery_id: int) -> int | None:

@@ -11,6 +11,7 @@ from typing import Literal
 
 from hx_email.server.messaging.types import Capabilities
 from hx_email.server.router.provider import (
+    ActionCall,
     OutboundPayload,
     ProviderLimits,
     SendResult,
@@ -50,6 +51,12 @@ from hx_email.server.router.providers.impl.github.github_http import (
     classify_response,
     failed,
     github_headers,
+    retryable,
+)
+from hx_email.server.router.providers.impl.github_reactions import (
+    REACTION_PREFIX,
+    ReactionRequest,
+    reaction_request,
 )
 
 MARKER_TEMPLATE: str = "<!-- hx-router delivery={delivery_id} -->"
@@ -189,29 +196,53 @@ class GitHubAppProvider:
         if action is None:
             return failed("session_not_sendable", f"cannot send to {session.address}")
         url, request_body, prefix = action_request(action)
-        try:
-            response: HttpResponse = self.call(
-                session.instance_id, action.repo_full_name, "POST", url, request_body
+        return self.post(session.instance_id, action.repo_full_name, url, request_body, prefix)
+
+    # comment_create 复用 send 的评论路径与隐藏标记; reaction_add 天然幂等, 超时直接重试不进 unknown
+    # 决策记录: .agents/notes/implemented/feature/2026-11-09-github-outbound-actions.md
+    def invoke(self, session: SessionRef, call: ActionCall) -> SendResult:
+        if call.action == "comment_create":
+            payload = OutboundPayload(
+                call.delivery_id, call.params.get("text", ""), call.params.get("reply_to", ""), ""
             )
+            return self.send(session, payload)
+        if call.action == "reaction_add":
+            request: ReactionRequest | None = reaction_request(session.address, call.params)
+            if request is None:
+                return failed("invalid_payload", f"cannot react on {session.address}")
+            return self.post(
+                session.instance_id,
+                request.repo_full_name,
+                request.url,
+                request.body,
+                REACTION_PREFIX,
+                idempotent=True,
+            )
+        return failed("action_not_supported", f"github has no action {call.action}")
+
+    def post(
+        self,
+        instance_id: int,
+        repo: str,
+        url: str,
+        body: JsonDict,
+        prefix: str,
+        *,
+        idempotent: bool = False,
+    ) -> SendResult:
+        try:
+            response: HttpResponse = self.call(instance_id, repo, "POST", url, body)
         except TransportTimeoutError as error:
+            if idempotent:
+                return retryable("provider_timeout", str(error))
             return SendResult(
                 status="unknown", error_code="delivery_unknown", error_message=str(error)
             )
         except TransportConnectError as error:
-            return SendResult(
-                status="retry",
-                retryable=True,
-                error_code="provider_offline",
-                error_message=str(error),
-            )
+            return retryable("provider_offline", str(error))
         except TokenIssueError as error:
             if error.status >= 500:
-                return SendResult(
-                    status="retry",
-                    retryable=True,
-                    error_code="provider_error",
-                    error_message=str(error),
-                )
+                return retryable("provider_error", str(error))
             return failed("token_invalid", str(error))
         return classify_response(response, int(self.clock().timestamp()), prefix)
 

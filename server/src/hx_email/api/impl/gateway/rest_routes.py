@@ -32,7 +32,7 @@ from hx_email.server.gateway.catalog import (
 from hx_email.server.gateway.impl.dispatch import DISPATCHER, seconds_until_next
 from hx_email.server.gateway.impl.qzone_poll import QZONE_POLLER
 from hx_email.server.gateway.listen import pull
-from hx_email.server.gateway.sending import delivery_status, send_message
+from hx_email.server.gateway.sending import delivery_status, invoke_action, send_message
 from hx_email.server.hub.consume import stream_source, wait_source
 from hx_email.server.push.webhook_feed import FEEDER
 from hx_email.server.router.impl.outbox_admin import recover_after_restart
@@ -55,6 +55,15 @@ class SendRequest(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
     title: str = ""
     reply_to: str = ""
+    idempotency_key: str = Field(default="", max_length=64, pattern=r"^[A-Za-z0-9_.:-]*$")
+    wait_seconds: float = Field(default=5.0, ge=0, le=5)
+
+
+class ActionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    target: str
+    action: str = Field(min_length=1, max_length=64)
+    params: dict[str, str] = Field(default_factory=dict, max_length=8)
     idempotency_key: str = Field(default="", max_length=64, pattern=r"^[A-Za-z0-9_.:-]*$")
     wait_seconds: float = Field(default=5.0, ge=0, le=5)
 
@@ -154,6 +163,27 @@ def register_gateway_rest_routes(router: APIRouter, settings: Settings) -> None:
             payload.idempotency_key or (idempotency_key or ""),
             title=payload.title,
             reply_to=payload.reply_to,
+            wait_seconds=payload.wait_seconds,
+        )
+        if result["status"] in ("queued", "sending", "held"):
+            response.status_code = status.HTTP_202_ACCEPTED
+        return result
+
+    @router.post(f"{PREFIX}/actions")
+    def invoke(
+        payload: ActionRequest,
+        response: Response,
+        authorization: Annotated[str | None, Header()] = None,
+        idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    ) -> dict[str, object]:
+        user_id: int = caller_user_id(settings, authorization)
+        result: dict[str, object] = invoke_action(
+            settings,
+            user_id,
+            payload.target,
+            payload.action,
+            payload.params,
+            payload.idempotency_key or (idempotency_key or ""),
             wait_seconds=payload.wait_seconds,
         )
         if result["status"] in ("queued", "sending", "held"):

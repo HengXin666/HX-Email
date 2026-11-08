@@ -17,8 +17,9 @@ How the existing adapter fits in:
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Final, Literal, Protocol
+from typing import Final, Literal, Protocol, runtime_checkable
 
 DeliveryMode = Literal["push", "pull"]
 SendStatus = Literal["sent", "unknown", "failed", "retry"]
@@ -59,6 +60,18 @@ class OutboundPayload:
     text: str
     reply_to: str
     title: str
+
+
+@dataclass(frozen=True)
+class ActionCall:
+    """A declared action other than ``message_send``, as the outbox hands it over.
+
+    ``params`` has already been checked against the platform's ``ActionSpec``.
+    """
+
+    delivery_id: str
+    action: str
+    params: Mapping[str, str]
 
 
 @dataclass(frozen=True)
@@ -106,3 +119,12 @@ class MessagingProvider(Protocol):
         ...
 
     def verify_event(self, instance_id: int, headers: dict[str, str], body: bytes) -> bool: ...
+
+
+@runtime_checkable
+class ActionProvider(Protocol):
+    """Optional second face of a provider: the platform's declared non-send actions."""
+
+    # 动作与发消息共用 outbox 一行: 幂等, 整形, 熔断与重试只有一份, provider 只做平台调用
+    # 决策记录: .agents/notes/implemented/feature/2026-11-09-github-outbound-actions.md
+    def invoke(self, session: SessionRef, call: ActionCall) -> SendResult: ...

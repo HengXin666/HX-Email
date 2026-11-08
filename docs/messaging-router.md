@@ -514,6 +514,10 @@ MCP server 名为 `hx-router`, 传输为 streamable HTTP (`/mcp`) 与 stdio (`hx
 
 - 按 `idempotency_key` 查只适用于 `kind=send`, `sink` 用于定位实例, 对应唯一索引 `(instance_id, idempotency_key)`
 
+### 5.6a `action_invoke`
+
+执行平台在 `capabilities_list` 里声明的动作 (每个动作带 `targets`, `requires` 与 `params`). 入参 `{target, action, params, idempotency_key, wait_seconds}`, `params` 是字符串到字符串的对象, 最多 8 个键; REST 对应 `POST /api/v1/router/actions`. `action=message_send` 等同于 `message_send`. 返回与 `message_send` 同形, 多一个 `action` 字段; GitHub 已声明的动作见 docs/providers/github-app.md 4.3
+
 ### 5.7 `route_subscribe`
 
 创建一条订阅规则, 让某个 source 前缀的新消息交给当前 MCP 会话, SSE 连接, 外部 webhook, 或留给消费者自己长轮询
@@ -861,6 +865,8 @@ MCP server 名为 `hx-router`, 传输为 streamable HTTP (`/mcp`) 与 stdio (`hx
 | `provider_error`       | 平台返回错误                                                         | 由 `SendResult.retryable` 决定 |
 | `delivery_unknown`     | 平台调用结果未知, 状态为 `unknown`, 见第 7.3 节                      | false                          |
 | `cursor_invalid`       | cursor 无法解析或属于其它实例                                        | false                          |
+| `action_not_supported` | 平台没有声明该动作, 或动作不接受该地址种类                           | false                          |
+| `invalid_payload`      | 动作参数缺失, 多出或不合声明                                         | false                          |
 
 ### 9.5 provider 结果从哪来
 

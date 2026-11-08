@@ -43,6 +43,8 @@ from hx_email.server.router.impl.outbox_admin import get_entry, record_result
 from hx_email.server.router.impl.shaper import Decision
 from hx_email.server.router.impl.store import store_inbound
 from hx_email.server.router.provider import (
+    ActionCall,
+    ActionProvider,
     MessagingProvider,
     OutboundPayload,
     SendResult,
@@ -101,6 +103,17 @@ def record_outbound(settings: Settings, entry: Entry, platform_message_id: str) 
         LOGGER.warning("cannot record outbound %s: %s", entry.delivery_id, error)
         return
     BUS.publish([Hit(address.instance_id, address.address, "outbound")])
+
+
+def invoke_on(provider: object, ref: SessionRef, entry: Entry, action: str) -> SendResult:
+    """A declared non-send action; the gateway already checked its params."""
+    if not isinstance(provider, ActionProvider):
+        return SendResult("failed", error_code="action_not_supported", error_message=action)
+    raw: object = entry.payload.get("params")
+    params: dict[str, str] = (
+        {str(key): str(value) for key, value in raw.items()} if isinstance(raw, dict) else {}
+    )
+    return provider.invoke(ref, ActionCall(entry.delivery_id, action, params))
 
 
 class Dispatcher:
@@ -179,7 +192,7 @@ class Dispatcher:
             mark(settings, entry.id, "failed", f"{result.error_code}: {result.error_message}")
             return
         record_result(settings, entry.id, result)
-        if result.status == "sent":
+        if result.status == "sent" and text:  # 表情等无正文的动作不进消息流
             record_outbound(settings, entry, result.platform_message_id)
 
     def call_provider(
@@ -201,6 +214,9 @@ class Dispatcher:
                 address.peer,
                 str(entry.payload.get("title") or ""),
             )
+            action: str = str(entry.payload.get("action") or "")
+            if action:
+                return invoke_on(provider, ref, entry, action)
             payload = OutboundPayload(
                 entry.delivery_id,
                 text,

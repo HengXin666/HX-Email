@@ -25,6 +25,7 @@ from hx_email.server.contract.capabilities import (
     AddressKind,
     CapabilityRegistry,
     KindRule,
+    ParamSpec,
     PlatformCapabilities,
 )
 
@@ -32,6 +33,17 @@ DIGITS: Final[str] = r"[0-9]+"
 REPO_NAME: Final[str] = r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+"
 COMMIT_SHA: Final[str] = r"[0-9a-f]{7,40}"
 QZONE_TID: Final[str] = r"[0-9A-Za-z]+"
+GITHUB_REACTIONS: Final[tuple[str, ...]] = (
+    "+1",
+    "-1",
+    "laugh",
+    "confused",
+    "heart",
+    "hooray",
+    "rocket",
+    "eyes",
+)
+GITHUB_WRITE: Final[tuple[str, ...]] = ("issues:write", "pull_requests:write")
 
 QQ: Final[PlatformCapabilities] = PlatformCapabilities(
     platform="qq",
@@ -161,6 +173,30 @@ GITHUB: Final[PlatformCapabilities] = PlatformCapabilities(
             targets=("repo", "issue"),
             description="在线程下评论; 发到仓库时新开 issue",
             requires=("title when target is repo",),
+        ),
+        ActionSpec(
+            "comment_create",
+            targets=("issue",),
+            description="在 issue 或 PR 线程下评论; reply_to 为 rc:<id> 时回复那条 review 评论",
+            requires=GITHUB_WRITE,
+            params=(
+                ParamSpec("text", "评论正文, Markdown", required=True, max_length=65000),
+                ParamSpec("reply_to", "可选, ic:<id> 或 rc:<id>", pattern=r"(ic|rc):[0-9]+"),
+            ),
+        ),
+        ActionSpec(
+            "reaction_add",
+            targets=("issue",),
+            description=("给线程本身或其中一条评论加表情; 同一表情重复添加不会重复, 天然幂等"),
+            requires=GITHUB_WRITE,
+            params=(
+                ParamSpec("content", "表情", required=True, choices=GITHUB_REACTIONS),
+                ParamSpec(
+                    "message_id",
+                    "可选, ic:<id> 或 rc:<id>; 不带则加在线程本身",
+                    pattern=r"(ic|rc):[0-9]+",
+                ),
+            ),
         ),
     ),
     kind_rules=(

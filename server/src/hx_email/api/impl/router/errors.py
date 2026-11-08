@@ -22,6 +22,8 @@ HTTP_STATUS_BY_CODE: Final[dict[str, int]] = {
     "route_not_found": 404,
     "route_invalid": 422,
     "route_limit": 409,
+    "action_not_supported": 422,
+    "invalid_payload": 422,
 }
 DEFAULT_STATUS: Final[int] = 502
 

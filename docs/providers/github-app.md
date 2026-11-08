@@ -206,6 +206,21 @@ envelope 以规格第 3.1 节为准, 每个字段都有确定的列, 存储增�
 - 404, 410, 422: `failed`, 常见原因是仓库不在安装范围或 issue 已锁定
 - 同一 installation 的写入串行执行, 本地速率为每分钟 30 次写操作, 突发 5 次, 是本项目经验值, 见规格第 9.2 节
 
+### 4.3 声明式动作 (action_invoke)
+
+除上表的 `message_send` 外, 平台能力声明 (`contract/builtin.py`) 里的 GitHub 动作经 MCP `action_invoke` 或 REST `POST /api/v1/router/actions` 调用, 入参为 `{target, action, params, idempotency_key, wait_seconds}`. 目前落地两个:
+
+| 动作             | 目标        | params                                                                                         | REST 接口                                                                                                             | 结果                   |
+| ---------------- | ----------- | ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ---------------------- |
+| `comment_create` | issue 或 PR | `text` 必填; `reply_to` 可选, `rc:<id>` 时回复 review 评论                                     | 与上表评论, 回复 review 评论相同, 同样带隐藏标记                                                                      | `ic:<id>` 或 `rc:<id>` |
+| `reaction_add`   | issue 或 PR | `content` 取 `+1 -1 laugh confused heart hooray rocket eyes`; `message_id` 可选 `ic:` 或 `rc:` | `POST /repos/{o}/{r}/issues/{n}/reactions`, `.../issues/comments/{id}/reactions`, `.../pulls/comments/{id}/reactions` | `re:<reaction id>`     |
+
+- 校验全部来自声明: 动作名不在声明里, 或目标种类不在 `targets` 里, 返回 `action_not_supported`; 参数缺失, 多出, 不在 `choices` 或不合 `pattern` 返回 `invalid_payload`, 两者都是 422, 不入队
+- 动作与 `message_send` 共用 outbox 一行 (payload 带 `action` 与 `params`), 幂等, 整形, 熔断与重试只有一份
+- 表情没有正文可放标记, 但 GitHub 对同一身份同一表情返回已有那条 (200), 重复调用无害; 所以表情请求超时按可重试处理, 不进 `unknown`
+- 表情不写入消息流 (没有正文), 只在投递记录里可查
+- 其余动作 (提交 review, 建 discussion, discussion 评论) 尚未声明, 也就调不到
+
 ## 5. Webhook 接收实现要点
 
 ### 5.1 路由与实例定位

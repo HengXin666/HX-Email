@@ -55,13 +55,50 @@ class AddressKind:
 
 
 @dataclass(frozen=True)
+class ParamSpec:
+    """One string parameter of an action; ``choices`` and ``pattern`` are checked as given."""
+
+    name: str
+    description: str
+    required: bool = False
+    choices: tuple[str, ...] = ()
+    pattern: str = ""
+    max_length: int = 0
+
+    def problem(self, value: str) -> str:
+        """Why ``value`` is not accepted, or ``""`` when it is."""
+        if self.choices and value not in self.choices:
+            return f"{self.name} must be one of {', '.join(self.choices)}"
+        if self.pattern and value and re.fullmatch(self.pattern, value) is None:
+            return f"{self.name} does not match {self.pattern}"
+        if self.max_length and len(value) > self.max_length:
+            return f"{self.name} is longer than {self.max_length} characters"
+        return ""
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "name": self.name,
+            "description": self.description,
+            "required": self.required,
+            "choices": list(self.choices),
+            "pattern": self.pattern,
+            "max_length": self.max_length,
+        }
+
+
+@dataclass(frozen=True)
 class ActionSpec:
-    """An outbound operation a platform accepts on some address kinds."""
+    """An outbound operation a platform accepts on some address kinds.
+
+    ``params`` is the whole accepted parameter set: an action invoked with a key not
+    listed here is refused, so the declaration is also the validation.
+    """
 
     name: str
     targets: tuple[str, ...]
     description: str
     requires: tuple[str, ...] = ()
+    params: tuple[ParamSpec, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -125,6 +162,9 @@ class PlatformCapabilities:
             found.extend(self.subtree(child.name))
         return found
 
+    def action(self, name: str) -> ActionSpec | None:
+        return next((item for item in self.actions if item.name == name), None)
+
     def legacy_kind(self, legacy_type: str) -> AddressKind | None:
         return next((kind for kind in self.kinds if kind.legacy_type == legacy_type), None)
 
@@ -161,6 +201,7 @@ class PlatformCapabilities:
                     "targets": list(action.targets),
                     "requires": list(action.requires),
                     "description": action.description,
+                    "params": [param.to_dict() for param in action.params],
                 }
                 for action in self.actions
             ],
