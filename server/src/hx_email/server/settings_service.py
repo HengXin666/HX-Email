@@ -1,7 +1,6 @@
 """Settings service: domain logic for reading and writing system settings."""
 
 import base64
-import json
 import os
 import secrets
 from typing import Any
@@ -30,6 +29,7 @@ SETTINGS_DEFAULTS: dict[str, str] = {
     "cf_worker_base_url": "",
     "cf_worker_admin_key": "",
     "cf_worker_custom_auth": "",
+    "cf_worker_upstreams": "[]",
     "external_api_key": "",
     "external_api_keys": "[]",
     "external_api_rate_limit_per_minute": "60",
@@ -74,6 +74,7 @@ SENSITIVE_KEYS: frozenset[str] = frozenset(
         "telegram_bot_token",
         "cf_worker_admin_key",
         "cf_worker_custom_auth",
+        "cf_worker_upstreams",
         "external_api_key",
         "external_api_keys",
         "email_notification_smtp_password",
@@ -134,7 +135,9 @@ def set_setting(settings: Settings, key: str, value: str) -> None:
 
 
 def get_all_settings(settings: Settings) -> dict[str, str]:
-    """Return all settings merged with defaults. Sensitive values are decoded."""
+    """Return all settings merged with defaults. Sensitive values are decoded.
+    .agents/notes/implemented/feature/2026-11-08-temp-mail-multi-upstream.md
+    """
     result: dict[str, str] = dict(SETTINGS_DEFAULTS)
     with connect(settings) as connection:
         rows = connection.execute("SELECT key, value FROM system_settings").fetchall()
@@ -155,6 +158,9 @@ def get_all_settings(settings: Settings) -> dict[str, str]:
                 except ValueError:
                     decoded_value = SETTINGS_DEFAULTS[key]
             result[key] = decoded_value
+    from hx_email.server.mail.impl.temp_mail.upstreams import apply_upstreams_fallback
+
+    apply_upstreams_fallback(result)
     return result
 
 
@@ -194,18 +200,6 @@ def stringify_setting_value(value: object) -> str:
     return str(value).strip() if not isinstance(value, str) else value.strip()
 
 
-def normalize_domain_list(key: str, value: str) -> str:
-    from hx_email.server.mail.impl.temp_mail.temp_mail_options import normalize_domains
-
-    try:
-        parsed: object = json.loads(value or "[]")
-    except ValueError:
-        parsed = None
-    if not isinstance(parsed, list) or not all(isinstance(item, str) for item in parsed):
-        raise ValueError(f"{key} must be a JSON array of strings")
-    return json.dumps(normalize_domains(parsed), ensure_ascii=False)
-
-
 def normalize_settings_updates(
     settings: Settings,
     updates: dict[str, Any],
@@ -228,8 +222,6 @@ def normalize_settings_updates(
             if account_id < 1:
                 raise ValueError("email_notification_account_id must be a positive integer")
             string_value = str(account_id)
-        if key == "cf_worker_excluded_domains":
-            string_value = normalize_domain_list(key, string_value)
         if key in BOOLEAN_SETTING_KEYS:
             lowered: str = string_value.lower()
             if lowered not in {"true", "false", "1", "0"}:
@@ -246,6 +238,9 @@ def normalize_settings_updates(
             string_value = str(integer_value)
         normalized[key] = string_value
 
+    from hx_email.server.mail.impl.temp_mail.upstreams import normalize_temp_mail_updates
+
+    normalized = normalize_temp_mail_updates(normalized)
     merged: dict[str, str] = {**get_all_settings(settings), **normalized}
     from hx_email.server.sync.config import validate_sync_config
 

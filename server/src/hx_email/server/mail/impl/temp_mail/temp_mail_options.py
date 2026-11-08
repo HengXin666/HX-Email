@@ -1,18 +1,21 @@
 """Temp mail options: read domains and prefix config from settings.
 
 Also owns the single domain normalization used by every consumer of the CF Worker
-domain settings (options filtering, mailbox creation, sync pruning, settings save).
+domain settings (options filtering, mailbox creation, sync pruning, settings save), and
+the domain -> upstream routing used when a mailbox is created.
 """
 
 from __future__ import annotations
 
 import json
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from fastapi import HTTPException, status
 
 from hx_email.config import Settings
+from hx_email.server.mail.impl.temp_mail.upstreams import CFUpstream, find_upstream, load_upstreams
+from hx_email.server.mail.temp_mail import MissingTempMailProviderError
 from hx_email.server.settings_service import get_setting
 
 _DEFAULT_OPTIONS: dict[str, dict[str, object]] = {
@@ -40,12 +43,17 @@ class NoUsableTempMailDomainError(HTTPException):
 
 @dataclass(frozen=True)
 class CFDomainState:
-    """CF Worker domains as stored (display form), filtered by the user's exclusions."""
+    """CF Worker domains across enabled upstreams (display form), minus the exclusions.
+
+    ``owners`` maps each usable normalized domain to the id of the first enabled upstream
+    that serves it; upstream order is the tie-breaker when two Workers share a domain.
+    """
 
     synced: list[str]
     usable: list[str]
     excluded: frozenset[str]
     default_domain: str
+    owners: dict[str, str] = field(default_factory=dict)
 
 
 def normalize_domain(value: str) -> str:
@@ -63,33 +71,42 @@ def normalize_domains(values: Iterable[object]) -> list[str]:
     return list(seen)
 
 
-def read_domain_list(settings: Settings, key: str) -> list[str]:
-    """Read a JSON string-array domain setting; malformed values read as empty."""
+def normalize_domain_list(key: str, value: str) -> str:
+    """Strict PUT /settings validation of a JSON string-array domain setting."""
     try:
-        parsed: object = json.loads(get_setting(settings, key) or "[]")
+        parsed: object = json.loads(value or "[]")
     except ValueError:
-        return []
-    if not isinstance(parsed, list):
-        return []
-    return [str(item).strip() for item in parsed if str(item or "").strip()]
+        parsed = None
+    if not isinstance(parsed, list) or not all(isinstance(item, str) for item in parsed):
+        raise ValueError(f"{key} must be a JSON array of strings")
+    return json.dumps(normalize_domains(parsed), ensure_ascii=False)
 
 
 def resolve_cf_domains(settings: Settings) -> CFDomainState:
-    """Synced domains minus exclusions, plus the default domain that is still usable.
+    """Union of every enabled upstream's synced domains minus its own exclusions.
 
     With synced domains the default must be one of the usable ones, otherwise it falls
     back to the first usable domain ("" when none). Without any synced domain (never
     synced) the configured default is kept unless it is excluded.
     """
-    excluded: frozenset[str] = frozenset(
-        normalize_domains(read_domain_list(settings, "cf_worker_excluded_domains"))
-    )
     synced: dict[str, str] = {}
-    for item in read_domain_list(settings, "cf_worker_domains"):
-        domain_key: str = normalize_domain(item)
-        if domain_key:
+    usable: dict[str, str] = {}
+    owners: dict[str, str] = {}
+    excluded_any: set[str] = set()
+    for upstream in load_upstreams(settings):
+        if not upstream.enabled:
+            continue
+        own_excluded: set[str] = set(normalize_domains(upstream.excluded_domains))
+        excluded_any |= own_excluded
+        for item in upstream.domains:
+            domain_key: str = normalize_domain(item)
+            if not domain_key:
+                continue
             synced.setdefault(domain_key, item)
-    usable: dict[str, str] = {k: v for k, v in synced.items() if k not in excluded}
+            if domain_key not in own_excluded and domain_key not in owners:
+                owners[domain_key] = upstream.id
+                usable[domain_key] = item
+    excluded: frozenset[str] = frozenset(excluded_any - set(usable))
     raw_default: str = (
         get_setting(settings, "cf_worker_default_domain").strip()
         or get_setting(settings, "temp_mail_default_domain").strip()
@@ -105,16 +122,16 @@ def resolve_cf_domains(settings: Settings) -> CFDomainState:
         usable=list(usable.values()),
         excluded=excluded,
         default_domain=default_domain,
+        owners=owners,
     )
 
 
-def resolve_mailbox_domain(settings: Settings, requested_domain: str) -> str:
+def resolve_mailbox_domain(state: CFDomainState, requested_domain: str) -> str:
     """Domain to send to the Worker for a new mailbox; "" lets the Worker choose.
 
     Raises NoUsableTempMailDomainError when the requested domain is excluded, or when
     no domain was requested and every synced domain is excluded.
     """
-    state: CFDomainState = resolve_cf_domains(settings)
     requested_key: str = normalize_domain(requested_domain)
     if requested_key:
         if requested_key in state.excluded:
@@ -131,6 +148,33 @@ def resolve_mailbox_domain(settings: Settings, requested_domain: str) -> str:
     return ""
 
 
+def resolve_mailbox_target(settings: Settings, requested_domain: str) -> tuple[CFUpstream, str]:
+    """(upstream, domain) for a new mailbox: the domain decides which Worker creates it."""
+    upstreams: list[CFUpstream] = load_upstreams(settings)
+    configured: list[CFUpstream] = [item for item in upstreams if item.enabled and item.configured]
+    if not configured:
+        raise MissingTempMailProviderError(
+            "CF Worker 未配置: 请在系统设置-临时邮箱中填写 Worker URL 和 Admin Key"
+        )
+    state: CFDomainState = resolve_cf_domains(settings)
+    domain: str = resolve_mailbox_domain(state, requested_domain)
+    owner_id: str | None = state.owners.get(domain)
+    if owner_id is not None:
+        owner: CFUpstream | None = find_upstream(configured, owner_id)
+        if owner is None:
+            raise MissingTempMailProviderError(
+                f"提供域名 {domain} 的上游未填写 Worker URL 或 Admin Key"
+            )
+        return owner, domain
+    if domain and any(domain in normalize_domains(item.domains) for item in upstreams):
+        raise NoUsableTempMailDomainError(f"提供域名 {domain} 的上游已停用, 不能用于创建邮箱")
+    if not domain or len(configured) == 1:
+        return configured[0], domain
+    raise NoUsableTempMailDomainError(
+        f"没有任何已启用的上游提供域名 {domain}, 请先在系统设置-临时邮箱中同步域名"
+    )
+
+
 def get_temp_mail_options(
     settings: Settings,
     provider_name: str,
@@ -138,8 +182,8 @@ def get_temp_mail_options(
     """Return configuration options for creating temp emails via the given provider.
 
     Reads domains, prefix generation rules, and default domain.
-    For the "cf" provider, domains come from the synced cf_worker_domains setting
-    minus cf_worker_excluded_domains, compared via normalize_domain.
+    For the "cf" provider, domains are the union of every enabled upstream's synced
+    domains minus that upstream's exclusions, compared via normalize_domain.
     """
     provider_defaults: dict[str, object] = _DEFAULT_OPTIONS.get(
         provider_name,

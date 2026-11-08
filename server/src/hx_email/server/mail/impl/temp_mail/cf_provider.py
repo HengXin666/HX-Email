@@ -21,15 +21,14 @@ from email.utils import parsedate_to_datetime
 from typing import Any
 
 from hx_email.config import Settings
-from hx_email.server.mail.impl.temp_mail.temp_mail_options import resolve_mailbox_domain
+from hx_email.server.mail.impl.temp_mail.temp_mail_options import resolve_mailbox_target
+from hx_email.server.mail.impl.temp_mail.upstreams import CFUpstream, resolve_read_upstream
 from hx_email.server.mail.temp_mail import (
-    MissingTempMailProviderError,
     ProviderMailbox,
     TempMailMessage,
     TempMailMessageLike,
     TempMailProviderError,
 )
-from hx_email.server.settings_service import get_setting
 
 _TIMEOUT: int = 20
 
@@ -84,15 +83,19 @@ def _split_address(requested: str | None) -> tuple[str, str]:
     return value, ""
 
 
-def _extract_jwt(provider_mailbox_id: str) -> str:
-    """provider_mailbox_id stores JSON {"id", "jwt"}; legacy rows may hold a bare jwt."""
+def _parse_mailbox_ref(provider_mailbox_id: str) -> tuple[str, str]:
+    """(upstream_id, jwt) from provider_mailbox_id JSON {"upstream", "id", "jwt"}.
+
+    Rows created before multi-upstream lack "upstream" ("" -> the legacy upstream), and
+    the oldest rows hold a bare jwt.
+    """
     try:
         data: Any = json.loads(provider_mailbox_id)
     except ValueError:
-        return provider_mailbox_id.strip()
+        return "", provider_mailbox_id.strip()
     if isinstance(data, dict):
-        return str(data.get("jwt") or "").strip()
-    return ""
+        return str(data.get("upstream") or "").strip(), str(data.get("jwt") or "").strip()
+    return "", ""
 
 
 def _parse_mime(raw: str) -> tuple[str, str, str, str]:
@@ -197,31 +200,33 @@ def _normalize_message(item: dict[str, Any]) -> TempMailMessage:
 class CFWorkerTempMailProvider:
     """Temp mail provider backed by a deployed cloudflare_temp_email Worker.
 
-    Reads cf_worker_* settings live on every call so saving new credentials
-    in the settings page takes effect without a restart.
+    Several Workers (upstreams) sit behind this one provider: a new mailbox goes to the
+    upstream that serves its domain, and an existing mailbox is read from the upstream id
+    stored in its provider_mailbox_id. Settings are read live on every call so saving new
+    credentials in the settings page takes effect without a restart.
     """
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
 
     def create_mailbox(self, requested_address: str | None = None) -> ProviderMailbox:
-        base_url, admin_key, custom_auth = self._require_config()
         name, domain = _split_address(requested_address)
         if not name:
             alphabet: str = string.ascii_lowercase + string.digits
             name = "".join(secrets.choice(alphabet) for _ in range(8))
-        domain = resolve_mailbox_domain(self._settings, domain)
+        upstream, domain = resolve_mailbox_target(self._settings, domain)
         payload: dict[str, Any] = {"name": name, "enablePrefix": False}
         if domain:
             payload["domain"] = domain
         headers: dict[str, str] = {
             **_BROWSER_HEADERS,
             "Content-Type": "application/json",
-            "x-admin-auth": admin_key,
+            "x-admin-auth": upstream.admin_key,
         }
-        if custom_auth:
-            headers["x-custom-auth"] = custom_auth
-        status, body = _http_request("POST", f"{base_url}/admin/new_address", headers, payload)
+        if upstream.custom_auth:
+            headers["x-custom-auth"] = upstream.custom_auth
+        url: str = f"{upstream.base_url}/admin/new_address"
+        status, body = _http_request("POST", url, headers, payload)
         if not 200 <= status < 300:
             raise TempMailProviderError(f"CF Worker 创建邮箱失败 HTTP {status}: {body[:200]}")
         data: dict[str, Any] = _parse_json_object(body)
@@ -231,15 +236,15 @@ class CFWorkerTempMailProvider:
         if not address or not jwt:
             raise TempMailProviderError("CF Worker 未返回邮箱地址或访问凭证")
         return ProviderMailbox(
-            provider_mailbox_id=json.dumps({"id": address_id, "jwt": jwt}),
+            provider_mailbox_id=json.dumps({"upstream": upstream.id, "id": address_id, "jwt": jwt}),
             address=address,
         )
 
     def list_messages(
         self, provider_mailbox_id: str
     ) -> list[TempMailMessage | Mapping[str, str] | TempMailMessageLike]:
-        base_url, _admin_key, custom_auth = self._require_config()
-        jwt: str = _extract_jwt(provider_mailbox_id)
+        upstream_id, jwt = _parse_mailbox_ref(provider_mailbox_id)
+        upstream: CFUpstream = resolve_read_upstream(self._settings, upstream_id)
         if not jwt:
             raise TempMailProviderError("临时邮箱缺少访问凭证, 请删除后重新创建")
         headers: dict[str, str] = {
@@ -248,10 +253,10 @@ class CFWorkerTempMailProvider:
             "Cache-Control": "no-cache, no-store, max-age=0",
             "Pragma": "no-cache",
         }
-        if custom_auth:
-            headers["x-custom-auth"] = custom_auth
+        if upstream.custom_auth:
+            headers["x-custom-auth"] = upstream.custom_auth
         refresh_key: str = secrets.token_hex(8)
-        url: str = f"{base_url}/api/mails?limit=100&offset=0&_hx_refresh={refresh_key}"
+        url: str = f"{upstream.base_url}/api/mails?limit=100&offset=0&_hx_refresh={refresh_key}"
         status, body = _http_request("GET", url, headers)
         if not 200 <= status < 300:
             raise TempMailProviderError(f"CF Worker 读取邮件失败 HTTP {status}: {body[:200]}")
@@ -265,13 +270,3 @@ class CFWorkerTempMailProvider:
             _normalize_message(item) for item in items
         ]
         return messages
-
-    def _require_config(self) -> tuple[str, str, str]:
-        base_url: str = get_setting(self._settings, "cf_worker_base_url").strip().rstrip("/")
-        admin_key: str = get_setting(self._settings, "cf_worker_admin_key").strip()
-        custom_auth: str = get_setting(self._settings, "cf_worker_custom_auth").strip()
-        if not base_url or not admin_key:
-            raise MissingTempMailProviderError(
-                "CF Worker 未配置: 请在系统设置-临时邮箱中填写 Worker URL 和 Admin Key"
-            )
-        return base_url, admin_key, custom_auth

@@ -2,7 +2,7 @@
  * 临时邮箱「可用域名」的纯函数层: 解析同步结果、按排除列表切分、以及删除/恢复/同步后
  * 应该写回的排除列表。
  *
- * `cf_worker_excluded_domains` 与 `cf_worker_domains` 正交: 前者是用户的减法。域名比较
+ * 每个上游的 `excluded_domains` 与它的 `domains` 正交: 前者是用户的减法。域名比较
  * 忽略前导 `@` 与大小写, 因为 CF Worker 的 `open_api/settings` 返回的是 `@example.com` 形式。
  */
 
@@ -55,20 +55,6 @@ export function splitDomainsByExclusion(
     else available.push(domain);
   }
   return { available, excluded: deleted };
-}
-
-/**
- * 解析删除/恢复/同步之后应该生效的默认域名: 首选值仍在可用列表里就保留, 否则回退到
- * 第一个可用域名; 一个都不剩时返回空字符串 (让后端按「无默认域名」处理)。
- */
-export function resolveDefaultDomain(
-  domains: readonly string[],
-  excluded: readonly string[],
-  preferred: string,
-): string {
-  const { available } = splitDomainsByExclusion(domains, excluded);
-  if (preferred && !isDomainExcluded(preferred, excluded)) return preferred;
-  return available[0] ?? "";
 }
 
 /** 删除一个域名后的排除列表: 已排除的域名不会重复出现, 幽灵项被剪掉。 */

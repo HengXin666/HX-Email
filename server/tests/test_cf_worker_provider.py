@@ -62,7 +62,11 @@ def test_create_mailbox_calls_new_address_and_packs_jwt(tmp_path) -> None:
         mailbox = provider.create_mailbox(None)
 
     assert mailbox.address == "abc@mail.example.com"
-    assert json.loads(mailbox.provider_mailbox_id) == {"id": "42", "jwt": "user-jwt"}
+    assert json.loads(mailbox.provider_mailbox_id) == {
+        "upstream": "default",
+        "id": "42",
+        "jwt": "user-jwt",
+    }
     method, url, headers = http.call_args[0][0], http.call_args[0][1], http.call_args[0][2]
     payload = http.call_args[0][3]
     assert method == "POST"

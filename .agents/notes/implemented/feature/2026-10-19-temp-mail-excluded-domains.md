@@ -67,3 +67,10 @@ CF Worker `open_api/settings` 返回的域名整份覆盖写进 `cf_worker_domai
 `PUT /settings` 对非法值的 422。前端由 `web/src/features/settings/tabs/TempMailSettingsTab.test.tsx`
 覆盖删除/恢复写出的 `cf_worker_excluded_domains` 与默认域名下拉的收缩。门禁是
 `bash scripts/verify.sh`。
+
+## Related
+
+- 排除列表现在是每个上游一份 (`cf_worker_upstreams[].excluded_domains`), 不再是全局的
+  `cf_worker_excluded_domains`; 后者只在迁移前作为 `default` 上游的来源。多上游决策见
+  `.agents/notes/implemented/feature/2026-11-08-temp-mail-multi-upstream.md`。本 note 的取舍
+  (本地减法、跨同步保留、同步剪枝、本地编辑 + 统一保存) 原样适用于每个上游。
