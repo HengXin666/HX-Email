@@ -5,10 +5,8 @@ Every read is ``WHERE id > ? ORDER BY id LIMIT n`` against the existing
 is that a slow consumer never re-reads what it acknowledged and never skips what
 arrived while it was away.
 
-``parse_source`` turns the ``source`` a tool call receives into a scope. Four shapes
-are allowed, and each one narrows the query rather than filtering in Python:
-``qq:`` (whole platform), ``qq:3:`` (one instance), ``qq:3:group:`` (one chat type),
-``qq:3:group:1`` (one session).
+``parse_source`` turns ``source`` into a scope that narrows the SQL: v1 ``qq:``,
+``qq:3:``, ``qq:3:group:``, a full v1 address, or any v2 address or selector.
 """
 
 from __future__ import annotations
@@ -19,6 +17,9 @@ from dataclasses import dataclass
 
 from hx_email.config import Settings
 from hx_email.database import connect
+from hx_email.server.contract.address import AddressError, LegacyScope, is_v2, parse_address
+from hx_email.server.contract.address import legacy_scope as v2_scope
+from hx_email.server.contract.builtin import REGISTRY
 from hx_email.server.router.bounds import ensure_no_gap_ahead, oldest_id
 from hx_email.server.router.cursor import (
     Cursor,
@@ -41,7 +42,7 @@ DEFAULT_LIMIT = 50
 MAX_LIMIT = 200
 BOUNDARY = 0
 MAX_STORED_POSITION = 2**31 - 1
-PLATFORMS = ("qq", "github")
+PLATFORMS = REGISTRY.platform_names()
 # 旧写入路径只存纯号, 补地址时要一个平台名; messaging_instances.kind 到这里只有 qq.
 PLATFORM_OF_KIND: str = "qq"
 COLUMNS = (
@@ -59,6 +60,7 @@ class Source:
     instance_id: int | None = None
     session_type: str | None = None
     chat_id: str | None = None
+    patterns: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -71,8 +73,16 @@ class ReadPage:
     gap: bool = False
 
 
+# v2 选择器翻译成 v1 精确值加 LIKE 模式, 仓库级前缀靠 patterns
+# 决策记录: .agents/notes/implemented/feature/2026-11-08-router-contract-v2.md
 def parse_source(source: str) -> Source:
-    """Accept ``qq:``, ``qq:3:``, ``qq:3:group:`` or a full session address."""
+    """Accept ``qq:``, ``qq:3:``, ``qq:3:group:``, a full v1 address, or v2."""
+    if is_v2(source):
+        try:
+            scope: LegacyScope = v2_scope(parse_address(source))
+        except AddressError as error:
+            raise SessionNotFoundError(str(error)) from error
+        return Source(scope.platform, scope.instance_id, None, scope.exact or None, scope.patterns)
     parts: list[str] = source.split(":")
     platform: str = parts[0]
     if platform not in PLATFORMS:
@@ -117,7 +127,11 @@ def build_query(
         params.extend(instance_ids)
     else:
         clauses.append("1 = 0")
-    if scope.chat_id:
+    if scope.patterns:
+        likes: list[str] = ["chat_id LIKE ? ESCAPE '\\'" for _ in scope.patterns]
+        clauses.append("(" + " OR ".join(["chat_id = ?", *likes]) + ")")
+        params.extend([scope.chat_id or "", *scope.patterns])
+    elif scope.chat_id:
         # 两条写入路径的 chat_id 格式不同: 事件端点 (messaging/store.save_message) 存纯号,
         # 路由层 (router/impl/store.store_inbound) 存完整地址. 两种都认, 否则同一个会话
         # 会因为写入方不同而查不到.

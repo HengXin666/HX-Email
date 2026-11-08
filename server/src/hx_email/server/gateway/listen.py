@@ -17,6 +17,7 @@ from typing import Final
 
 from hx_email.config import Settings
 from hx_email.database import connect
+from hx_email.server.contract.event import event_view
 from hx_email.server.router.envelope import (
     Envelope,
     EnvelopeError,
@@ -62,7 +63,7 @@ SIGNAL: MessageSignal = MessageSignal()
 
 def page_dict(page: ReadPage, include_raw: bool = False) -> dict[str, object]:
     return {
-        "messages": [item.to_dict(include_raw) for item in page.messages],
+        "messages": [event_view(item.to_dict(include_raw)) for item in page.messages],
         "next_cursor": page.next_cursor,
         "has_more": page.has_more,
         "gap": page.gap,

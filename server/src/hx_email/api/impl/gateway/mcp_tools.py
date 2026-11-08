@@ -12,7 +12,13 @@ from collections.abc import Callable
 from typing import Final
 
 from hx_email.config import Settings
-from hx_email.server.gateway.catalog import session_select, sessions_list, sources_list
+from hx_email.server.contract.builtin import REGISTRY
+from hx_email.server.gateway.catalog import (
+    capabilities_list,
+    session_select,
+    sessions_list,
+    sources_list,
+)
 from hx_email.server.gateway.listen import pull, wait_messages
 from hx_email.server.gateway.sending import delivery_status, send_message
 from hx_email.server.router.errors import RouterError, SessionNotFoundError
@@ -21,6 +27,8 @@ JsonDict = dict[str, object]
 STR: Final[JsonDict] = {"type": "string"}
 INT: Final[JsonDict] = {"type": "integer"}
 DIRECTION: Final[JsonDict] = {"type": "string", "enum": ["inbound", "outbound", "both"]}
+PLATFORM: Final[JsonDict] = {"type": "string", "enum": sorted(REGISTRY.platform_names())}
+ADDRESS_HINT: Final[str] = "v2 地址如 qq:3/group/123, github:7/repo/o/r/issue/42; v1 仍可用"
 
 
 def schema(properties: JsonDict, required: list[str]) -> JsonDict:
@@ -34,9 +42,14 @@ def schema(properties: JsonDict, required: list[str]) -> JsonDict:
 
 TOOLS: Final[list[JsonDict]] = [
     {
+        "name": "capabilities_list",
+        "description": "列出各平台的地址层级, 事件种类, 已支持的信号与可用动作 (契约 v2)",
+        "inputSchema": schema({"platform": PLATFORM}, []),
+    },
+    {
         "name": "sources_list",
         "description": "列出可用平台账号实例 (QQ 号 / GitHub App) 及在线与出站状态",
-        "inputSchema": schema({"platform": {"type": "string", "enum": ["qq", "github"]}}, []),
+        "inputSchema": schema({"platform": PLATFORM}, []),
     },
     {
         "name": "sessions_list",
@@ -55,7 +68,9 @@ TOOLS: Final[list[JsonDict]] = [
     },
     {
         "name": "messages_pull",
-        "description": "按 cursor 读取会话或地址前缀 (如 qq:3:group:) 的增量消息, 同步只读",
+        "description": (
+            f"按 cursor 读取会话或地址前缀 (如 qq:3/group) 的增量事件, 同步只读. {ADDRESS_HINT}"
+        ),
         "inputSchema": schema(
             {
                 "source": STR,
@@ -83,7 +98,9 @@ TOOLS: Final[list[JsonDict]] = [
     },
     {
         "name": "message_send",
-        "description": "向会话发送文本; 经幂等, 整形与熔断, 最多等 wait_seconds 秒拿结果",
+        "description": (
+            f"向会话发送文本; 经幂等, 整形与熔断, 最多等 wait_seconds 秒拿结果. {ADDRESS_HINT}"
+        ),
         "inputSchema": schema(
             {
                 "sink": STR,
@@ -157,6 +174,7 @@ def handlers(settings: Settings, user_id: int) -> dict[str, Callable[[JsonDict],
         return found
 
     return {
+        "capabilities_list": lambda a: capabilities_list(text_arg(a, "platform")),
         "sources_list": lambda a: sources_list(settings, user_id, text_arg(a, "platform")),
         "sessions_list": lambda a: sessions_list(
             settings,

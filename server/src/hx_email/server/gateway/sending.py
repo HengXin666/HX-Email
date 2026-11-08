@@ -15,6 +15,7 @@ from typing import Final
 
 from hx_email.config import Settings
 from hx_email.database import connect
+from hx_email.server.contract.address import address_of_legacy
 from hx_email.server.gateway.impl.breaker import BREAKER
 from hx_email.server.gateway.impl.dispatch import DISPATCHER
 from hx_email.server.gateway.providers import InstanceRow, profile_for, require_owned
@@ -41,6 +42,7 @@ def delivery_view(entry: Entry, deduplicated: bool = False) -> dict[str, object]
         "delivery_id": entry.delivery_id,
         "kind": entry.kind,
         "sink": entry.session,
+        "address": address_of_legacy(entry.session),
         "status": entry.status,
         "deduplicated": deduplicated,
         "attempts": entry.attempts,

@@ -15,6 +15,9 @@ from typing import Final
 
 from hx_email.config import Settings
 from hx_email.database import connect
+from hx_email.server.contract.address import address_of_legacy
+from hx_email.server.contract.builtin import REGISTRY
+from hx_email.server.contract.event import CONTRACT_VERSION
 from hx_email.server.gateway.impl.breaker import BREAKER
 from hx_email.server.gateway.providers import (
     HUB,
@@ -41,6 +44,11 @@ def source_state(instance: InstanceRow) -> str:
     return instance.status if instance.status in ("online", "connecting", "error") else "stopped"
 
 
+def capabilities_list(platform: str = "") -> dict[str, object]:
+    """Platform declarations (address kinds, event kinds, signals, actions); no auth data."""
+    return {"contract": CONTRACT_VERSION, "platforms": REGISTRY.listing(platform)}
+
+
 # 会话列表 = 平台实时列表 + 库里见过的会话; 平台离线时会话仍可列出, GitHub 线程只能从库里来
 def sources_list(settings: Settings, user_id: int, platform: str = "") -> dict[str, object]:
     items: list[dict[str, object]] = []
@@ -52,6 +60,7 @@ def sources_list(settings: Settings, user_id: int, platform: str = "") -> dict[s
             {
                 "platform": instance.kind,
                 "instance_id": instance.id,
+                "address": f"{instance.kind}:{instance.id}",
                 "name": instance.name,
                 "state": source_state(instance),
                 "account_id": instance.config.get("app_slug", ""),
@@ -125,7 +134,14 @@ def sessions_list(
             continue
         if needle and needle not in ref.title.lower() and needle not in ref.session_id.lower():
             continue
-        out.append({"session": ref.address, "session_type": ref.session_type, "title": ref.title})
+        out.append(
+            {
+                "session": ref.address,
+                "address": address_of_legacy(ref.address),
+                "session_type": ref.session_type,
+                "title": ref.title,
+            }
+        )
         if len(out) >= max(1, min(limit, MAX_SESSIONS)):
             break
     return {"sessions": out}
@@ -147,6 +163,7 @@ def session_select(
     outbound, _until = BREAKER.outbound(instance.id)
     return {
         "session": address.address,
+        "address": address_of_legacy(address.address),
         "title": address.peer,
         "can_send": address.session_type in SENDABLE_TYPES and outbound == "open",
         "cursor": cursor,

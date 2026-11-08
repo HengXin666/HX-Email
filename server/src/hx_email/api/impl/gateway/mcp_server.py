@@ -69,7 +69,8 @@ def handle_one(settings: Settings, user_id: int, message: object) -> JsonDict | 
                 "capabilities": {"tools": {"listChanged": False}},
                 "serverInfo": SERVER_INFO,
                 "instructions": (
-                    "统一消息路由: sources_list -> sessions_list -> session_select 拿 cursor, "
+                    "统一消息路由: capabilities_list 看平台能力, sources_list -> sessions_list -> "
+                    "session_select 拿 cursor, "
                     "然后 messages_pull / events_wait 监听, message_send 发送."
                 ),
             },

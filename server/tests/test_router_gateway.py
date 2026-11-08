@@ -20,6 +20,7 @@ from hx_email.config import Settings
 from hx_email.database import connect, migrate
 from hx_email.server.gateway.impl import dispatch as dispatch_module
 from hx_email.server.gateway.impl.breaker import BREAKER
+from hx_email.server.gateway.listen import store_envelopes
 from hx_email.server.gateway.providers import HUB, SHAPER
 from hx_email.server.messaging.onebot import OneBotAdapter
 from hx_email.server.messaging.registry import clear_runtime
@@ -283,3 +284,70 @@ def test_wait_returns_on_new_message_and_hold_blocks_sending(env: dict[str, Any]
         ]
         == 1
     )
+
+
+def test_contract_v2_over_http(env: dict[str, Any]) -> None:
+    client, headers, qq, settings = env["client"], env["headers"], env["qq"], env["settings"]
+    caps = client.get(f"{API}/router/capabilities", headers=headers).json()
+    assert caps["contract"] == 2
+    assert {p["platform"] for p in caps["platforms"]} == {"qq", "github"}
+    client.post(
+        f"{API}/messaging/events/qq", json=qq_event(91), headers={"Authorization": "Bearer tkn"}
+    )
+    page = client.get(
+        f"{API}/router/messages", params={"source": f"qq:{qq}/group"}, headers=headers
+    ).json()
+    event = page["messages"][0]
+    assert event["address"] == f"qq:{qq}/group/555" and event["kind"] == "message"
+    assert event["session"] == f"qq:{qq}:group:555" and event["flags"]["from_self"] is False
+    sent = client.post(
+        f"{API}/router/messages",
+        json={"sink": f"qq:{qq}/group/555", "text": "v2", "idempotency_key": "key-v2-0001"},
+        headers=headers,
+    ).json()
+    assert sent["sink"] == f"qq:{qq}:group:555" and sent["address"] == f"qq:{qq}/group/555"
+    gh = add_github(settings)
+    store_envelopes(
+        settings,
+        gh,
+        [
+            {
+                "session": f"github:{gh}:issue:hx/HX-Email#{number}",
+                "sender": {"id": "5", "name": "u", "is_self": False},
+                "text": f"t{number}",
+                "platform_message_id": f"ic:{number}",
+                "dedup_key": f"ic:{number}",
+                "occurred_at": "2026-11-08T00:00:00Z",
+            }
+            for number in (1, 2)
+        ]
+        + [
+            {
+                "session": f"github:{gh}:issue:hx/Other#3",
+                "sender": {"id": "5", "name": "u", "is_self": False},
+                "text": "other",
+                "platform_message_id": "ic:3",
+                "dedup_key": "ic:3",
+                "occurred_at": "2026-11-08T00:00:00Z",
+            }
+        ],
+    )
+    repo = client.get(
+        f"{API}/router/messages",
+        params={"source": f"github:{gh}/repo/hx/HX-Email"},
+        headers=headers,
+    ).json()
+    assert [m["text"] for m in repo["messages"]] == ["t1", "t2"]
+    assert repo["messages"][0]["kind"] == "comment"
+    tool = client.post(
+        "/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "id": 9,
+            "method": "tools/call",
+            "params": {"name": "capabilities_list", "arguments": {"platform": "qq"}},
+        },
+        headers=headers,
+    ).json()
+    platforms = tool["result"]["structuredContent"]["platforms"]
+    assert [p["platform"] for p in platforms] == ["qq"]

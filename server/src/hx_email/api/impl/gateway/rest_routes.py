@@ -24,7 +24,12 @@ from hx_email.api.impl.gateway.auth import caller_user_id
 from hx_email.api.impl.gateway.mcp_server import register_mcp_route
 from hx_email.api.impl.router.errors import install_router_error_handler
 from hx_email.config import Settings
-from hx_email.server.gateway.catalog import session_select, sessions_list, sources_list
+from hx_email.server.gateway.catalog import (
+    capabilities_list,
+    session_select,
+    sessions_list,
+    sources_list,
+)
 from hx_email.server.gateway.impl.dispatch import DISPATCHER, seconds_until_next
 from hx_email.server.gateway.listen import pull, wait_messages
 from hx_email.server.gateway.sending import delivery_status, send_message
@@ -81,6 +86,13 @@ def register_gateway(app: FastAPI, api: APIRouter, settings: Settings) -> None:
 
 
 def register_gateway_rest_routes(router: APIRouter, settings: Settings) -> None:
+    @router.get(f"{PREFIX}/capabilities")
+    def capabilities(
+        platform: str = "", authorization: Annotated[str | None, Header()] = None
+    ) -> dict[str, object]:
+        caller_user_id(settings, authorization)
+        return capabilities_list(platform)
+
     @router.get(f"{PREFIX}/sources")
     def sources(
         platform: str = "", authorization: Annotated[str | None, Header()] = None

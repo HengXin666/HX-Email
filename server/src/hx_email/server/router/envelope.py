@@ -13,13 +13,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final, Literal, cast
 
+from hx_email.server.contract.address import AddressError, is_v2, parse_address, to_legacy
+from hx_email.server.contract.builtin import REGISTRY
 from hx_email.server.router.errors import SessionNotFoundError
 
 SessionType = Literal["private", "group", "temp", "repo", "issue"]
 Direction = Literal["inbound", "outbound"]
 
-PLATFORMS: Final[frozenset[str]] = frozenset({"qq", "github"})
-SESSION_TYPES: Final[frozenset[str]] = frozenset({"private", "group", "temp", "repo", "issue"})
+PLATFORMS: Final[frozenset[str]] = REGISTRY.platform_names()
+SESSION_TYPES: Final[frozenset[str]] = REGISTRY.legacy_types()
 DIRECTIONS: Final[frozenset[str]] = frozenset({"inbound", "outbound"})
 RAW_INLINE_LIMIT_BYTES: Final[int] = 16 * 1024
 RAW_DIR_NAME: Final[str] = "router_raw"
@@ -54,8 +56,15 @@ class SessionAddress:
         return "private" if self.session_type in ("private", "temp") else "group"
 
 
+# v2 地址在这里折回 v1, 落库, 幂等, 出站都只认 v1
+# 决策记录: .agents/notes/implemented/feature/2026-11-08-router-contract-v2.md
 def parse_session(address: str) -> SessionAddress:
-    """Split on the first three colons; the fourth part is the peer verbatim."""
+    """Split on the first three colons; a v2 address is converted to v1 first."""
+    if is_v2(address):
+        try:
+            address = to_legacy(parse_address(address))
+        except AddressError as error:
+            raise SessionNotFoundError(str(error)) from error
     parts: list[str] = address.split(":", 3)
     if len(parts) != 4:
         raise SessionNotFoundError(f"invalid session address: {address!r}")
