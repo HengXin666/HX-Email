@@ -14,7 +14,7 @@ from hx_email.server.contract.address import AddressError, is_v2, parse_address,
 from hx_email.server.contract.builtin import REGISTRY
 from hx_email.server.router.errors import SessionNotFoundError
 
-SessionType = Literal["private", "group", "temp", "repo", "issue"]
+SessionType = Literal["private", "group", "temp", "repo", "issue", "discussion", "commit"]
 Direction = Literal["inbound", "outbound"]
 
 PLATFORMS: Final[frozenset[str]] = REGISTRY.platform_names()

@@ -31,8 +31,9 @@ TIME_FORMAT: str = "%Y-%m-%d %H:%M:%S"
 INSERT_MESSAGE_SQL: str = """
 INSERT INTO messaging_messages (
     instance_id, direction, chat_id, chat_type, sender_id, sender_name, is_self, text,
-    message_id, reply_to, attachments_json, occurred_at, raw_json, raw_ref, dedup_key
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?)
+    message_id, reply_to, attachments_json, occurred_at, raw_json, raw_ref, dedup_key,
+    trigger_json
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?)
 ON CONFLICT (instance_id, dedup_key) WHERE dedup_key <> '' DO NOTHING
 """
 
@@ -74,7 +75,32 @@ def find_by_dedup(connection: sqlite3.Connection, instance_id: int, dedup_key: s
     return None if row is None else int(row[0])
 
 
-def message_params(message: InboundMessage, raw_json: str) -> tuple[object, ...]:
+def resolve_trigger(connection: sqlite3.Connection, message: InboundMessage) -> str:
+    """Encode the trigger; a reply to a message this account sent sets ``reply_to_self``.
+
+    Only providers that report trigger signals get the lookup, so a platform that never
+    declared ``reply_to_self`` keeps reporting it as unknown (null) rather than false.
+    """
+    if message.trigger is None:
+        return ""
+    trigger: dict[str, object] = dict(message.trigger)
+    flags_value: object = trigger.get("flags")
+    flags: dict[str, object] = dict(flags_value) if isinstance(flags_value, dict) else {}
+    if message.reply_to and flags.get("reply_to_self") is not True and not message.sender.is_self:
+        parent: sqlite3.Row | None = connection.execute(
+            "SELECT is_self FROM messaging_messages WHERE instance_id = ? AND message_id = ? "
+            "ORDER BY id DESC LIMIT 1",
+            (message.session.instance_id, message.reply_to),
+        ).fetchone()
+        if parent is not None and bool(parent[0]):
+            flags["reply_to_self"] = True
+    trigger["flags"] = flags
+    return json.dumps(trigger, ensure_ascii=False, separators=(",", ":"))
+
+
+def message_params(
+    message: InboundMessage, raw_json: str, trigger_json: str = ""
+) -> tuple[object, ...]:
     attachments: str = json.dumps(
         [attachment_to_dict(item) for item in message.attachments],
         ensure_ascii=False,
@@ -95,9 +121,12 @@ def message_params(message: InboundMessage, raw_json: str) -> tuple[object, ...]
         message.occurred_at,
         raw_json,
         message.dedup_key,
+        trigger_json,
     )
 
 
+# 入库一次写全: 正文, 去重键与触发信号; 回复本账号消息的 reply_to_self 在这里按 reply_to 补判
+# 决策记录: .agents/notes/implemented/feature/2026-11-08-github-events-triggers.md
 def store_inbound(
     settings: Settings, message: InboundMessage, now: datetime | None = None
 ) -> StoreResult:
@@ -109,17 +138,24 @@ def store_inbound(
     try:
         with transaction(settings, immediate=True) as connection:
             instance_id: int = message.session.instance_id
+            trigger_json: str = resolve_trigger(connection, message)
             existing: int | None = find_by_dedup(connection, instance_id, message.dedup_key)
             if existing is not None:
                 if not message.edit:
                     return StoreResult(existing, stored=False)
+                # 编辑可能新增或去掉 @提及, 触发信号跟着正文一起改写
                 connection.execute(
-                    "UPDATE messaging_messages SET text = ? WHERE id = ?",
-                    (message.text, existing),
+                    "UPDATE messaging_messages SET text = ?, "
+                    "trigger_json = CASE WHEN ? = '' THEN trigger_json ELSE ? END WHERE id = ?",
+                    (message.text, trigger_json, trigger_json, existing),
                 )
                 return StoreResult(existing, stored=False, updated=True)
+            if message.edit:
+                # 原消息不在库里 (例如安装前的评论): 编辑只覆盖已有行, 不新增消息
+                return StoreResult(0, stored=False)
             cursor: sqlite3.Cursor = connection.execute(
-                INSERT_MESSAGE_SQL, message_params(message, "" if offload else raw_text)
+                INSERT_MESSAGE_SQL,
+                message_params(message, "" if offload else raw_text, trigger_json),
             )
             if cursor.rowcount == 0 or cursor.lastrowid is None:
                 raced: int | None = find_by_dedup(connection, instance_id, message.dedup_key)

@@ -69,11 +69,17 @@ def test_session_parser_maps_v2_errors_to_not_found() -> None:
 def test_selectors_become_exact_value_and_like_patterns() -> None:
     repo = legacy_scope(parse_address("github:7/repo/hx/HX_Email"))
     assert repo.exact == "github:7:repo:hx/HX_Email"
-    assert repo.patterns == ("github:7:issue:hx/HX\\_Email#%",)
+    assert repo.patterns == (
+        "github:7:issue:hx/HX\\_Email#%",
+        "github:7:discussion:hx/HX\\_Email#%",
+        "github:7:commit:hx/HX\\_Email@%",
+    )
     every_repo = legacy_scope(parse_address("github:7/repo"))
     assert every_repo.exact == "" and every_repo.patterns == (
         "github:7:repo:%",
         "github:7:issue:%#%",
+        "github:7:discussion:%#%",
+        "github:7:commit:%@%",
     )
     groups = legacy_scope(parse_address("qq:3/group"))
     assert groups.patterns == ("qq:3:group:%",)
@@ -86,7 +92,11 @@ def test_selectors_become_exact_value_and_like_patterns() -> None:
 def test_reader_accepts_v2_sources() -> None:
     scope = parse_source("github:7/repo/hx/HX-Email")
     assert scope.instance_id == 7 and scope.chat_id == "github:7:repo:hx/HX-Email"
-    assert scope.patterns == ("github:7:issue:hx/HX-Email#%",)
+    assert scope.patterns == (
+        "github:7:issue:hx/HX-Email#%",
+        "github:7:discussion:hx/HX-Email#%",
+        "github:7:commit:hx/HX-Email@%",
+    )
     assert parse_source("qq:3/group/555").chat_id == "qq:3:group:555"
     with pytest.raises(SessionNotFoundError):
         parse_source("qq:3/channel")
@@ -94,7 +104,9 @@ def test_reader_accepts_v2_sources() -> None:
 
 def test_registry_drives_platforms_and_listing() -> None:
     assert REGISTRY.platform_names() == frozenset({"qq", "github"})
-    assert REGISTRY.legacy_types() == frozenset({"private", "group", "temp", "repo", "issue"})
+    assert REGISTRY.legacy_types() == frozenset(
+        {"private", "group", "temp", "repo", "issue", "discussion", "commit"}
+    )
     listing = REGISTRY.listing("github")
     assert [item["platform"] for item in listing] == ["github"]
     kinds = listing[0]["address_kinds"]

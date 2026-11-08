@@ -22,6 +22,8 @@ MESSAGE_ID_PREFIX: Final[str] = "m_"
 ISO_UTC_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$"
 )
+TRIGGER_FLAGS: Final[tuple[str, ...]] = ("from_self", "mention_self", "reply_to_self")
+MAX_MENTIONS: Final[int] = 50
 
 
 class EnvelopeError(ValueError):
@@ -60,6 +62,8 @@ class InboundMessage:
     attachments: tuple[Attachment, ...] = ()
     raw: dict[str, object] | None = None
     edit: bool = False
+    # Trigger signals the provider computed (``kind``, ``mentions``, ``flags``), or None.
+    trigger: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -82,9 +86,10 @@ class Envelope:
     received_at: str
     raw: dict[str, object] | None = None
     raw_ref: str = ""
+    trigger: dict[str, object] | None = None
 
     def to_dict(self, include_raw: bool = False) -> dict[str, object]:
-        return {
+        data: dict[str, object] = {
             "id": self.id,
             "cursor": self.cursor,
             "platform": self.platform,
@@ -106,6 +111,9 @@ class Envelope:
             "raw": self.raw if include_raw else None,
             "raw_ref": self.raw_ref,
         }
+        if self.trigger:
+            data.update(self.trigger)
+        return data
 
 
 def attachment_to_dict(item: Attachment) -> dict[str, object]:
@@ -159,6 +167,40 @@ def parse_attachments(value: object) -> tuple[Attachment, ...]:
     return tuple(result)
 
 
+def parse_trigger(data: dict[str, object]) -> dict[str, object] | None:
+    """Optional ``kind``, ``mentions`` and ``flags`` keys; absent all three means None."""
+    if not any(key in data for key in ("kind", "mentions", "flags")):
+        return None
+    kind: object = data.get("kind", "")
+    if not isinstance(kind, str):
+        raise EnvelopeError("field kind must be a string")
+    mentions_value: object = data.get("mentions", [])
+    if not isinstance(mentions_value, list) or len(mentions_value) > MAX_MENTIONS:
+        raise EnvelopeError(f"field mentions must be a list of at most {MAX_MENTIONS}")
+    mentions: list[dict[str, object]] = []
+    for item in mentions_value:
+        if not isinstance(item, dict) or not isinstance(item.get("name", ""), str):
+            raise EnvelopeError("mention must be an object with a string name")
+        mentions.append(
+            {
+                "id": str(item.get("id", "")),
+                "name": str(item.get("name", "")),
+                "is_self": item.get("is_self") is True,
+            }
+        )
+    flags_value: object = data.get("flags", {})
+    if not isinstance(flags_value, dict):
+        raise EnvelopeError("field flags must be an object")
+    flags: dict[str, object] = {}
+    for name in TRIGGER_FLAGS:
+        value: object = flags_value.get(name)
+        if value is not None and not isinstance(value, bool):
+            raise EnvelopeError(f"flag {name} must be a boolean or null")
+        if value is not None:
+            flags[name] = value
+    return {"kind": kind, "mentions": mentions, "flags": flags}
+
+
 def validate_inbound(data: dict[str, object], instance_id: int) -> InboundMessage:
     """Check one ``parse_event`` dict against spec 3.1 and bind it to ``instance_id``."""
     try:
@@ -191,4 +233,5 @@ def validate_inbound(data: dict[str, object], instance_id: int) -> InboundMessag
         attachments=parse_attachments(data.get("attachments", [])),
         raw=cast(dict[str, object] | None, raw),
         edit=edit,
+        trigger=parse_trigger(data),
     )

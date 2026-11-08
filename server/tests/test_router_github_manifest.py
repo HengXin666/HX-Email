@@ -138,9 +138,21 @@ def test_manifest_permissions_and_events_are_exact() -> None:
         "metadata": "read",
         "issues": "write",
         "pull_requests": "write",
+        "contents": "read",
+        "discussions": "read",
     }
     assert sorted(manifest["default_events"]) == sorted(  # type: ignore[arg-type]
-        ["issue_comment", "pull_request_review", "pull_request_review_comment", "issues"]
+        [
+            "issue_comment",
+            "issues",
+            "pull_request",
+            "pull_request_review",
+            "pull_request_review_comment",
+            "discussion",
+            "discussion_comment",
+            "commit_comment",
+            "push",
+        ]
     )
     assert "installation" not in manifest["default_events"]  # type: ignore[operator]
     assert "installation_repositories" not in manifest["default_events"]  # type: ignore[operator]

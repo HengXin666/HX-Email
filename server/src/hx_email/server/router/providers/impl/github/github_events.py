@@ -1,77 +1,57 @@
 """GitHub webhook 入站: X-Hub-Signature-256 校验, 事件分发与 envelope 映射.
 
 映射规则见 docs/providers/github-app.md 第 3 节与 docs/messaging-router.md 第 2, 3.4 节.
-R3 任务范围: 只有 action 为 created 与 opened 的事件产出消息, 其它 action 只产出会话元数据.
+线程与触发信号的公共部分在 github_mapping.py, 这里只放签名, 安装事件与每类事件的取值.
 """
 
 from __future__ import annotations
 
-import hashlib
-import hmac
-import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
-SIGNATURE_HEADER: str = "x-hub-signature-256"
-EVENT_HEADER: str = "x-github-event"
-DELIVERY_HEADER: str = "x-github-delivery"
-TARGET_ID_HEADER: str = "x-github-hook-installation-target-id"
-SIGNATURE_PREFIX: str = "sha256="
-MESSAGE_EVENTS: frozenset[str] = frozenset(
-    {"issues", "issue_comment", "pull_request", "pull_request_review_comment"}
+from hx_email.server.router.providers.impl.github.github_mapping import (
+    DELIVERY_HEADER,
+    EVENT_HEADER,
+    SIGNATURE_HEADER,
+    TARGET_ID_HEADER,
+    AppIdentity,
+    Draft,
+    JsonDict,
+    as_dict,
+    base_raw,
+    commit_thread,
+    discussion_thread,
+    issue_thread,
+    lower_headers,
+    repo_of,
+    sign_body,
+    strip_marker,
+    text_of,
+    to_envelope,
+    verify_signature,
 )
+
+__all__ = [
+    "DELIVERY_HEADER",
+    "EVENT_HEADER",
+    "SIGNATURE_HEADER",
+    "TARGET_ID_HEADER",
+    "AppIdentity",
+    "EventOutcome",
+    "JsonDict",
+    "lower_headers",
+    "map_event",
+    "sign_body",
+    "strip_marker",
+    "verify_signature",
+]
+
 INSTALLATION_EVENTS: frozenset[str] = frozenset({"installation", "installation_repositories"})
-HANDLED_EVENTS: frozenset[str] = MESSAGE_EVENTS | INSTALLATION_EVENTS
-MESSAGE_ACTIONS: frozenset[str] = frozenset({"created", "opened"})
-DELIVERY_MARKER: re.Pattern[str] = re.compile(r"\s*<!-- hx-router delivery=([^\s>]+) -->\s*$")
-CHAT_TYPE_LEGACY: str = "group"
+STATE_ACTIONS: frozenset[str] = frozenset({"closed", "reopened", "ready_for_review"})
+# 推送里只取前 20 个提交: GitHub 的 push 载荷本身最多列 20 个
+MAX_PUSH_COMMITS: int = 20
 
-JsonDict = dict[str, object]
-
-
-def verify_signature(secrets: tuple[bytes, ...], body: bytes, header_value: str | None) -> bool:
-    """对原始 body 计算 HMAC-SHA256, 与请求头整体做常数时间比较; 任一 secret 匹配即通过."""
-    if not secrets or not header_value or not header_value.startswith(SIGNATURE_PREFIX):
-        return False
-    matched: bool = False
-    for secret in secrets:
-        digest: str = hmac.new(secret, body, hashlib.sha256).hexdigest()
-        if hmac.compare_digest(SIGNATURE_PREFIX + digest, header_value):
-            matched = True
-    return matched
-
-
-def sign_body(secret: bytes, body: bytes) -> str:
-    return SIGNATURE_PREFIX + hmac.new(secret, body, hashlib.sha256).hexdigest()
-
-
-def lower_headers(headers: dict[str, str]) -> dict[str, str]:
-    return {key.lower(): value for key, value in headers.items()}
-
-
-def strip_marker(text: str) -> tuple[str, str]:
-    """去掉本 App 写入的隐藏标记, 返回 (正文, delivery_id 或空串)."""
-    match: re.Match[str] | None = DELIVERY_MARKER.search(text)
-    if match is None:
-        return text, ""
-    return text[: match.start()], match.group(1)
-
-
-def as_dict(value: object) -> JsonDict:
-    return value if isinstance(value, dict) else {}
-
-
-def text_of(value: object) -> str:
-    return value if isinstance(value, str) else ""
-
-
-@dataclass(frozen=True)
-class AppIdentity:
-    app_id: str
-    app_slug: str
-
-    @property
-    def bot_login(self) -> str:
-        return f"{self.app_slug}[bot]"
+Mapper = Callable[[str, JsonDict, str], list[Draft]]
 
 
 @dataclass
@@ -84,142 +64,190 @@ class EventOutcome:
     installation_removed: bool = False
 
 
-def thread_session(instance_id: int, repo_full_name: str, number: object) -> str:
-    return f"github:{instance_id}:issue:{repo_full_name}#{number}"
-
-
-def is_self_sender(user: JsonDict, item: JsonDict, identity: AppIdentity, marker: str) -> bool:
-    via_app: JsonDict = as_dict(item.get("performed_via_github_app"))
-    if via_app and str(via_app.get("id", "")) == identity.app_id:
-        return True
-    if user.get("type") == "Bot" and user.get("login") == identity.bot_login:
-        return True
-    return marker != ""
-
-
-def build_envelope(
-    instance_id: int,
-    session: str,
-    user: JsonDict,
-    item: JsonDict,
-    text: str,
-    message_id: str,
-    occurred_at: str,
-    raw: JsonDict,
-    identity: AppIdentity,
-    reply_to: str = "",
-) -> JsonDict:
-    clean, marker = strip_marker(text)
-    return {
-        "platform": "github",
-        "instance_id": instance_id,
-        "session": session,
-        "session_type": "issue",
-        "chat_type": CHAT_TYPE_LEGACY,
-        "direction": "inbound",
-        "sender": {
-            "id": str(user.get("id", "")),
-            "name": text_of(user.get("login")),
-            "is_self": is_self_sender(user, item, identity, marker),
-        },
-        "text": clean,
-        "reply_to": reply_to,
-        "platform_message_id": message_id,
-        "dedup_key": message_id,
-        "attachments": [],
-        "occurred_at": occurred_at,
-        "raw": raw,
-    }
-
-
-def base_raw(event: str, payload: JsonDict, delivery: str, kind: str, html_url: str) -> JsonDict:
-    return {
-        "gh_event": event,
-        "gh_action": text_of(payload.get("action")),
-        "gh_delivery": delivery,
-        "gh_installation_id": as_dict(payload.get("installation")).get("id"),
-        "gh_repo_id": as_dict(payload.get("repository")).get("id"),
-        "gh_thread_kind": kind,
-        "html_url": html_url,
-        "sender_type": text_of(as_dict(payload.get("sender")).get("type")),
-    }
-
-
-def map_comment(
-    instance_id: int, event: str, payload: JsonDict, delivery: str, identity: AppIdentity
-) -> JsonDict:
-    repo: str = text_of(as_dict(payload.get("repository")).get("full_name"))
+def comment_draft(
+    event: str, payload: JsonDict, delivery: str, prefix: str, thread_key: str
+) -> Draft:
+    """issue_comment, pull_request_review_comment, discussion_comment, commit_comment."""
     comment: JsonDict = as_dict(payload.get("comment"))
-    user: JsonDict = as_dict(comment.get("user"))
-    if event == "issue_comment":
-        issue: JsonDict = as_dict(payload.get("issue"))
-        kind: str = "pull_request" if issue.get("pull_request") else "issue"
-        session: str = thread_session(instance_id, repo, issue.get("number"))
-        raw: JsonDict = base_raw(event, payload, delivery, kind, text_of(comment.get("html_url")))
-        message_id: str = f"ic:{comment.get('id')}"
-        reply_to: str = ""
+    if thread_key == "discussion":
+        thread = discussion_thread(payload)
+    elif thread_key == "commit":
+        thread = commit_thread(payload, text_of(comment.get("commit_id")))
     else:
-        pull: JsonDict = as_dict(payload.get("pull_request"))
-        session = thread_session(instance_id, repo, pull.get("number"))
-        raw = base_raw(event, payload, delivery, "pull_request", text_of(comment.get("html_url")))
+        thread = issue_thread(payload, thread_key)
+    url: str = text_of(comment.get("html_url"))
+    raw: JsonDict = base_raw(event, payload, delivery, thread.gh_kind, url)
+    if comment.get("path"):
         raw["path"] = text_of(comment.get("path"))
         raw["line"] = comment.get("line")
-        message_id = f"rc:{comment.get('id')}"
-        parent: object = comment.get("in_reply_to_id")
-        reply_to = f"rc:{parent}" if parent else ""
-    return build_envelope(
-        instance_id,
-        session,
-        user,
-        comment,
-        text_of(comment.get("body")),
-        message_id,
-        text_of(comment.get("created_at")),
-        raw,
-        identity,
-        reply_to,
+    parent: object = comment.get("in_reply_to_id") or comment.get("parent_id")
+    return Draft(
+        thread=thread,
+        kind="review_comment" if prefix == "rc" else "comment",
+        user=as_dict(comment.get("user")),
+        item=comment,
+        text=text_of(comment.get("body")),
+        message_id=f"{prefix}:{comment.get('id')}",
+        occurred_at=text_of(comment.get("created_at")),
+        raw=raw,
+        reply_to=f"{prefix}:{parent}" if parent else "",
+        edit=text_of(payload.get("action")) == "edited",
     )
 
 
-def map_opened(
-    instance_id: int, event: str, payload: JsonDict, delivery: str, identity: AppIdentity
-) -> JsonDict:
-    repo: str = text_of(as_dict(payload.get("repository")).get("full_name"))
-    is_issue: bool = event == "issues"
-    item: JsonDict = as_dict(payload.get("issue" if is_issue else "pull_request"))
+def comments(prefix: str, thread_key: str) -> Mapper:
+    def mapper(event: str, payload: JsonDict, delivery: str) -> list[Draft]:
+        if text_of(payload.get("action")) not in {"created", "edited"}:
+            return []
+        return [comment_draft(event, payload, delivery, prefix, thread_key)]
+
+    return mapper
+
+
+def state_text(event: str, action: str, item: JsonDict) -> str:
+    label: str = "PR" if event == "pull_request" else "Issue"
+    number: object = item.get("number")
+    if action == "ready_for_review":
+        return f"{label} #{number} ready for review"
+    if action == "closed" and event == "pull_request":
+        return f"{label} #{number} closed" + (" (merged)" if item.get("merged") else "")
+    reason: str = text_of(item.get("state_reason"))
+    suffix: str = f" ({reason})" if action == "closed" and reason else ""
+    return f"{label} #{number} {action}{suffix}"
+
+
+def threads(event: str, payload: JsonDict, delivery: str) -> list[Draft]:
+    """issues, pull_request, discussion: opened is a message, closed and friends a state line."""
+    action: str = text_of(payload.get("action"))
+    key: str = "issue" if event == "issues" else event
+    item: JsonDict = as_dict(payload.get(key))
+    thread = discussion_thread(payload) if event == "discussion" else issue_thread(payload, key)
+    prefix: str = {"issues": "is", "pull_request": "pr", "discussion": "dn"}[event]
+    url: str = text_of(item.get("html_url"))
+    raw: JsonDict = base_raw(event, payload, delivery, thread.gh_kind, url)
+    message_id: str = f"{prefix}:{item.get('id')}"
+    if action in {"opened", "created"}:
+        title: str = text_of(item.get("title"))
+        body: str = text_of(item.get("body"))
+        return [
+            Draft(
+                thread=thread,
+                kind="thread_opened",
+                user=as_dict(item.get("user")) or as_dict(payload.get("sender")),
+                item=item,
+                text=f"{title}\n\n{body}" if body else title,
+                message_id=message_id,
+                occurred_at=text_of(item.get("created_at")),
+                raw=raw,
+            )
+        ]
+    if action not in STATE_ACTIONS or event == "discussion":
+        return []
+    return [
+        Draft(
+            thread=thread,
+            kind="thread_state",
+            user=as_dict(payload.get("sender")),
+            item={},
+            text=state_text(event, action, item),
+            message_id=message_id,
+            occurred_at=text_of(item.get("closed_at") or item.get("updated_at")),
+            raw=raw,
+            dedup_key=f"{message_id}:{action}:{delivery}",
+        )
+    ]
+
+
+def reviews(event: str, payload: JsonDict, delivery: str) -> list[Draft]:
+    """pull_request_review submitted; an empty "commented" review is only its line comments."""
+    review: JsonDict = as_dict(payload.get("review"))
+    state: str = text_of(review.get("state")).lower()
+    body: str = text_of(review.get("body"))
+    submitted: bool = text_of(payload.get("action")) == "submitted"
+    if not submitted or not state or (state == "commented" and not body):
+        return []
+    thread = issue_thread(payload, "pull_request")
+    return [
+        Draft(
+            thread=thread,
+            kind="review",
+            user=as_dict(review.get("user")),
+            item=review,
+            text=f"{state}\n\n{body}" if body else state,
+            message_id=f"rv:{review.get('id')}",
+            occurred_at=text_of(review.get("submitted_at")),
+            raw=base_raw(event, payload, delivery, "pull_request", text_of(review.get("html_url"))),
+        )
+    ]
+
+
+# push 的每个新提交是一条 commit 消息, 落在 commit 会话; 删分支与非 distinct 提交不产消息
+# 决策记录: .agents/notes/implemented/feature/2026-11-08-github-events-triggers.md
+def pushes(event: str, payload: JsonDict, delivery: str) -> list[Draft]:
+    if payload.get("deleted"):
+        return []
+    raw: JsonDict = base_raw(event, payload, delivery, "commit", "")
+    raw["ref"] = text_of(payload.get("ref"))
     sender: JsonDict = as_dict(payload.get("sender"))
-    title: str = text_of(item.get("title"))
-    body: str = text_of(item.get("body"))
-    text: str = f"{title}\n\n{body}" if body else title
-    prefix: str = "is" if is_issue else "pr"
-    kind: str = "issue" if is_issue else "pull_request"
-    raw: JsonDict = base_raw(event, payload, delivery, kind, text_of(item.get("html_url")))
-    return build_envelope(
-        instance_id,
-        thread_session(instance_id, repo, item.get("number")),
-        sender,
-        item,
-        text,
-        f"{prefix}:{item.get('id')}",
-        text_of(item.get("created_at")),
-        raw,
-        identity,
-    )
+    drafts: list[Draft] = []
+    listed: object = payload.get("commits")
+    for entry in (listed if isinstance(listed, list) else [])[:MAX_PUSH_COMMITS]:
+        commit: JsonDict = as_dict(entry)
+        sha: str = text_of(commit.get("id"))
+        if not sha or commit.get("distinct") is False:
+            continue
+        author: JsonDict = as_dict(commit.get("author"))
+        login: str = text_of(author.get("username"))
+        user: JsonDict = sender if not login or login == sender.get("login") else {"login": login}
+        drafts.append(
+            Draft(
+                thread=commit_thread(payload, sha),
+                kind="commit",
+                user=user,
+                item={},
+                text=text_of(commit.get("message")),
+                message_id=f"cm:{sha}",
+                occurred_at=text_of(commit.get("timestamp")),
+                raw=raw | {"html_url": text_of(commit.get("url"))},
+                dedup_key=f"cm:{repo_of(payload)}@{sha}",
+            )
+        )
+    return drafts
+
+
+MAPPERS: dict[str, Mapper] = {
+    "issue_comment": comments("ic", "issue"),
+    "pull_request_review_comment": comments("rc", "pull_request"),
+    "discussion_comment": comments("dc", "discussion"),
+    "commit_comment": comments("cc", "commit"),
+    "pull_request_review": reviews,
+    "issues": threads,
+    "pull_request": threads,
+    "discussion": threads,
+    "push": pushes,
+}
+HANDLED_EVENTS: frozenset[str] = frozenset(MAPPERS) | INSTALLATION_EVENTS
 
 
 def session_update(instance_id: int, event: str, payload: JsonDict) -> JsonDict | None:
-    """非 created/opened 的 action 只更新会话元数据 (标题, 状态), 不产消息."""
-    repo: str = text_of(as_dict(payload.get("repository")).get("full_name"))
-    key: str = "issue" if event in {"issues", "issue_comment"} else "pull_request"
-    item: JsonDict = as_dict(payload.get(key))
-    if not repo or "number" not in item:
+    """线程的非新建 action 只更新会话元数据 (标题, 状态)."""
+    if event == "discussion" or event.startswith("discussion_"):
+        thread = discussion_thread(payload)
+        item: JsonDict = as_dict(payload.get("discussion"))
+    elif event in {"issues", "issue_comment"}:
+        thread, item = issue_thread(payload, "issue"), as_dict(payload.get("issue"))
+    elif event.startswith("pull_request"):
+        thread, item = issue_thread(payload, "pull_request"), as_dict(payload.get("pull_request"))
+    else:
+        return None
+    if not repo_of(payload) or "number" not in item:
         return None
     return {
-        "session": thread_session(instance_id, repo, item.get("number")),
+        "session": thread.session(instance_id),
         "title": text_of(item.get("title")),
         "state": text_of(item.get("state")),
         "gh_action": text_of(payload.get("action")),
-        "gh_thread_kind": "pull_request" if key == "pull_request" else "issue",
+        "gh_thread_kind": thread.gh_kind,
     }
 
 
@@ -244,7 +272,7 @@ def map_installation(event: str, payload: JsonDict, outcome: EventOutcome) -> No
 def map_event(
     instance_id: int, event: str, delivery: str, payload: JsonDict, identity: AppIdentity
 ) -> EventOutcome:
-    """事件分发: 未处理的事件返回空结果, 由调用方丢弃."""
+    """事件分发: 未处理的事件与 action 返回空结果, 由调用方丢弃."""
     installation: object = as_dict(payload.get("installation")).get("id")
     outcome: EventOutcome = EventOutcome(
         installation_id=int(installation) if isinstance(installation, int) else None
@@ -252,16 +280,14 @@ def map_event(
     if event in INSTALLATION_EVENTS:
         map_installation(event, payload, outcome)
         return outcome
-    if event not in MESSAGE_EVENTS:
+    mapper: Mapper | None = MAPPERS.get(event)
+    if mapper is None:
         return outcome
+    drafts: list[Draft] = mapper(event, payload, delivery)
+    outcome.envelopes = [to_envelope(instance_id, draft, identity) for draft in drafts]
     action: str = text_of(payload.get("action"))
-    if action not in MESSAGE_ACTIONS:
+    if action not in {"opened", "created"}:
         update: JsonDict | None = session_update(instance_id, event, payload)
         if update is not None:
             outcome.session_updates.append(update)
-        return outcome
-    if event in {"issue_comment", "pull_request_review_comment"} and action == "created":
-        outcome.envelopes.append(map_comment(instance_id, event, payload, delivery, identity))
-    elif event in {"issues", "pull_request"} and action == "opened":
-        outcome.envelopes.append(map_opened(instance_id, event, payload, delivery, identity))
     return outcome

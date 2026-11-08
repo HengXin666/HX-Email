@@ -19,7 +19,7 @@ PLATFORMS = REGISTRY.platform_names()
 COLUMNS = (
     "id, instance_id, direction, chat_id, chat_type, sender_id, sender_name, text, "
     "reply_to, message_id, attachments_json, occurred_at, raw_json, raw_ref, is_self, "
-    "created_at, dedup_key"
+    "created_at, dedup_key, trigger_json"
 )
 
 

@@ -175,7 +175,7 @@ def test_ping_is_ok_and_unhandled_event_is_204(client: tuple[TestClient, Setting
     test_client, _settings, instance_id = client
     ping = {"zen": "Keep it logically awesome."}
     assert post(test_client, instance_id, ping, **{"X-GitHub-Event": "ping"}) == 200
-    assert post(test_client, instance_id, {"ref": "x"}, **{"X-GitHub-Event": "push"}) == 204
+    assert post(test_client, instance_id, {"ref": "x"}, **{"X-GitHub-Event": "star"}) == 204
 
 
 def test_cursor_advances_after_ingress(client: tuple[TestClient, Settings, int]) -> None:

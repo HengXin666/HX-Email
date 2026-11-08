@@ -185,12 +185,12 @@ def test_endpoint_unknown_instance_and_unhandled_event() -> None:
     client, _ = client_for([])
     body = b'{"zen":"x"}'
     sig = sign_body(SECRET.encode(), body)
-    headers = {"X-GitHub-Event": "push", "X-GitHub-Delivery": "p", "X-Hub-Signature-256": sig}
+    headers = {"X-GitHub-Event": "star", "X-GitHub-Delivery": "p", "X-Hub-Signature-256": sig}
     assert (
         client.post("/api/v1/router/ingress/github/8", content=body, headers=headers).status_code
         == 404
     )
-    assert post(client, body, sig, event="push") == 204
+    assert post(client, body, sig, event="star") == 204
 
 
 # ---- 去重 ----
@@ -256,10 +256,11 @@ def test_issues_opened_envelope() -> None:
     assert env["occurred_at"] == "2026-11-02T10:00:00Z"
 
 
-def test_non_created_actions_only_update_metadata() -> None:
+def test_non_created_actions_update_metadata() -> None:
     payload = comment_payload() | {"action": "edited"}
     out = map_event(7, "issue_comment", "d", payload, IDENTITY)
-    assert out.envelopes == []
+    # edited 覆盖同一 dedup_key 的正文 (docs/providers/github-app.md 3.1), 同时更新会话元数据
+    assert out.envelopes[0]["edit"] is True
     assert out.session_updates[0]["session"] == "github:7:issue:hx/HX-Email#42"
     closed = {
         "action": "closed",
@@ -267,7 +268,8 @@ def test_non_created_actions_only_update_metadata() -> None:
         "issue": {"number": 42, "title": "bug", "state": "closed"},
     }
     out2 = map_event(7, "issues", "d", closed, IDENTITY)
-    assert out2.envelopes == [] and out2.session_updates[0]["state"] == "closed"
+    assert out2.envelopes[0]["kind"] == "thread_state"
+    assert out2.session_updates[0]["state"] == "closed"
     assert (
         map_event(7, "pull_request_review", "d", {"action": "submitted"}, IDENTITY).envelopes == []
     )

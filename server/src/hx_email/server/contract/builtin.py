@@ -7,6 +7,9 @@ QQ (NapCat, OneBot 11) and GitHub (App) as implemented today. v1 mapping:
 - ``github:<iid>/repo/<owner>/<name>`` is ``github:<iid>:repo:<owner>/<name>``
 - ``github:<iid>/repo/<owner>/<name>/issue/<n>`` is ``github:<iid>:issue:<owner>/<name>#<n>``
   (issue and pull request share GitHub's number space, so one kind covers both threads)
+- ``github:<iid>/repo/<owner>/<name>/discussion/<n>`` is
+  ``github:<iid>:discussion:<owner>/<name>#<n>``
+- ``github:<iid>/repo/<owner>/<name>/commit/<sha>`` is ``github:<iid>:commit:<owner>/<name>@<sha>``
 """
 
 from __future__ import annotations
@@ -23,6 +26,7 @@ from hx_email.server.contract.capabilities import (
 
 DIGITS: Final[str] = r"[0-9]+"
 REPO_NAME: Final[str] = r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+"
+COMMIT_SHA: Final[str] = r"[0-9a-f]{7,40}"
 
 QQ: Final[PlatformCapabilities] = PlatformCapabilities(
     platform="qq",
@@ -91,10 +95,33 @@ GITHUB: Final[PlatformCapabilities] = PlatformCapabilities(
             sendable=True,
             description="issue 或 pull request 线程, id 为编号",
         ),
+        AddressKind(
+            "discussion",
+            parent="repo",
+            id_pattern=DIGITS,
+            legacy_type="discussion",
+            legacy_peer="{repo}#{discussion}",
+            description="discussion 线程, id 为编号; 只收不发",
+        ),
+        AddressKind(
+            "commit",
+            parent="repo",
+            id_pattern=COMMIT_SHA,
+            legacy_type="commit",
+            legacy_peer="{repo}@{commit}",
+            description="提交, id 为 sha; 推送的提交与提交评论落在这里, 只收不发",
+        ),
     ),
-    event_kinds=("thread_opened", "comment", "review_comment"),
+    event_kinds=(
+        "thread_opened",
+        "thread_state",
+        "comment",
+        "review_comment",
+        "review",
+        "commit",
+    ),
     default_event_kind="comment",
-    signals=("from_self",),
+    signals=("from_self", "mention_self", "reply_to_self"),
     actions=(
         ActionSpec(
             "message_send",
@@ -106,8 +133,13 @@ GITHUB: Final[PlatformCapabilities] = PlatformCapabilities(
     kind_rules=(
         KindRule("ic:", "comment"),
         KindRule("rc:", "review_comment"),
+        KindRule("dc:", "comment"),
+        KindRule("cc:", "comment"),
+        KindRule("rv:", "review"),
+        KindRule("cm:", "commit"),
         KindRule("is:", "thread_opened"),
         KindRule("pr:", "thread_opened"),
+        KindRule("dn:", "thread_opened"),
     ),
 )
 

@@ -38,12 +38,12 @@
 
 ### 1.4 速率上限对比 (需复核)
 
-| 身份                                   | REST 主速率上限 (每小时)                                     | 说明                       |
-| -------------------------------------- | ------------------------------------------------------------ | -------------------------- |
-| PAT (classic 或 fine-grained)          | 5000                                                         | 与该用户所有其他调用共享   |
-| GitHub App installation token          | 基线 5000, 仓库数超过 20 后每多一个仓库加 50, 封顶 12500     | 按 installation 计, 不按人 |
-| 安装在 GitHub Enterprise Cloud 组织上  | 15000                                                        | 仅企业组织                 |
-| App 自身 JWT 调用 (如 `GET /app`)      | 与 installation 配额分开计                                   | 只用于签 token 与查安装    |
+| 身份                                  | REST 主速率上限 (每小时)                                 | 说明                       |
+| ------------------------------------- | -------------------------------------------------------- | -------------------------- |
+| PAT (classic 或 fine-grained)         | 5000                                                     | 与该用户所有其他调用共享   |
+| GitHub App installation token         | 基线 5000, 仓库数超过 20 后每多一个仓库加 50, 封顶 12500 | 按 installation 计, 不按人 |
+| 安装在 GitHub Enterprise Cloud 组织上 | 15000                                                    | 仅企业组织                 |
+| App 自身 JWT 调用 (如 `GET /app`)     | 与 installation 配额分开计                               | 只用于签 token 与查安装    |
 
 - 以上数字均需复核, 来源为 GitHub 文档 "Rate limits for the REST API" 一节
 - 两种身份都受二级速率限制约束, 例如单位时间内创建内容的次数上限, 具体阈值需复核, 实现上统一按响应头处理而不是硬编码数字
@@ -66,11 +66,13 @@
 
 ### 2.2 权限最小集 (逐条说明)
 
-| 权限 (Repository permissions) | 级别         | 阶段        | 为什么需要                                                                                         |
-| ----------------------------- | ------------ | ----------- | -------------------------------------------------------------------------------------------------- |
-| Metadata                      | Read-only    | 第一阶段起  | GitHub 对所有 App 强制要求, 用于读取仓库基本信息, 解析 `owner/repo` 与 installation 的对应关系     |
-| Issues                        | Read & write | 第一阶段起  | 订阅 `issues` 与 `issue_comment` 事件的前提, 也是发 issue 评论, 开 issue, 关 issue, 加标签所需权限 |
-| Pull requests                 | Read & write | 第一阶段起  | 订阅 `pull_request`, `pull_request_review`, `pull_request_review_comment` 事件, 并回复 review 评论 |
+| 权限 (Repository permissions) | 级别         | 阶段          | 为什么需要                                                                                         |
+| ----------------------------- | ------------ | ------------- | -------------------------------------------------------------------------------------------------- |
+| Metadata                      | Read-only    | 第一阶段起    | GitHub 对所有 App 强制要求, 用于读取仓库基本信息, 解析 `owner/repo` 与 installation 的对应关系     |
+| Issues                        | Read & write | 第一阶段起    | 订阅 `issues` 与 `issue_comment` 事件的前提, 也是发 issue 评论, 开 issue, 关 issue, 加标签所需权限 |
+| Pull requests                 | Read & write | 第一阶段起    | 订阅 `pull_request`, `pull_request_review`, `pull_request_review_comment` 事件, 并回复 review 评论 |
+| Contents                      | Read-only    | 2026-11-08 起 | 订阅 `push` 与 `commit_comment` 的前提; 只读, App 仍不改代码, 不推提交, 不建分支                   |
+| Discussions                   | Read-only    | 2026-11-08 起 | 订阅 `discussion` 与 `discussion_comment`; 在 discussion 下回复时再升为 Read & write               |
 
 - Issues 写权限同时覆盖 PR 主线程上的普通评论, 因为 PR 主线程评论走的是 issue comments 接口, 这一点需复核
 - 加标签走 issue labels 接口, 依赖 Issues 写权限, 对 PR 加标签同样走 issue 接口, 需复核
@@ -79,7 +81,8 @@
 ### 2.3 一律不申请的权限
 
 - Administration, 仓库设置与协作者管理, 与收发消息无关, 申请即扩大破坏面
-- Contents 读写都不申请: 不订阅 `push`, App 永远不改代码, 不推提交, 不建分支
+- Contents 写权限不申请: App 永远不改代码, 不推提交, 不建分支 (只读权限见 2.2, 用于收 `push` 与 `commit_comment`)
+- 已安装的 App 升级到 2.2 的权限后, 仓库所有者要在 GitHub 上确认一次新权限, 否则这四类事件不会投递
 - Workflows 与 Actions, 不触发也不修改 CI
 - Secrets, Variables, Environments, Deployments, 涉及凭据与发布, 绝不申请
 - Checks, Commit statuses, Pages, Packages, Codespaces, 与消息无关
@@ -93,18 +96,23 @@
 
 事件集与规格第 3.4 节和 ADR 0005 第 7 节一致, 全部在第一阶段订阅
 
-| 事件 (X-GitHub-Event) | 关心的 action | 是否算一条消息 |
-| --- | --- | --- |
-| `issue_comment` | created, edited | 是, issue 与 PR 主线程上的评论 |
-| `pull_request_review_comment` | created, edited | 是, PR 代码行内评论 |
-| `pull_request_review` | submitted | 是, review 结论与正文 |
-| `issues` | opened, closed, reopened | opened 是普通消息, 其余为状态消息 |
-| `pull_request` | opened, closed, reopened, ready_for_review | opened 是普通消息, 其余为状态消息 |
-| `installation` | created, deleted, suspend, unsuspend | 否, 只更新 installation 缓存 |
-| `installation_repositories` | added, removed | 否, 只更新仓库到安装的映射 |
+| 事件 (X-GitHub-Event)         | 关心的 action                              | 是否算一条消息                                                       |
+| ----------------------------- | ------------------------------------------ | -------------------------------------------------------------------- |
+| `issue_comment`               | created, edited                            | 是, issue 与 PR 主线程上的评论                                       |
+| `pull_request_review_comment` | created, edited                            | 是, PR 代码行内评论                                                  |
+| `pull_request_review`         | submitted                                  | 是, review 结论与正文                                                |
+| `issues`                      | opened, closed, reopened                   | opened 是普通消息, 其余为状态消息                                    |
+| `pull_request`                | opened, closed, reopened, ready_for_review | opened 是普通消息, 其余为状态消息                                    |
+| `discussion`                  | created                                    | 是, 新开 discussion; 其它 action 只更新会话元数据                    |
+| `discussion_comment`          | created, edited                            | 是, discussion 下的评论, 回复带 `reply_to`                           |
+| `commit_comment`              | created                                    | 是, 提交上的评论 (含行内)                                            |
+| `push`                        | 无 action                                  | 每个 distinct 提交一条消息, 删分支与重复提交不产消息, 每次最多 20 条 |
+| `installation`                | created, deleted, suspend, unsuspend       | 否, 只更新 installation 缓存                                         |
+| `installation_repositories`   | added, removed                             | 否, 只更新仓库到安装的映射                                           |
 
 - `installation` 与 `installation_repositories` 无需在订阅页勾选, GitHub 会默认投递给 App, 需复核, 复核方法是新建开发用 App 后安装到测试仓库并在 Advanced 页查看是否收到这两类投递
-- 不订阅 `push`, 因此不申请 Contents 权限, 也不存在频道型的推送会话
+- `push` 与 `commit_comment` 需要 Contents 只读, discussion 两类需要 Discussions 只读, 见 2.2
+- 应用一键创建 (manifest) 默认勾选以上全部事件与权限
 - 未列出的事件与未列出的 action 一律返回 2xx 后丢弃, 不入库
 - edited 只覆盖同一 `dedup_key` 已有记录的 `text`, 不新增消息
 
@@ -112,10 +120,12 @@
 
 会话使用规格第 2 节的统一 session 地址, 写入 `messaging_messages.chat_id`
 
-| 会话 | 地址 | 示例 |
-| --- | --- | --- |
-| issue 或 PR 线程 | `github:<instance_id>:issue:<owner>/<repo>#<number>` | `github:7:issue:hx/HX-Email#42` |
-| 仓库 (只作 source 与建 issue 的 sink) | `github:<instance_id>:repo:<owner>/<repo>` | `github:7:repo:hx/HX-Email` |
+| 会话                                  | 地址                                                      | 示例                                     |
+| ------------------------------------- | --------------------------------------------------------- | ---------------------------------------- |
+| issue 或 PR 线程                      | `github:<instance_id>:issue:<owner>/<repo>#<number>`      | `github:7:issue:hx/HX-Email#42`          |
+| 仓库 (只作 source 与建 issue 的 sink) | `github:<instance_id>:repo:<owner>/<repo>`                | `github:7:repo:hx/HX-Email`              |
+| discussion 线程                       | `github:<instance_id>:discussion:<owner>/<repo>#<number>` | `github:7:discussion:hx/HX-Email#5`      |
+| 提交 (push 的提交与提交评论)          | `github:<instance_id>:commit:<owner>/<repo>@<sha>`        | `github:7:commit:hx/HX-Email@0123abc...` |
 
 - issue 与 PR 共用 `#<number>` 编号空间, 同一仓库内不会冲突, 是否是 PR 写在 `raw["gh_thread_kind"]` 这个键里
 - 旧前端需要的 `chat_type` 列按规格第 2 节写成 `group`, 路由层不读它
@@ -125,37 +135,56 @@
 
 envelope 以规格第 3.1 节为准, 每个字段都有确定的列, 存储增量见规格第 4 节; 下表只列 GitHub 各事件的取值
 
-| envelope 字段 | `issue_comment` | `pull_request_review_comment` | `pull_request_review` submitted | `issues` | `pull_request` |
-| --- | --- | --- | --- | --- | --- |
-| session | `...:issue:<full_name>#<issue.number>` | `...:issue:<full_name>#<pull_request.number>` | 同左 | `...:issue:<full_name>#<issue.number>` | `...:issue:<full_name>#<number>` |
-| sender.id | `str(comment.user.id)` | `str(comment.user.id)` | `str(review.user.id)` | `str(sender.id)` | `str(sender.id)` |
-| sender.name | `comment.user.login` | `comment.user.login` | `review.user.login` | `sender.login` | `sender.login` |
-| text | `comment.body` | `comment.body` | `review.state` 加 `review.body` | opened 为标题加空行加正文, 其余为状态句 | 同左 |
-| reply_to | 空串 | `rc:<in_reply_to_id>` 或空串 | 空串 | 空串 | 空串 |
-| platform_message_id | `ic:<comment.id>` | `rc:<comment.id>` | `rv:<review.id>` | `is:<issue.id>` | `pr:<pull_request.id>` |
-| dedup_key | 同 platform_message_id | 同 platform_message_id | 同 platform_message_id | opened 同 platform_message_id, 其余加 `:<action>:<X-GitHub-Delivery>` | 同左 |
-| occurred_at | `comment.created_at` | `comment.created_at` | `review.submitted_at` | `issue.created_at` 或 `issue.updated_at` | `pull_request.created_at` 或 `pull_request.updated_at` |
+| envelope 字段       | `issue_comment`                        | `pull_request_review_comment`                 | `pull_request_review` submitted | `issues`                                                              | `pull_request`                                         |
+| ------------------- | -------------------------------------- | --------------------------------------------- | ------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------ |
+| session             | `...:issue:<full_name>#<issue.number>` | `...:issue:<full_name>#<pull_request.number>` | 同左                            | `...:issue:<full_name>#<issue.number>`                                | `...:issue:<full_name>#<number>`                       |
+| sender.id           | `str(comment.user.id)`                 | `str(comment.user.id)`                        | `str(review.user.id)`           | `str(sender.id)`                                                      | `str(sender.id)`                                       |
+| sender.name         | `comment.user.login`                   | `comment.user.login`                          | `review.user.login`             | `sender.login`                                                        | `sender.login`                                         |
+| text                | `comment.body`                         | `comment.body`                                | `review.state` 加 `review.body` | opened 为标题加空行加正文, 其余为状态句                               | 同左                                                   |
+| reply_to            | 空串                                   | `rc:<in_reply_to_id>` 或空串                  | 空串                            | 空串                                                                  | 空串                                                   |
+| platform_message_id | `ic:<comment.id>`                      | `rc:<comment.id>`                             | `rv:<review.id>`                | `is:<issue.id>`                                                       | `pr:<pull_request.id>`                                 |
+| dedup_key           | 同 platform_message_id                 | 同 platform_message_id                        | 同 platform_message_id          | opened 同 platform_message_id, 其余加 `:<action>:<X-GitHub-Delivery>` | 同左                                                   |
+| occurred_at         | `comment.created_at`                   | `comment.created_at`                          | `review.submitted_at`           | `issue.created_at` 或 `issue.updated_at`                              | `pull_request.created_at` 或 `pull_request.updated_at` |
 
 - raw 约定: 至少包含 `gh_event`, `gh_action`, `gh_delivery`, `gh_installation_id`, `gh_repo_id`, `gh_thread_kind`, `html_url`, `sender_type` 这些键
 - raw 不存整个 payload, 只存上面这些键与少量事件专有键 (行内评论另含 `path`, `line`), 控制单条消息体积
 - `platform_message_id` 带类型前缀, 保证不同对象类型的数字 ID 不会撞车, 也让 edited 事件可以按同一 `dedup_key` 覆盖 text
 - 所有时间保留 GitHub 给出的 ISO 8601 UTC 字符串 (以 `Z` 结尾), 不做时区转换
 - 状态类消息的 text 用固定模板生成, 例如 "PR #12 closed (merged)", 模板放在 provider 模块内部
+- 新增事件的取值: discussion 为 `dn:<discussion.id>`, 标题加正文; discussion_comment 为 `dc:<comment.id>`, `reply_to` 为 `dc:<parent_id>`; commit_comment 为 `cc:<comment.id>`, raw 另含 `path`, `line`; push 的提交为 `cm:<sha>`, `dedup_key` 为 `cm:<full_name>@<sha>`, text 为提交说明, `occurred_at` 由带时区的 `timestamp` 换算成 UTC `Z`
+- 每条 envelope 另带触发字段, 随行存入 `trigger_json`, 见 3.5
 
 ### 3.4 防回环
 
 - `sender.type == "Bot"` 且 `sender.login == "<app-slug>[bot]"`, 或评论带 `performed_via_github_app` 且其 `id` 等于本 App 时, 该消息以 `sender.is_self=true` 入库, 路由 filter 默认 `exclude_self=true`, 不触发任何自动回复
 - 本 App 发出的评论正文末尾带隐藏标记 `<!-- hx-router delivery=<delivery_id> -->`, 入站映射时识别这个标记并从 `text` 中去掉, 作为第二道防线
 
+### 3.5 事件种类与触发判定
+
+| `kind`           | 来源                                                                                         |
+| ---------------- | -------------------------------------------------------------------------------------------- |
+| `thread_opened`  | issues opened, pull_request opened, discussion created                                       |
+| `thread_state`   | issues closed, reopened; pull_request closed, reopened, ready_for_review                     |
+| `comment`        | issue_comment, discussion_comment, commit_comment                                            |
+| `review_comment` | pull_request_review_comment                                                                  |
+| `review`         | pull_request_review submitted; 正文为空的 commented review 不产消息 (它的行内评论各自成消息) |
+| `commit`         | push 的每个提交                                                                              |
+
+- `flags.from_self`: 3.4 的防回环判定, 带隐藏标记或由本 App 发出
+- `flags.mention_self` 与 `mentions`: 在去掉标记后的正文里找 `@login`, 跳过代码块与行内代码, 跳过邮箱与路径里的 `@`; `@<app-slug>` 与 `@<app-slug>[bot]` 都算提及本 App; 本 App 自己发的消息恒为 false
+- `flags.reply_to_self`: 线程 (issue, PR, discussion) 由本 App 开出时, 线程里别人的每条消息都为 true; 带 `reply_to` 的消息 (行内评论回复, discussion 评论回复) 在入库时按 `reply_to` 查同实例的上一条, 它是本 App 发的就为 true
+- edited 改写正文时一并改写触发字段, 删掉 `@` 后 `mention_self` 变回 false
+- 订阅 filter 的 `kinds` 与 `mention_self` 直接作用在这些字段上; 本次之前入库的 GitHub 行没有存触发字段, 视图里 `mention_self` 与 `reply_to_self` 为 `null`
+
 ## 4. 发送侧写入动作清单
 
 路由网关只暴露下表三个写入动作, 通用入口是 MCP 的 `message_send` 与 REST 的 `POST /api/v1/router/messages`; 关闭 issue, 加标签这类非消息动作不在路由网关范围内, 不申请额外权限也不暴露接口
 
-| 动作 | 触发方式 | REST 接口 | 最小权限 | 结果未知时 |
-| --- | --- | --- | --- | --- |
-| 发 issue 或 PR 主线程评论 | sink 为 `...:issue:<owner>/<repo>#<number>` 且 `reply_to` 为空或为 `ic:` 前缀 | `POST /repos/{owner}/{repo}/issues/{number}/comments` | Issues: write, PR 主线程是否也只需 Issues 写需复核 | 在该线程最近 100 条评论中查标记 |
-| 回复 PR 行内评论 | sink 同上且 `reply_to` 为 `rc:<comment_id>` | `POST /repos/{owner}/{repo}/pulls/{number}/comments/{comment_id}/replies` | Pull requests: write | 在该 PR 最近 100 条 review comments 中查标记 |
-| 开 issue | sink 为 `...:repo:<owner>/<repo>` 且带 `title` | `POST /repos/{owner}/{repo}/issues` | Issues: write | 按 `creator=<app-slug>[bot]` 与 `since` 列 issue 查标记 |
+| 动作                      | 触发方式                                                                      | REST 接口                                                                 | 最小权限                                           | 结果未知时                                              |
+| ------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------- |
+| 发 issue 或 PR 主线程评论 | sink 为 `...:issue:<owner>/<repo>#<number>` 且 `reply_to` 为空或为 `ic:` 前缀 | `POST /repos/{owner}/{repo}/issues/{number}/comments`                     | Issues: write, PR 主线程是否也只需 Issues 写需复核 | 在该线程最近 100 条评论中查标记                         |
+| 回复 PR 行内评论          | sink 同上且 `reply_to` 为 `rc:<comment_id>`                                   | `POST /repos/{owner}/{repo}/pulls/{number}/comments/{comment_id}/replies` | Pull requests: write                               | 在该 PR 最近 100 条 review comments 中查标记            |
+| 开 issue                  | sink 为 `...:repo:<owner>/<repo>` 且带 `title`                                | `POST /repos/{owner}/{repo}/issues`                                       | Issues: write                                      | 按 `creator=<app-slug>[bot]` 与 `since` 列 issue 查标记 |
 
 ### 4.1 delivery_id 标记与结果未知
 

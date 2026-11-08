@@ -46,6 +46,17 @@ def decode_attachments(raw: str) -> tuple[Attachment, ...]:
     return tuple(out)
 
 
+def decode_trigger(raw: str) -> dict[str, object] | None:
+    """Stored trigger signals; empty or malformed means the row predates them."""
+    if not raw:
+        return None
+    try:
+        parsed: object = json.loads(raw)
+    except ValueError:
+        return None
+    return parsed if isinstance(parsed, dict) and parsed else None
+
+
 def row_to_envelope(settings: Settings, row: sqlite3.Row, include_raw: bool) -> Envelope:
     message_id: int = int(row["id"])
     instance_id: int = int(row["instance_id"])
@@ -85,4 +96,5 @@ def row_to_envelope(settings: Settings, row: sqlite3.Row, include_raw: bool) -> 
         received_at=iso_utc_from_sqlite(str(row["created_at"] or "")),
         raw=raw,
         raw_ref=str(row["raw_ref"] or ""),
+        trigger=decode_trigger(str(row["trigger_json"] or "")),
     )

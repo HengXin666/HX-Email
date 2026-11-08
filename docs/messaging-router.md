@@ -104,7 +104,7 @@ id      := 由该 kind 的 id_parts 个 "/" 分段组成 (GitHub repo 为 2: own
 - 前缀按路径段匹配, 不按字符: `group/12` 不覆盖 `group/123`; 选择器可以停在一个 kind 上 (`qq:3/group`) 表示该 kind 全部对象, 停在一个对象上表示它及其下全部子对象
 - kind 的层级, id 段数, 正则, 与 v1 的映射 (`legacy_type`, `legacy_peer` 模板如 `{repo}#{issue}`) 全部写在平台声明里 (`server/contract/builtin.py`), 核心不再枚举平台与类型; 新平台或新层级只加声明与 provider
 - 所有返回 session 或 sink 的地方同时返回 `address` (v2); 一个无法映射的 v1 值返回空字符串而不是报错
-- `capabilities_list` (MCP) 与 `GET /api/v1/router/capabilities` (REST) 返回每个平台的地址层级, 事件种类, 已支持的信号与可用动作; 只声明已实现的能力, QQ 频道, QQ 空间, GitHub discussion 与 commit 在实现它们的阶段加入声明
+- `capabilities_list` (MCP) 与 `GET /api/v1/router/capabilities` (REST) 返回每个平台的地址层级, 事件种类, 已支持的信号与可用动作; 只声明已实现的能力; GitHub discussion 与 commit 已于 2026-11-08 加入声明 (只收不发), QQ 频道与 QQ 空间在实现它们的阶段加入
 - 决策记录: `.agents/notes/implemented/feature/2026-11-08-router-contract-v2.md`, ADR 0006
 
 ## 3. 统一 envelope
@@ -240,19 +240,20 @@ id      := 由该 kind 的 id_parts 个 "/" 分段组成 (GitHub repo 为 2: own
 
 `messages_pull`, `events_wait`, `GET /router/messages`, `GET /router/wait` 与 SSE 返回的每一项, 在 3.1 的全部字段之外增加以下字段, 3.1 字段保持不变
 
-| 字段       | 类型   | 说明                                                                                                                                   |
-| ---------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `contract` | int    | 固定为 2                                                                                                                               |
-| `address`  | string | 所属会话的 v2 地址                                                                                                                     |
-| `thread`   | string | 会话线程地址; 当前两个平台与 `address` 相同, QQ 空间评论与 GitHub review 线程接入后会指向更细的线程                                    |
-| `parent`   | string | 上一层地址, issue 的上一层是仓库, QQ 会话的上一层是账号                                                                                |
-| `kind`     | string | 事件种类, 取自平台声明: QQ 为 `message`; GitHub 为 `thread_opened`, `comment`, `review_comment`                                        |
-| `mentions` | array  | `[{id, name, is_self}]`, 平台未提供时为空数组                                                                                          |
-| `flags`    | object | `from_self`, `mention_self`, `reply_to_self`; 值为 `null` 表示该平台尚未上报此信号 (见 capabilities 的 `signals`), 与 `false` 含义不同 |
-| `segments` | array  | 有序内容段, 当前由 `reply_to`, `text`, `attachments` 派生: `{type: "reply", id}`, `{type: "text", text}`, 附件段沿用附件字段           |
+| 字段       | 类型   | 说明                                                                                                                                                                          |
+| ---------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `contract` | int    | 固定为 2                                                                                                                                                                      |
+| `address`  | string | 所属会话的 v2 地址                                                                                                                                                            |
+| `thread`   | string | 会话线程地址; 当前两个平台与 `address` 相同, QQ 空间评论与 GitHub review 线程接入后会指向更细的线程                                                                           |
+| `parent`   | string | 上一层地址, issue 的上一层是仓库, QQ 会话的上一层是账号                                                                                                                       |
+| `kind`     | string | 事件种类, 取自平台声明: QQ 为 `message`; GitHub 为 `thread_opened`, `thread_state`, `comment`, `review_comment`, `review`, `commit` (取值见 docs/providers/github-app.md 3.5) |
+| `mentions` | array  | `[{id, name, is_self}]`, 平台未提供时为空数组                                                                                                                                 |
+| `flags`    | object | `from_self`, `mention_self`, `reply_to_self`; 值为 `null` 表示该平台尚未上报此信号 (见 capabilities 的 `signals`), 与 `false` 含义不同                                        |
+| `segments` | array  | 有序内容段, 当前由 `reply_to`, `text`, `attachments` 派生: `{type: "reply", id}`, `{type: "text", text}`, 附件段沿用附件字段                                                  |
 
 - provider 在 envelope dict 里给出 `mentions`, `flags`, `segments` 时以 provider 为准, 否则按上表派生
-- 当前存储不保存 mentions 与 flags; 把它们落库并用于订阅过滤 (`mention_self`, `reply_to_self`, `kind`) 属于下一阶段 (hub 与持久订阅)
+- provider 给出的 `kind`, `mentions`, `flags` 随行存进 `messaging_messages.trigger_json` (2026-11-08 起, GitHub 先行); 视图优先用存下的值, 旧行与未上报的平台才按 `platform_message_id` 前缀与发送者推导, 推导不出的信号为 `null`
+- 带 `reply_to` 且 provider 上报了触发字段的消息, 入库时按 `reply_to` 查同实例的上一条, 它是本账号发出的就把 `reply_to_self` 置 true
 
 ## 4. 数据模型增量
 

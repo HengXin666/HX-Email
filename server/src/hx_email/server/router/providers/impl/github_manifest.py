@@ -36,18 +36,25 @@ INGRESS_PATH: Final[str] = "/api/v1/router/ingress/github/{instance_id}"
 CALLBACK_PATH: Final[str] = "/api/v1/router/github/callback"
 NAME_PREFIX: Final[str] = "hx-email-"
 CODE_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
-# 权限最小集: Contents 不申请, 所以不写 contents 键 (不写即 No access)
+# 权限最小集: contents 与 discussions 只读, 仅为收 push, commit_comment, discussion 事件
 DEFAULT_PERMISSIONS: Final[dict[str, str]] = {
     "metadata": "read",
     "issues": "write",
     "pull_requests": "write",
+    "contents": "read",
+    "discussions": "read",
 }
 # installation 与 installation_repositories 默认投递, 写进来 GitHub 会拒掉整个 manifest
 DEFAULT_EVENTS: Final[tuple[str, ...]] = (
     "issue_comment",
+    "issues",
+    "pull_request",
     "pull_request_review",
     "pull_request_review_comment",
-    "issues",
+    "discussion",
+    "discussion_comment",
+    "commit_comment",
+    "push",
 )
 REQUIRED_FIELDS: Final[tuple[str, ...]] = ("id", "slug", "client_id", "pem", "webhook_secret")
 

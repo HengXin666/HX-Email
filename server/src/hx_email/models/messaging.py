@@ -14,6 +14,8 @@ MESSAGE_ROUTER_COLUMNS: Final[tuple[tuple[str, str], ...]] = (
     ("occurred_at", "TEXT NOT NULL DEFAULT ''"),
     ("raw_ref", "TEXT NOT NULL DEFAULT ''"),
     ("dedup_key", "TEXT NOT NULL DEFAULT ''"),
+    # provider 给出的触发信号 {kind, mentions, flags}, 旧行为空串
+    ("trigger_json", "TEXT NOT NULL DEFAULT ''"),
 )
 ROUTE_COLUMNS: Final[tuple[tuple[str, str], ...]] = (
     ("name", "TEXT NOT NULL DEFAULT ''"),

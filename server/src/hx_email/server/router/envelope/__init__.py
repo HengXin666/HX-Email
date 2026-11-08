@@ -15,6 +15,7 @@ from hx_email.server.router.envelope.model import (
     attachment_to_dict,
     parse_attachments,
     parse_sender,
+    parse_trigger,
     require_str,
     validate_inbound,
 )
@@ -70,6 +71,7 @@ __all__ = [
     "parse_attachments",
     "parse_sender",
     "parse_session",
+    "parse_trigger",
     "raw_relative_path",
     "require_str",
     "validate_inbound",
