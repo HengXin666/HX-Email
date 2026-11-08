@@ -40,15 +40,23 @@ from hx_email.server.router.providers.impl.github.github_auth import (
     open_app_config,
 )
 from hx_email.server.router.providers.impl.github.github_contract import GITHUB_LIMITS
+from hx_email.server.router.providers.impl.qzone.qzone_contract import (
+    QZONE_CONSERVATIVE,
+    QZONE_DEFAULT,
+)
 from hx_email.server.router.providers.qq import QQNapCatProvider
+from hx_email.server.router.providers.qzone import QzoneProvider
 
 LOGGER: logging.Logger = logging.getLogger("hx_email.gateway.providers")
 SUPPORTED_KINDS: tuple[str, ...] = ("qq", "github")
+QZONE_TYPES: frozenset[str] = frozenset({"qzonepost"})
 EMPTY_GITHUB: GitHubAppConfig = GitHubAppConfig("", "", "", "", "")
 GITHUB_PROFILE: RateProfile = from_provider_limits("github", GITHUB_LIMITS)
 
 # 整形器是进程级单例: REST, MCP, 前端发送与出站分发共用同一个桶, 否则各走各的桶就等于没限流
 SHAPER: Shaper = Shaper()
+# QQ 空间与聊天同号不同风控档: 独立的桶, 空间评论再多也不占聊天的配额, 反之亦然
+QZONE_SHAPER: Shaper = Shaper(QZONE_DEFAULT)
 
 
 @dataclass(frozen=True)
@@ -70,6 +78,7 @@ class ProviderHub:
         self.lock: threading.Lock = threading.Lock()
         self.providers: dict[int, MessagingProvider] = {}
         self.github: GitHubAppProvider | None = None
+        self.qzones: dict[int, QzoneProvider] = {}
 
     def provider_for(self, settings: Settings, instance: InstanceRow) -> MessagingProvider:
         with self.lock:
@@ -104,27 +113,63 @@ class ProviderHub:
             return self.github
         raise SessionNotFoundError(f"platform {instance.kind} has no router provider yet")
 
+    def qzone_for(self, settings: Settings, instance: InstanceRow) -> QzoneProvider:
+        """同一实例上的空间通道; 复用聊天通道的 OneBot adapter 取 cookie."""
+        with self.lock:
+            cached: QzoneProvider | None = self.qzones.get(instance.id)
+            if cached is not None:
+                return cached
+            record: MessagingInstance | None = get_instance_by_id(settings, instance.id)
+            if record is None or instance.kind != "qq":
+                raise SessionNotFoundError(f"instance {instance.id} has no QQ Zone")
+            adapter: MessagingAdapter = get_adapter(settings, record)
+            provider = QzoneProvider(
+                instance.id,
+                adapter,  # type: ignore[arg-type]  # OneBotAdapter implements call_action
+                instance.config.get("rate_profile", "default"),
+            )
+            self.qzones[instance.id] = provider
+            QZONE_SHAPER.configure(instance.id, profile_for(instance, "qzonepost"))
+            return provider
+
+    def for_session(
+        self, settings: Settings, instance: InstanceRow, session_type: str
+    ) -> MessagingProvider:
+        if session_type in QZONE_TYPES:
+            return cast(MessagingProvider, self.qzone_for(settings, instance))
+        return self.provider_for(settings, instance)
+
     def forget(self, instance_id: int) -> None:
         with self.lock:
             self.providers.pop(instance_id, None)
+            self.qzones.pop(instance_id, None)
             if self.github is not None:
                 self.github.caches.pop(instance_id, None)
 
     def clear(self) -> None:
         with self.lock:
             self.providers.clear()
+            self.qzones.clear()
             self.github = None
 
 
 HUB: ProviderHub = ProviderHub()
 
 
-def profile_for(instance: InstanceRow) -> RateProfile:
+def profile_for(instance: InstanceRow, session_type: str = "") -> RateProfile:
     if instance.kind == "github":
         return GITHUB_PROFILE
-    if instance.config.get("rate_profile") == "conservative":
+    conservative: bool = instance.config.get("rate_profile") == "conservative"
+    if session_type in QZONE_TYPES:
+        return QZONE_CONSERVATIVE if conservative else QZONE_DEFAULT
+    if conservative:
         return QQ_CONSERVATIVE
     return QQ_DEFAULT
+
+
+def shaper_for(session_type: str) -> Shaper:
+    """出站按会话类型选桶: 空间评论走空间档, 其余走账号的聊天档."""
+    return QZONE_SHAPER if session_type in QZONE_TYPES else SHAPER
 
 
 def github_config(settings: Settings, instance_id: int) -> GitHubAppConfig:

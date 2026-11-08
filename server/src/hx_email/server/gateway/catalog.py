@@ -34,7 +34,9 @@ from hx_email.server.router.impl.shaper import RateProfile
 from hx_email.server.router.provider import SessionRef
 
 LOGGER: logging.Logger = logging.getLogger("hx_email.gateway.catalog")
-SENDABLE_TYPES: Final[frozenset[str]] = frozenset({"private", "group", "temp", "issue", "repo"})
+SENDABLE_TYPES: Final[frozenset[str]] = frozenset(
+    {"private", "group", "temp", "qzonepost", "issue", "repo"}
+)
 MAX_SESSIONS: Final[int] = 200
 
 
@@ -154,7 +156,7 @@ def session_select(
     instance: InstanceRow = require_owned(settings, user_id, address.instance_id)
     if instance.kind != address.platform:
         raise SessionNotFoundError(f"{session} does not match instance platform {instance.kind}")
-    profile: RateProfile = profile_for(instance)
+    profile: RateProfile = profile_for(instance, address.session_type)
     cursor: str = (
         earliest_cursor(instance.id).encode()
         if start == "earliest"

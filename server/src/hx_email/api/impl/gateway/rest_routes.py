@@ -30,6 +30,7 @@ from hx_email.server.gateway.catalog import (
     sources_list,
 )
 from hx_email.server.gateway.impl.dispatch import DISPATCHER, seconds_until_next
+from hx_email.server.gateway.impl.qzone_poll import QZONE_POLLER
 from hx_email.server.gateway.listen import pull
 from hx_email.server.gateway.sending import delivery_status, send_message
 from hx_email.server.hub.consume import stream_source, wait_source
@@ -80,6 +81,7 @@ def register_gateway(app: FastAPI, api: APIRouter, settings: Settings) -> None:
         if pending is not None:
             DISPATCHER.wake(settings)
         FEEDER.start(settings)
+        QZONE_POLLER.start(settings)
 
 
 def register_gateway_rest_routes(router: APIRouter, settings: Settings) -> None:

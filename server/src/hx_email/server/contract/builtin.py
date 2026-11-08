@@ -4,6 +4,8 @@ QQ (NapCat, OneBot 11) and GitHub (App) as implemented today. v1 mapping:
 - ``qq:<iid>/private/<qq>``  is ``qq:<iid>:private:<qq>``
 - ``qq:<iid>/group/<gid>``   is ``qq:<iid>:group:<gid>``
 - ``qq:<iid>/temp/<gid>-<qq>`` is ``qq:<iid>:temp:<gid>-<qq>``
+- ``qq:<iid>/qzone/<qq>/post/<tid>`` is ``qq:<iid>:qzonepost:<qq>_<tid>`` (QQ 空间说说;
+  ``qzone`` alone is a grouping level for "every post in this space")
 - ``github:<iid>/repo/<owner>/<name>`` is ``github:<iid>:repo:<owner>/<name>``
 - ``github:<iid>/repo/<owner>/<name>/issue/<n>`` is ``github:<iid>:issue:<owner>/<name>#<n>``
   (issue and pull request share GitHub's number space, so one kind covers both threads)
@@ -27,12 +29,14 @@ from hx_email.server.contract.capabilities import (
 DIGITS: Final[str] = r"[0-9]+"
 REPO_NAME: Final[str] = r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+"
 COMMIT_SHA: Final[str] = r"[0-9a-f]{7,40}"
+QZONE_TID: Final[str] = r"[0-9A-Za-z]+"
 
 QQ: Final[PlatformCapabilities] = PlatformCapabilities(
     platform="qq",
     title="QQ (NapCat / OneBot 11)",
     risk_level="third_party",
     delivery="push",
+    rate_profile="qq",
     kinds=(
         AddressKind(
             "private",
@@ -58,16 +62,42 @@ QQ: Final[PlatformCapabilities] = PlatformCapabilities(
             sendable=True,
             description="群临时会话, id 为 <群号>-<QQ 号>, 只能回复不能首发",
         ),
+        AddressKind(
+            "qzone",
+            id_pattern=DIGITS,
+            description="QQ 空间, id 为空间主人的 QQ 号; 只作分组, 订阅它即订阅其下全部说说",
+            risk_level="unofficial_web",
+            rate_profile="qzone",
+        ),
+        AddressKind(
+            "post",
+            parent="qzone",
+            id_pattern=QZONE_TID,
+            legacy_type="qzonepost",
+            legacy_peer="{qzone}_{post}",
+            sendable=True,
+            description="一条说说, id 为 tid; 说说, 评论与二级回复都是这里的消息, 靠轮询拉取",
+            risk_level="unofficial_web",
+            rate_profile="qzone",
+        ),
     ),
-    event_kinds=("message",),
+    event_kinds=("message", "post", "comment"),
     default_event_kind="message",
-    signals=("from_self",),
+    signals=("from_self", "mention_self", "reply_to_self"),
     actions=(
         ActionSpec(
             "message_send",
-            targets=("private", "group", "temp"),
-            description="发文本, 可带 reply_to 引用一条平台消息",
+            targets=("private", "group", "temp", "post"),
+            description=(
+                "发文本, 可带 reply_to 引用一条平台消息; 发到说说即评论, "
+                "reply_to 为该说说下的评论 id 时回复那条评论"
+            ),
         ),
+    ),
+    kind_rules=(
+        KindRule("qzp:", "post"),
+        KindRule("qzc:", "comment"),
+        KindRule("qzr:", "comment"),
     ),
 )
 
@@ -76,6 +106,7 @@ GITHUB: Final[PlatformCapabilities] = PlatformCapabilities(
     title="GitHub (App)",
     risk_level="official",
     delivery="push",
+    rate_profile="github",
     kinds=(
         AddressKind(
             "repo",

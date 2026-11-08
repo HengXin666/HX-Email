@@ -6,8 +6,10 @@ event kinds it emits, which signals (flags) it fills, and which actions it accep
 address parser, the MCP schema enums and ``capabilities_list`` all read this registry, so
 a new platform is one declaration plus a provider, never an edit to a core enum.
 
-Only what is implemented is declared. Planned kinds (QQ guild, QQ zone, GitHub discussion
-and commit) join the declaration in the stage that implements them.
+Only what is implemented is declared; a kind joins the declaration in the stage that
+implements it. Risk is declared per platform and may be overridden per kind, together
+with the name of the rate profile its sends are shaped by: QQ chat and QQ Zone share an
+account but not a risk tier (docs/providers/qq-zone.md 4).
 """
 
 from __future__ import annotations
@@ -16,7 +18,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Final, Literal
 
-RiskLevel = Literal["official", "third_party"]
+RiskLevel = Literal["official", "third_party", "unofficial_web"]
 DeliveryMode = Literal["push", "pull"]
 NAME_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[a-z][a-z0-9_]*$")
 PLACEHOLDER: Final[re.Pattern[str]] = re.compile(r"\{([a-z][a-z0-9_]*)\}")
@@ -44,6 +46,8 @@ class AddressKind:
     legacy_peer: str = ""
     sendable: bool = False
     description: str = ""
+    risk_level: str = ""
+    rate_profile: str = ""
 
     def id_matches(self, ident: str) -> bool:
         parts: list[str] = ident.split("/")
@@ -80,6 +84,7 @@ class PlatformCapabilities:
     signals: tuple[str, ...]
     actions: tuple[ActionSpec, ...]
     kind_rules: tuple[KindRule, ...] = ()
+    rate_profile: str = ""
     index: dict[str, AddressKind] = field(default_factory=dict, compare=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -135,6 +140,7 @@ class PlatformCapabilities:
             "title": self.title,
             "risk_level": self.risk_level,
             "delivery": self.delivery,
+            "rate_profile": self.rate_profile,
             "address_kinds": [
                 {
                     "name": kind.name,
@@ -142,6 +148,8 @@ class PlatformCapabilities:
                     "id_parts": kind.arity,
                     "sendable": kind.sendable,
                     "description": kind.description,
+                    "risk_level": kind.risk_level or self.risk_level,
+                    "rate_profile": kind.rate_profile or self.rate_profile,
                 }
                 for kind in self.kinds
             ],

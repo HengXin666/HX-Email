@@ -23,7 +23,13 @@ from datetime import UTC, datetime
 from hx_email.config import Settings
 from hx_email.database import connect
 from hx_email.server.gateway.impl.breaker import BREAKER
-from hx_email.server.gateway.providers import HUB, SHAPER, InstanceRow, load_instance
+from hx_email.server.gateway.providers import (
+    HUB,
+    QZONE_TYPES,
+    InstanceRow,
+    load_instance,
+    shaper_for,
+)
 from hx_email.server.hub.bus import BUS, Hit
 from hx_email.server.push.webhook_deliver import submit
 from hx_email.server.router.envelope import (
@@ -150,7 +156,10 @@ class Dispatcher:
             mark(settings, entry.id, "held", "outbound manual_hold")
             return
         text: str = str(entry.payload.get("text") or "")
-        decision: Decision = SHAPER.acquire(instance_id, entry.session, text)
+        session_type: str = parse_session(entry.session).session_type
+        if session_type in QZONE_TYPES:
+            HUB.qzone_for(settings, instance)  # 首次使用时为该实例配置空间档
+        decision: Decision = shaper_for(session_type).acquire(instance_id, entry.session, text)
         if not decision.allowed:
             wait: int = max(1, math.ceil(decision.wait_seconds))
             record_result(
@@ -177,8 +186,8 @@ class Dispatcher:
         self, settings: Settings, instance: InstanceRow, entry: Entry, text: str
     ) -> SendResult:
         try:
-            provider: MessagingProvider = HUB.provider_for(settings, instance)
             address: SessionAddress = parse_session(entry.session)
+            provider: MessagingProvider = HUB.for_session(settings, instance, address.session_type)
             if (
                 isinstance(provider, QQNapCatProvider)
                 and entry.session not in provider.known_sessions

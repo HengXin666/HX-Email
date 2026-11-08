@@ -29,7 +29,7 @@ from hx_email.server.router.impl.outbox import EnqueueResult, Entry, enqueue_sen
 from hx_email.server.router.impl.outbox_admin import find_send, get_entry, set_instance_held
 
 MAX_WAIT_SECONDS: Final[float] = 5.0
-QQ_TYPES: Final[frozenset[str]] = frozenset({"private", "group", "temp"})
+QQ_TYPES: Final[frozenset[str]] = frozenset({"private", "group", "temp", "qzonepost"})
 GITHUB_TYPES: Final[frozenset[str]] = frozenset({"issue", "repo"})
 
 
@@ -79,7 +79,7 @@ def send_message(
         raise SessionNotFoundError(f"{sink} does not match instance platform {instance.kind}")
     if not text.strip():
         raise SessionNotSendableError("text must not be empty")
-    limit: int = profile_for(instance).max_text_length
+    limit: int = profile_for(instance, address.session_type).max_text_length
     if len(text) > limit:
         raise TextTooLongError(f"text is {len(text)} characters, limit is {limit}")
     check_sendable(instance, address, title)

@@ -105,7 +105,7 @@ def test_reader_accepts_v2_sources() -> None:
 def test_registry_drives_platforms_and_listing() -> None:
     assert REGISTRY.platform_names() == frozenset({"qq", "github"})
     assert REGISTRY.legacy_types() == frozenset(
-        {"private", "group", "temp", "repo", "issue", "discussion", "commit"}
+        {"private", "group", "temp", "qzonepost", "repo", "issue", "discussion", "commit"}
     )
     listing = REGISTRY.listing("github")
     assert [item["platform"] for item in listing] == ["github"]

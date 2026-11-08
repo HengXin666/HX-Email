@@ -68,6 +68,7 @@ source 与 sink 共用同一套地址, 统一叫 session 地址, 这是全套文
 | QQ 好友私聊             | `private`    | 对方 QQ 号                | `qq:3:private:10001`            |
 | QQ 群                   | `group`      | 群号                      | `qq:3:group:123456789`          |
 | QQ 群临时会话           | `temp`       | `<群号>-<对方 QQ 号>`     | `qq:3:temp:123456789-10001`     |
+| QQ 空间说说             | `qzonepost`  | `<主人 QQ 号>_<tid>`      | `qq:3:qzonepost:10001_a8b6...`  |
 | GitHub 仓库             | `repo`       | `<owner>/<repo>`          | `github:7:repo:hx/HX-Email`     |
 | GitHub issue 或 PR 线程 | `issue`      | `<owner>/<repo>#<number>` | `github:7:issue:hx/HX-Email#42` |
 
@@ -99,12 +100,15 @@ id      := 由该 kind 的 id_parts 个 "/" 分段组成 (GitHub repo 为 2: own
 | `qq:3/temp/555-10001`                | 群临时会话                           | `qq:3:temp:555-10001`                                         |
 | `github:7/repo/hx/HX-Email`          | 仓库本身, 作为选择器时含其下全部线程 | `github:7:repo:hx/HX-Email` 加 `github:7:issue:hx/HX-Email#*` |
 | `github:7/repo/hx/HX-Email/issue/42` | issue 或 PR 线程                     | `github:7:issue:hx/HX-Email#42`                               |
+| `qq:3/qzone/10001`                   | 该 QQ 号空间的全部说说 (选择器)      | `qq:3:qzonepost:10001_*`                                      |
+| `qq:3/qzone/10001/post/<tid>`        | 一条说说及其评论                     | `qq:3:qzonepost:10001_<tid>`                                  |
 
 - 区分规则: 实例号后紧跟 `/` 或结束为 v2, 紧跟 `:` 为 v1. 所有接受 session, sink, source 的入口两种都收, 以 v1 落库与去重, 所以同一会话用两种写法发送共享幂等键
 - 前缀按路径段匹配, 不按字符: `group/12` 不覆盖 `group/123`; 选择器可以停在一个 kind 上 (`qq:3/group`) 表示该 kind 全部对象, 停在一个对象上表示它及其下全部子对象
 - kind 的层级, id 段数, 正则, 与 v1 的映射 (`legacy_type`, `legacy_peer` 模板如 `{repo}#{issue}`) 全部写在平台声明里 (`server/contract/builtin.py`), 核心不再枚举平台与类型; 新平台或新层级只加声明与 provider
 - 所有返回 session 或 sink 的地方同时返回 `address` (v2); 一个无法映射的 v1 值返回空字符串而不是报错
-- `capabilities_list` (MCP) 与 `GET /api/v1/router/capabilities` (REST) 返回每个平台的地址层级, 事件种类, 已支持的信号与可用动作; 只声明已实现的能力; GitHub discussion 与 commit 已于 2026-11-08 加入声明 (只收不发), QQ 频道与 QQ 空间在实现它们的阶段加入
+- `capabilities_list` (MCP) 与 `GET /api/v1/router/capabilities` (REST) 返回每个平台的地址层级, 事件种类, 已支持的信号与可用动作; 只声明已实现的能力; GitHub discussion 与 commit 已于 2026-11-08 加入声明 (只收不发), QQ 空间 (`qzone`, `post`) 于 2026-11-09 加入, QQ 频道在实现它的阶段加入
+- 风控等级与整形档位按平台声明, 可按 kind 覆盖: 每个地址层级在 capabilities 里带 `risk_level` 与 `rate_profile`. QQ 聊天为 `third_party` / `qq`, QQ 空间为 `unofficial_web` / `qzone`, GitHub 为 `official` / `github`
 - 决策记录: `.agents/notes/implemented/feature/2026-11-08-router-contract-v2.md`, ADR 0006
 
 ## 3. 统一 envelope
@@ -240,16 +244,16 @@ id      := 由该 kind 的 id_parts 个 "/" 分段组成 (GitHub repo 为 2: own
 
 `messages_pull`, `events_wait`, `GET /router/messages`, `GET /router/wait` 与 SSE 返回的每一项, 在 3.1 的全部字段之外增加以下字段, 3.1 字段保持不变
 
-| 字段       | 类型   | 说明                                                                                                                                                                          |
-| ---------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `contract` | int    | 固定为 2                                                                                                                                                                      |
-| `address`  | string | 所属会话的 v2 地址                                                                                                                                                            |
-| `thread`   | string | 会话线程地址; 当前两个平台与 `address` 相同, QQ 空间评论与 GitHub review 线程接入后会指向更细的线程                                                                           |
-| `parent`   | string | 上一层地址, issue 的上一层是仓库, QQ 会话的上一层是账号                                                                                                                       |
-| `kind`     | string | 事件种类, 取自平台声明: QQ 为 `message`; GitHub 为 `thread_opened`, `thread_state`, `comment`, `review_comment`, `review`, `commit` (取值见 docs/providers/github-app.md 3.5) |
-| `mentions` | array  | `[{id, name, is_self}]`, 平台未提供时为空数组                                                                                                                                 |
-| `flags`    | object | `from_self`, `mention_self`, `reply_to_self`; 值为 `null` 表示该平台尚未上报此信号 (见 capabilities 的 `signals`), 与 `false` 含义不同                                        |
-| `segments` | array  | 有序内容段, 当前由 `reply_to`, `text`, `attachments` 派生: `{type: "reply", id}`, `{type: "text", text}`, 附件段沿用附件字段                                                  |
+| 字段       | 类型   | 说明                                                                                                                                                                                                                                                |
+| ---------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `contract` | int    | 固定为 2                                                                                                                                                                                                                                            |
+| `address`  | string | 所属会话的 v2 地址                                                                                                                                                                                                                                  |
+| `thread`   | string | 会话线程地址; 当前两个平台与 `address` 相同, QQ 空间评论与 GitHub review 线程接入后会指向更细的线程                                                                                                                                                 |
+| `parent`   | string | 上一层地址, issue 的上一层是仓库, QQ 会话的上一层是账号                                                                                                                                                                                             |
+| `kind`     | string | 事件种类, 取自平台声明: QQ 聊天为 `message`, QQ 空间为 `post`, `comment` (取值见 docs/providers/qq-zone.md 3); GitHub 为 `thread_opened`, `thread_state`, `comment`, `review_comment`, `review`, `commit` (取值见 docs/providers/github-app.md 3.5) |
+| `mentions` | array  | `[{id, name, is_self}]`, 平台未提供时为空数组                                                                                                                                                                                                       |
+| `flags`    | object | `from_self`, `mention_self`, `reply_to_self`; 值为 `null` 表示该平台尚未上报此信号 (见 capabilities 的 `signals`), 与 `false` 含义不同                                                                                                              |
+| `segments` | array  | 有序内容段, 当前由 `reply_to`, `text`, `attachments` 派生: `{type: "reply", id}`, `{type: "text", text}`, 附件段沿用附件字段                                                                                                                        |
 
 - provider 在 envelope dict 里给出 `mentions`, `flags`, `segments` 时以 provider 为准, 否则按上表派生
 - provider 给出的 `kind`, `mentions`, `flags` 随行存进 `messaging_messages.trigger_json` (2026-11-08 起, GitHub 先行); 视图优先用存下的值, 旧行与未上报的平台才按 `platform_message_id` 前缀与发送者推导, 推导不出的信号为 `null`
@@ -824,6 +828,7 @@ MCP server 名为 `hx-router`, 传输为 streamable HTTP (`/mcp`) 与 stdio (`hx
 | 每次发送附加随机抖动                | 0.5 到 1.5 秒             | 1 到 3 秒                    |
 | 单条长度                            | 1500 字符                 | 1500 字符                    |
 
+- QQ 空间评论不进这张表, 走独立的 `qzone` 档 (docs/providers/qq-zone.md 4): 空间与聊天同号, 但各有一个桶, 空间的风控类失败同样计入 9.3 的熔断, 熔断会同时停掉聊天与空间的出站
 - 单条 1500 字符是保守取值, QQ 客户端的实际单条上限需复核, 复核方法是用测试小号分别发送 1500, 3000, 4500 字符的纯文本并记录是否截断或失败
 - 同一内容发往多个会话 (内容相同以去除空白后的 SHA-256 判定) 额外受限: 相邻两个会话间隔不少于 8 秒再加 0 到 4 秒抖动, 同一内容每天最多发往 20 个会话, 超出返回 `rate_limited`
 
