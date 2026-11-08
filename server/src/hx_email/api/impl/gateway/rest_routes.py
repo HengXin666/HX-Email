@@ -33,6 +33,7 @@ from hx_email.server.gateway.impl.dispatch import DISPATCHER, seconds_until_next
 from hx_email.server.gateway.listen import pull
 from hx_email.server.gateway.sending import delivery_status, send_message
 from hx_email.server.hub.consume import stream_source, wait_source
+from hx_email.server.push.webhook_feed import FEEDER
 from hx_email.server.router.impl.outbox_admin import recover_after_restart
 
 LOGGER: logging.Logger = logging.getLogger("hx_email.gateway.rest")
@@ -78,6 +79,7 @@ def register_gateway(app: FastAPI, api: APIRouter, settings: Settings) -> None:
             return
         if pending is not None:
             DISPATCHER.wake(settings)
+        FEEDER.start(settings)
 
 
 def register_gateway_rest_routes(router: APIRouter, settings: Settings) -> None:

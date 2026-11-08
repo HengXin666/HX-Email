@@ -4,10 +4,14 @@ import type {
   RouterEventPage,
   RouterHubStats,
   RouterIssuedKey,
+  RouterSocketFrame,
   RouterSource,
   RouterSubscription,
   RouterSubscriptionCreate,
   RouterSubscriptionList,
+  RouterSubscriptionUpdate,
+  RouterWebhookDelivery,
+  RouterWebhookPing,
 } from "../../types/messaging";
 import { API_BASE, request } from "../core";
 
@@ -62,6 +66,50 @@ async function streamSubscription(
   }
 }
 
+/** ws(s):// URL of a subscription socket on the same origin as the console. */
+export function socketUrl(
+  id: number,
+  autoAck: boolean,
+  where: { protocol: string; host: string } = window.location,
+): string {
+  const scheme = where.protocol === "https:" ? "wss:" : "ws:";
+  return `${scheme}//${where.host}${API_BASE}${SUBS}/${id}/ws?auto_ack=${autoAck}`;
+}
+
+export interface SubscriptionSocket {
+  ack: (cursor: string) => void;
+  close: () => void;
+}
+
+/**
+ * Follow a subscription over WebSocket. Browsers cannot set Authorization on a socket,
+ * so the token rides as the subprotocol "bearer.<token>" next to "hx-router".
+ */
+function openSubscriptionSocket(
+  id: number,
+  onFrame: (frame: RouterSocketFrame) => void,
+  onClose: (code: number, reason: string) => void,
+  autoAck = false,
+): SubscriptionSocket {
+  const token = window.localStorage?.getItem("hx_token") ?? "";
+  const socket = new WebSocket(socketUrl(id, autoAck), ["hx-router", `bearer.${token}`]);
+  socket.onmessage = (event: MessageEvent) => {
+    try {
+      onFrame(JSON.parse(String(event.data)) as RouterSocketFrame);
+    } catch {
+      // 非 JSON 帧不是本协议的, 忽略
+    }
+  };
+  socket.onclose = (event: CloseEvent) => onClose(event.code, event.reason);
+  return {
+    ack: (cursor: string) => {
+      if (socket.readyState === WebSocket.OPEN)
+        socket.send(JSON.stringify({ type: "ack", cursor }));
+    },
+    close: () => socket.close(),
+  };
+}
+
 export const routerHubApi = {
   routerSources: (): Promise<{ sources: RouterSource[] }> =>
     request<{ sources: RouterSource[] }>("/router/sources"),
@@ -73,10 +121,7 @@ export const routerHubApi = {
   createSubscription: (body: RouterSubscriptionCreate): Promise<RouterSubscription> =>
     request<RouterSubscription>(SUBS, { method: "POST", body: JSON.stringify(body) }),
 
-  updateSubscription: (
-    id: number,
-    body: Partial<Pick<RouterSubscription, "name" | "status">>,
-  ): Promise<RouterSubscription> =>
+  updateSubscription: (id: number, body: RouterSubscriptionUpdate): Promise<RouterSubscription> =>
     request<RouterSubscription>(`${SUBS}/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
 
   deleteSubscription: (id: number): Promise<{ id: number; deleted: boolean }> =>
@@ -92,6 +137,22 @@ export const routerHubApi = {
     request<RouterEventPage>(`${SUBS}/${id}/events?timeout_seconds=0&limit=${limit}`),
 
   streamSubscription,
+
+  openSubscriptionSocket,
+
+  listWebhookDeliveries: (id: number): Promise<{ deliveries: RouterWebhookDelivery[] }> =>
+    request<{ deliveries: RouterWebhookDelivery[] }>(`${SUBS}/${id}/deliveries`),
+
+  redeliverWebhook: (id: number, deliveryId: string): Promise<{ status: string }> =>
+    request<{ status: string }>(`${SUBS}/${id}/deliveries/${deliveryId}/redeliver`, {
+      method: "POST",
+    }),
+
+  pingWebhook: (id: number): Promise<RouterWebhookPing> =>
+    request<RouterWebhookPing>(`${SUBS}/${id}/webhook/ping`, { method: "POST" }),
+
+  rotateWebhookSecret: (id: number): Promise<RouterSubscription> =>
+    request<RouterSubscription>(`${SUBS}/${id}/webhook/rotate`, { method: "POST" }),
 
   listRouterKeys: (): Promise<{ keys: RouterApiKey[] }> =>
     request<{ keys: RouterApiKey[] }>("/router/api-keys"),

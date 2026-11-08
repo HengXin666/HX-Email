@@ -245,7 +245,8 @@ def claim_due(settings: Settings, *, limit: int = 20, now: datetime | None = Non
             (moment, limit),
         ).fetchall()
         expired: sqlite3.Cursor = connection.execute(
-            "UPDATE router_outbox SET status = 'failed', last_error = 'give_up_at passed', "
+            "UPDATE router_outbox SET status = CASE kind WHEN 'webhook' THEN 'dead' "
+            "ELSE 'failed' END, last_error = 'give_up_at passed', "
             "updated_at = datetime('now') WHERE status = 'queued' AND give_up_at <= ?",
             (moment,),
         )

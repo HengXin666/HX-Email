@@ -1,51 +1,49 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
-import {
-  IconActivity,
-  IconPause,
-  IconPlay,
-  IconPlus,
-  IconRefresh,
-  IconTrash,
-} from "../components/icons";
+import type { SubscriptionSocket } from "../api/endpoints/router_hub";
+import { IconActivity, IconPause, IconPlay, IconRefresh, IconTrash } from "../components/icons";
 import { Topbar } from "../components/layout";
-import { Badge, Button, Card, Checkbox, Input, Select } from "../components/ui/Primitives";
+import { Badge, Button, Card, Checkbox, Select } from "../components/ui/Primitives";
 import { useToast } from "../components/ui/Toast";
 import type {
-  RouterDirection,
   RouterEvent,
   RouterHubStats,
+  RouterSocketFrame,
   RouterSource,
   RouterSubscription,
 } from "../types/messaging";
+import { SubscriptionCreateForm } from "./impl/SubscriptionCreateForm";
 import { SubscriptionIntegration } from "./impl/SubscriptionIntegration";
-import { describeFilter, sourceChoices } from "./impl/subscription_snippets";
+import { describeDelivery, describeFilter } from "./impl/subscription_snippets";
+import { WebhookPanel } from "./impl/WebhookPanel";
 
 const MAX_LIVE = 50;
+type Transport = "sse" | "ws";
 
 const message = (error: unknown, fallback: string): string =>
   error instanceof Error ? error.message : fallback;
 
-/** Persistent subscriptions on the router hub: create, watch live, ack, integrate. */
+const CLOSE_REASON: Record<number, string> = {
+  4401: "WebSocket 未授权",
+  4404: "订阅不存在",
+  4409: "订阅已暂停",
+};
+
+/** Persistent subscriptions on the router hub: create, watch live, ack, push, integrate. */
 export const Subscriptions: React.FC = () => {
   const { toast } = useToast();
   const [items, setItems] = useState<RouterSubscription[]>([]);
   const [sources, setSources] = useState<RouterSource[]>([]);
   const [stats, setStats] = useState<RouterHubStats | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [form, setForm] = useState({
-    source: "",
-    name: "",
-    contains: "",
-    direction: "inbound" as RouterDirection,
-    mentionSelf: false,
-    excludeSelf: true,
-    earliest: false,
-  });
+  const [secret, setSecret] = useState<{ id: number; value: string } | null>(null);
   const [live, setLive] = useState<RouterEvent[]>([]);
+  const [lastCursor, setLastCursor] = useState("");
   const [watching, setWatching] = useState(false);
   const [autoAck, setAutoAck] = useState(false);
+  const [transport, setTransport] = useState<Transport>("ws");
   const abortRef = useRef<AbortController | null>(null);
+  const socketRef = useRef<SubscriptionSocket | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -64,7 +62,10 @@ export const Subscriptions: React.FC = () => {
 
   useEffect(() => {
     void load();
-    return () => abortRef.current?.abort();
+    return () => {
+      abortRef.current?.abort();
+      socketRef.current?.close();
+    };
   }, [load]);
 
   const selected = items.find((item) => item.id === selectedId) ?? null;
@@ -72,19 +73,48 @@ export const Subscriptions: React.FC = () => {
   const stopWatching = () => {
     abortRef.current?.abort();
     abortRef.current = null;
+    socketRef.current?.close();
+    socketRef.current = null;
     setWatching(false);
   };
 
-  const startWatching = (id: number) => {
-    stopWatching();
+  const onFrame = (frame: RouterSocketFrame) => {
+    if (frame.type === "messages") {
+      setLive((prev) => [...[...frame.messages].reverse(), ...prev].slice(0, MAX_LIVE));
+      setLastCursor(frame.next_cursor);
+    } else if (frame.type === "acked") {
+      toast("已确认到最新一条", "success");
+      void load();
+    } else if (frame.type === "error") {
+      toast(frame.message || frame.code, "error");
+    }
+  };
+
+  const watchSocket = (id: number) => {
+    const socket = api.openSubscriptionSocket(
+      id,
+      onFrame,
+      (code, reason) => {
+        if (socketRef.current !== socket) return;
+        socketRef.current = null;
+        setWatching(false);
+        if (code >= 4000) toast(CLOSE_REASON[code] ?? reason ?? "连接已关闭", "error");
+      },
+      autoAck,
+    );
+    socketRef.current = socket;
+  };
+
+  const watchSse = (id: number) => {
     const controller = new AbortController();
     abortRef.current = controller;
-    setLive([]);
-    setWatching(true);
     api
       .streamSubscription(
         id,
-        (event) => setLive((prev) => [event, ...prev].slice(0, MAX_LIVE)),
+        (event) => {
+          setLive((prev) => [event, ...prev].slice(0, MAX_LIVE));
+          setLastCursor(event.cursor);
+        },
         controller.signal,
         autoAck,
       )
@@ -96,29 +126,13 @@ export const Subscriptions: React.FC = () => {
       });
   };
 
-  const create = async () => {
-    if (!form.source.trim()) {
-      toast("先填来源，例如 qq:1/group", "error");
-      return;
-    }
-    try {
-      const created = await api.createSubscription({
-        source: form.source.trim(),
-        name: form.name.trim(),
-        from: form.earliest ? "earliest" : "now",
-        filter: {
-          direction: form.direction,
-          contains: form.contains.trim(),
-          mention_self: form.mentionSelf,
-          exclude_self: form.excludeSelf,
-        },
-      });
-      toast(`已创建订阅 #${created.id}`, "success");
-      setSelectedId(created.id);
-      await load();
-    } catch (error) {
-      toast(message(error, "创建失败"), "error");
-    }
+  const startWatching = (id: number) => {
+    stopWatching();
+    setLive([]);
+    setLastCursor("");
+    setWatching(true);
+    if (transport === "ws") watchSocket(id);
+    else watchSse(id);
   };
 
   const toggle = async (item: RouterSubscription) => {
@@ -147,9 +161,13 @@ export const Subscriptions: React.FC = () => {
   };
 
   const ackLatest = async () => {
-    if (!selected || live.length === 0) return;
+    if (!selected || !lastCursor) return;
+    if (socketRef.current) {
+      socketRef.current.ack(lastCursor);
+      return;
+    }
     try {
-      await api.ackSubscription(selected.id, live[0].cursor);
+      await api.ackSubscription(selected.id, lastCursor);
       toast("已确认到最新一条", "success");
       await load();
     } catch (error) {
@@ -161,7 +179,7 @@ export const Subscriptions: React.FC = () => {
     <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
       <Topbar
         title="消息订阅"
-        subtitle="持久订阅 QQ / GitHub 消息，断线重连从确认位置续读"
+        subtitle="持久订阅 QQ / GitHub 消息：长轮询、SSE、WebSocket 拉取，或 Webhook 推送"
         actions={
           <Button size="sm" icon={<IconRefresh size={12} />} onClick={() => void load()}>
             刷新
@@ -179,77 +197,37 @@ export const Subscriptions: React.FC = () => {
             </Badge>
             <Badge color="#3fb950">已分发 {stats?.published ?? 0} 条</Badge>
             <Badge color="#a371f7">订阅 {items.length}</Badge>
+            <Badge color="#d29922">Webhook {stats?.webhook_subscriptions ?? 0}</Badge>
           </div>
 
-          <Card className="p-4 space-y-3">
-            <h3 className="text-sm font-semibold text-gh-text">新建订阅</h3>
-            {sources.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {sources.flatMap((src) =>
-                  sourceChoices(src.platform, src.instance_id).map((choice) => (
-                    <Badge
-                      key={choice}
-                      color={form.source === choice ? "#58a6ff" : "#8b949e"}
-                      onClick={() => setForm({ ...form, source: choice })}
-                    >
-                      {src.name || src.platform} · {choice}
-                    </Badge>
-                  )),
-                )}
+          <SubscriptionCreateForm
+            sources={sources}
+            onCreated={(created) => {
+              setSelectedId(created.id);
+              if (created.webhook_secret)
+                setSecret({ id: created.id, value: created.webhook_secret });
+              void load();
+            }}
+          />
+
+          {secret && (
+            <Card className="p-3 border-gh-success/40">
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-gh-text-secondary">
+                  订阅 #{secret.id} 的 Webhook 密钥，只显示这一次：
+                </span>
+                <code
+                  className="font-mono text-gh-text break-all flex-1"
+                  data-testid="webhook-secret"
+                >
+                  {secret.value}
+                </code>
+                <Button size="sm" variant="ghost" onClick={() => setSecret(null)}>
+                  我已保存
+                </Button>
               </div>
-            )}
-            <div className="grid md:grid-cols-3 gap-3">
-              <Input
-                label="来源 (会话或前缀)"
-                placeholder="qq:1/group 或 github:2/repo/owner/name"
-                value={form.source}
-                onChange={(event) => setForm({ ...form, source: event.target.value })}
-              />
-              <Input
-                label="名称"
-                placeholder="例如 客服机器人"
-                value={form.name}
-                onChange={(event) => setForm({ ...form, name: event.target.value })}
-              />
-              <Input
-                label="文本包含"
-                placeholder="留空表示不过滤"
-                value={form.contains}
-                onChange={(event) => setForm({ ...form, contains: event.target.value })}
-              />
-            </div>
-            <div className="flex flex-wrap items-end gap-4">
-              <Select
-                label="方向"
-                value={form.direction}
-                onChange={(value) => setForm({ ...form, direction: value as RouterDirection })}
-                options={[
-                  { value: "inbound", label: "入站" },
-                  { value: "outbound", label: "出站" },
-                  { value: "both", label: "双向" },
-                ]}
-                className="w-32"
-              />
-              <Checkbox
-                label="排除自己发的"
-                checked={form.excludeSelf}
-                onChange={(checked) => setForm({ ...form, excludeSelf: checked })}
-              />
-              <Checkbox
-                label="只要 @我"
-                checked={form.mentionSelf}
-                onChange={(checked) => setForm({ ...form, mentionSelf: checked })}
-              />
-              <Checkbox
-                label="从最早的消息开始"
-                checked={form.earliest}
-                onChange={(checked) => setForm({ ...form, earliest: checked })}
-              />
-              <Button variant="primary" icon={<IconPlus size={14} />} onClick={create}>
-                创建订阅
-              </Button>
-            </div>
-          </Card>
+            </Card>
+          )}
 
           <div className="grid lg:grid-cols-2 gap-5">
             <Card className="p-0 overflow-hidden">
@@ -274,6 +252,7 @@ export const Subscriptions: React.FC = () => {
                           <Badge color={item.status === "active" ? "#3fb950" : "#d29922"}>
                             {item.status === "active" ? "运行中" : "已暂停"}
                           </Badge>
+                          {item.delivery === "webhook" && <Badge color="#d29922">Webhook</Badge>}
                           <span className="flex-1" />
                           <Badge color="#58a6ff">
                             积压 {item.backlog ?? 0}
@@ -284,7 +263,7 @@ export const Subscriptions: React.FC = () => {
                           {item.address || item.source}
                         </code>
                         <div className="text-xs text-gh-text-muted mt-1">
-                          {describeFilter(item.filter)}
+                          {describeFilter(item.filter)} · {describeDelivery(item)}
                         </div>
                       </button>
                       <div className="flex gap-2 mt-2">
@@ -330,10 +309,22 @@ export const Subscriptions: React.FC = () => {
             </Card>
 
             <Card className="p-4 space-y-3">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-sm font-semibold text-gh-text flex-1">
                   实时事件 {selected ? `· #${selected.id}` : ""}
                 </h3>
+                <Select
+                  value={transport}
+                  onChange={(value) => {
+                    stopWatching();
+                    setTransport(value as Transport);
+                  }}
+                  options={[
+                    { value: "ws", label: "WebSocket" },
+                    { value: "sse", label: "SSE" },
+                  ]}
+                  className="w-32"
+                />
                 <Checkbox label="推出即确认" checked={autoAck} onChange={setAutoAck} />
                 {watching ? (
                   <Button size="sm" onClick={stopWatching}>
@@ -348,7 +339,7 @@ export const Subscriptions: React.FC = () => {
                     开始
                   </Button>
                 )}
-                <Button size="sm" variant="subtle" disabled={live.length === 0} onClick={ackLatest}>
+                <Button size="sm" variant="subtle" disabled={!lastCursor} onClick={ackLatest}>
                   确认到最新
                 </Button>
               </div>
@@ -380,7 +371,18 @@ export const Subscriptions: React.FC = () => {
             </Card>
           </div>
 
-          <SubscriptionIntegration selected={selected} />
+          {selected?.delivery === "webhook" && (
+            <WebhookPanel
+              subscription={selected}
+              onSecret={(value) => setSecret({ id: selected.id, value })}
+              onChanged={() => void load()}
+            />
+          )}
+
+          <SubscriptionIntegration
+            selected={selected}
+            webhookSecret={secret && secret.id === selected?.id ? secret.value : ""}
+          />
         </div>
       </div>
     </div>

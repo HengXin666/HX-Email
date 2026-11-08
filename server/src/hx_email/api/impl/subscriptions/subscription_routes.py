@@ -1,8 +1,10 @@
 """REST face of persistent subscriptions under ``/api/v1/router/subscriptions``.
 
-CRUD is plain sync (short SQLite calls in the thread pool). The two listening routes,
-``/events`` (long-poll) and ``/stream`` (SSE), are ``async def`` and wait on the hub,
-so an idle consumer holds no worker thread. MCP calls the same ``server/hub`` functions.
+CRUD is plain sync (short SQLite calls in the thread pool). The listening routes,
+``/events`` (long-poll), ``/stream`` (SSE) and ``/ws`` (WebSocket, ``ws_routes``), are
+async and wait on the hub, so an idle consumer holds no worker thread. Webhook
+subscriptions are fed by ``server/push``; every change reloads the feeder's waiters.
+MCP calls the same ``server/hub`` functions.
 """
 
 from __future__ import annotations
@@ -15,11 +17,13 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from hx_email.api.impl.gateway.auth import caller_user_id
+from hx_email.api.impl.subscriptions.webhook_routes import register_webhook_routes
+from hx_email.api.impl.subscriptions.ws_routes import register_subscription_ws
 from hx_email.config import Settings
 from hx_email.server.hub.bus import BUS
 from hx_email.server.hub.consume import route_stream, wait_route
+from hx_email.server.hub.route_model import Route
 from hx_email.server.hub.subscriptions import (
-    Route,
     ack_route,
     create_route,
     delete_route,
@@ -27,6 +31,7 @@ from hx_email.server.hub.subscriptions import (
     list_routes,
     update_route,
 )
+from hx_email.server.push.webhook_feed import FEEDER
 from hx_email.server.router.errors import RouteInvalidError
 
 PREFIX: str = "/router/subscriptions"
@@ -48,6 +53,8 @@ class CreateBody(BaseModel):
     name: str = Field(default="", max_length=64)
     filter: FilterBody = Field(default_factory=FilterBody)
     start: Literal["now", "earliest"] = Field(default="now", alias="from")
+    delivery: Literal["pull", "webhook"] = "pull"
+    webhook_url: str | None = Field(default=None, max_length=500)
 
 
 class UpdateBody(BaseModel):
@@ -55,6 +62,8 @@ class UpdateBody(BaseModel):
     name: str | None = Field(default=None, max_length=64)
     status: Literal["active", "paused"] | None = None
     filter: FilterBody | None = None
+    delivery: Literal["pull", "webhook"] | None = None
+    webhook_url: str | None = Field(default=None, max_length=500)
 
 
 class AckBody(BaseModel):
@@ -65,25 +74,35 @@ class AckBody(BaseModel):
 # 订阅持久化在 router_routes, 监听路由是 async 的, 等待期间不占线程池
 # 决策记录: .agents/notes/implemented/feature/2026-11-08-router-hub-subscriptions.md
 def register_subscription_routes(router: APIRouter, settings: Settings) -> None:
-    """Mount subscription CRUD, long-poll, SSE and hub stats."""
+    """Mount subscription CRUD, long-poll, SSE, WebSocket, webhook admin and hub stats."""
+    register_webhook_routes(router, settings)
+    register_subscription_ws(router, settings)
 
     @router.get("/router/hub")
     def hub_stats(authorization: Annotated[str | None, Header()] = None) -> dict[str, object]:
         caller_user_id(settings, authorization)
-        return {"waiting": BUS.waiting(), "published": BUS.published}
+        return {
+            "waiting": BUS.waiting(),
+            "published": BUS.published,
+            "webhook_subscriptions": FEEDER.watching(),
+        }
 
     @router.post(PREFIX, status_code=status.HTTP_201_CREATED)
     def create(
         payload: CreateBody, authorization: Annotated[str | None, Header()] = None
     ) -> dict[str, object]:
-        return create_route(
+        created: dict[str, object] = create_route(
             settings,
             caller_user_id(settings, authorization),
             source=payload.source,
             name=payload.name,
             filter_data=payload.filter.model_dump(),
             start=payload.start,
+            delivery=payload.delivery,
+            webhook_url=payload.webhook_url,
         )
+        FEEDER.reload(settings)
+        return created
 
     @router.get(PREFIX)
     def listing(authorization: Annotated[str | None, Header()] = None) -> dict[str, object]:
@@ -101,20 +120,28 @@ def register_subscription_routes(router: APIRouter, settings: Settings) -> None:
         payload: UpdateBody,
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        return update_route(
+        updated: dict[str, object] = update_route(
             settings,
             caller_user_id(settings, authorization),
             route_id,
             name=payload.name,
             status=payload.status,
             filter_data=payload.filter.model_dump() if payload.filter else None,
+            delivery=payload.delivery,
+            webhook_url=payload.webhook_url,
         )
+        FEEDER.reload(settings)
+        return updated
 
     @router.delete(f"{PREFIX}/{{route_id}}")
     def remove(
         route_id: int, authorization: Annotated[str | None, Header()] = None
     ) -> dict[str, object]:
-        return delete_route(settings, caller_user_id(settings, authorization), route_id)
+        deleted: dict[str, object] = delete_route(
+            settings, caller_user_id(settings, authorization), route_id
+        )
+        FEEDER.reload(settings)
+        return deleted
 
     @router.post(f"{PREFIX}/{{route_id}}/ack")
     def ack(

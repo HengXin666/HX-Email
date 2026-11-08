@@ -3,21 +3,29 @@
 A subscription is a source (v1 prefix or v2 address/selector), a filter applied to the
 contract v2 event view, and an ``ack_cursor`` position that only moves forward. It
 survives restarts and reconnects: a consumer that comes back reads from its ack and
-misses nothing. ``delivery`` is ``pull`` this round (long-poll or SSE on the route);
-webhook and WebSocket delivery reuse the same row in the push stage.
+misses nothing. ``delivery`` is ``pull`` (long-poll, SSE or WebSocket on the route) or
+``webhook`` (the push feeder queues batches to the URL; a 2xx moves the ack).
 """
 
 from __future__ import annotations
 
-import json
 import sqlite3
-from dataclasses import asdict, dataclass, field
 from typing import Final
 
 from hx_email.config import Settings
 from hx_email.database import connect
-from hx_email.server.contract.address import address_of_legacy, is_v2
-from hx_email.server.router.cursor import decode_cursor, encode_cursor
+from hx_email.server.hub.route_model import (
+    BACKLOG_CAP,
+    DELIVERIES,
+    ROUTE_COLUMNS,
+    STATUSES,
+    Route,
+    RouteFilter,
+    filter_from,
+    row_to_route,
+)
+from hx_email.server.push.webhook_target import WebhookTarget, check_url, new_secret, seal_target
+from hx_email.server.router.cursor import decode_cursor
 from hx_email.server.router.errors import (
     CursorInvalidError,
     RouteInvalidError,
@@ -25,125 +33,9 @@ from hx_email.server.router.errors import (
     RouteNotFoundError,
     SessionNotFoundError,
 )
-from hx_email.server.router.impl.reader import (
-    Source,
-    build_query,
-    owned_instances,
-    parse_source,
-)
+from hx_email.server.router.impl.reader import Source, build_query, owned_instances, parse_source
 
 MAX_ROUTES_PER_USER: Final[int] = 50
-BACKLOG_CAP: Final[int] = 999
-DIRECTIONS: Final[frozenset[str]] = frozenset({"inbound", "outbound", "both"})
-DELIVERIES: Final[frozenset[str]] = frozenset({"pull"})
-FILTER_KEYS: Final[frozenset[str]] = frozenset(
-    {"direction", "kinds", "exclude_self", "mention_self", "contains"}
-)
-STATUSES: Final[frozenset[str]] = frozenset({"active", "paused"})
-ROUTE_COLUMNS: Final[str] = (
-    "id, user_id, name, source_prefix, filter_json, delivery, status, ack_cursor, "
-    "created_at, updated_at, expires_at"
-)
-
-
-@dataclass(frozen=True)
-class RouteFilter:
-    """What a consumer wants out of its source; tested on the v2 event view."""
-
-    direction: str = "inbound"
-    kinds: tuple[str, ...] = ()
-    exclude_self: bool = True
-    mention_self: bool = False
-    contains: str = ""
-
-    def accepts(self, view: dict[str, object]) -> bool:
-        flags: object = view.get("flags")
-        flag_map: dict[str, object] = flags if isinstance(flags, dict) else {}
-        if self.kinds and str(view.get("kind") or "") not in self.kinds:
-            return False
-        if self.exclude_self and flag_map.get("from_self") is True:
-            return False
-        if self.mention_self and flag_map.get("mention_self") is not True:
-            return False
-        return not self.contains or self.contains.lower() in str(view.get("text") or "").lower()
-
-
-def filter_from(payload: object) -> RouteFilter:
-    """Validate a filter dict from REST/MCP or the database; unknown keys are refused."""
-    data: dict[str, object] = payload if isinstance(payload, dict) else {}
-    unknown: set[str] = set(data) - FILTER_KEYS
-    if unknown:
-        raise RouteInvalidError(f"unknown filter keys: {sorted(unknown)}")
-    direction: str = str(data.get("direction") or "inbound")
-    if direction not in DIRECTIONS:
-        raise RouteInvalidError(f"direction must be one of {sorted(DIRECTIONS)}")
-    kinds_value: object = data.get("kinds") or []
-    if not isinstance(kinds_value, list) or not all(isinstance(k, str) for k in kinds_value):
-        raise RouteInvalidError("kinds must be a list of strings")
-    return RouteFilter(
-        direction=direction,
-        kinds=tuple(kinds_value),
-        exclude_self=bool(data.get("exclude_self", True)),
-        mention_self=bool(data.get("mention_self", False)),
-        contains=str(data.get("contains") or "")[:200],
-    )
-
-
-@dataclass(frozen=True)
-class Route:
-    id: int
-    user_id: int
-    name: str
-    source: str
-    filter: RouteFilter
-    delivery: str
-    status: str
-    ack_position: int
-    created_at: str
-    updated_at: str
-    expires_at: str | None = None
-    scope: Source = field(default_factory=lambda: Source(platform=""))
-
-    def cursor(self) -> str:
-        """The ack position as a cursor valid for this route's scope."""
-        return encode_cursor(self.scope.instance_id or 0, self.ack_position)
-
-    def to_dict(self, backlog: int | None = None) -> dict[str, object]:
-        data: dict[str, object] = {
-            "id": self.id,
-            "name": self.name,
-            "source": self.source,
-            "address": self.source if is_v2(self.source) else address_of_legacy(self.source),
-            "filter": {**asdict(self.filter), "kinds": list(self.filter.kinds)},
-            "delivery": self.delivery,
-            "status": self.status,
-            "ack_cursor": self.cursor(),
-            "created_at": self.created_at,
-            "updated_at": self.updated_at or self.created_at,
-            "expires_at": self.expires_at,
-        }
-        if backlog is not None:
-            data["backlog"] = backlog
-            data["backlog_capped"] = backlog >= BACKLOG_CAP
-        return data
-
-
-def row_to_route(row: sqlite3.Row) -> Route:
-    source: str = str(row["source_prefix"])
-    return Route(
-        id=int(row["id"]),
-        user_id=int(row["user_id"]),
-        name=str(row["name"] or ""),
-        source=source,
-        filter=filter_from(json.loads(str(row["filter_json"] or "{}"))),
-        delivery=str(row["delivery"]),
-        status=str(row["status"]),
-        ack_position=int(row["ack_cursor"] or 0),
-        created_at=str(row["created_at"] or ""),
-        updated_at=str(row["updated_at"] or ""),
-        expires_at=str(row["expires_at"]) if row["expires_at"] else None,
-        scope=parse_source(source),
-    )
 
 
 def newest_position(connection: sqlite3.Connection, scope: Source, owned: list[int]) -> int:
@@ -168,6 +60,31 @@ def backlog_of(connection: sqlite3.Connection, route: Route, owned: list[int]) -
     return int(row["pending"]) if row is not None else 0
 
 
+def target_for(
+    delivery: str, webhook_url: str | None, current: WebhookTarget | None
+) -> tuple[WebhookTarget | None, bool]:
+    """Resolve the webhook target for a delivery mode; True when a secret was minted."""
+    if delivery not in DELIVERIES:
+        raise RouteInvalidError(f"delivery must be one of {sorted(DELIVERIES)}")
+    if delivery == "pull":
+        return current, False
+    url: str = webhook_url if webhook_url is not None else (current.url if current else "")
+    if not url:
+        raise RouteInvalidError("webhook delivery needs webhook_url")
+    if current is not None and current.secret:
+        return WebhookTarget(check_url(url), current.secret), False
+    return WebhookTarget(check_url(url), new_secret()), True
+
+
+def with_secret(route: Route, minted: bool, data: dict[str, object]) -> dict[str, object]:
+    """The secret goes out exactly once: in the reply that created or rotated it."""
+    if minted and route.target is not None:
+        data["webhook_secret"] = route.target.secret
+    return data
+
+
+# 推送阶段: webhook 目标 (URL 与密钥) 加密存在同一行 target_encrypted, 密钥只在创建或轮换时返回一次
+# 决策记录: .agents/notes/implemented/feature/2026-11-08-router-push-transports.md
 def create_route(
     settings: Settings,
     user_id: int,
@@ -176,12 +93,15 @@ def create_route(
     name: str = "",
     filter_data: object = None,
     start: str = "now",
+    delivery: str = "pull",
+    webhook_url: str | None = None,
 ) -> dict[str, object]:
     """Register a subscription; ``start`` is ``now`` (only new messages) or ``earliest``."""
     scope: Source = parse_source(source)
     route_filter: RouteFilter = filter_from(filter_data)
     if start not in ("now", "earliest"):
         raise RouteInvalidError("start must be now or earliest")
+    target, minted = target_for(delivery, webhook_url, None)
     with connect(settings) as connection:
         owned: list[int] = owned_instances(connection, user_id)
         if scope.instance_id is not None and scope.instance_id not in owned:
@@ -194,19 +114,23 @@ def create_route(
         position: int = newest_position(connection, scope, owned) if start == "now" else 0
         cursor: sqlite3.Cursor = connection.execute(
             "INSERT INTO router_routes (user_id, name, source_prefix, filter_json, delivery, "
-            "status, ack_cursor, updated_at) VALUES (?, ?, ?, ?, 'pull', 'active', ?, "
-            "datetime('now'))",
+            "target_encrypted, status, ack_cursor, push_cursor, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, datetime('now'))",
             (
                 user_id,
                 name.strip()[:64],
                 source,
-                json.dumps(asdict(route_filter), ensure_ascii=False),
+                route_filter.dumps(),
+                delivery,
+                seal_target(settings, target) if target else "",
+                position,
                 position,
             ),
         )
         connection.commit()
         route_id: int = int(cursor.lastrowid or 0)
-    return get_route(settings, user_id, route_id).to_dict(backlog=0)
+    route: Route = get_route(settings, user_id, route_id)
+    return with_secret(route, minted, route.to_dict(backlog=0))
 
 
 def get_route(settings: Settings, user_id: int, route_id: int) -> Route:
@@ -217,7 +141,26 @@ def get_route(settings: Settings, user_id: int, route_id: int) -> Route:
         ).fetchone()
     if row is None:
         raise RouteNotFoundError(f"subscription {route_id} not found")
-    return row_to_route(row)
+    return row_to_route(settings, row)
+
+
+def load_route(settings: Settings, route_id: int) -> Route | None:
+    """Owner-agnostic load for the push workers, which act on behalf of the row's user."""
+    with connect(settings) as connection:
+        row: sqlite3.Row | None = connection.execute(
+            f"SELECT {ROUTE_COLUMNS} FROM router_routes WHERE id = ?", (route_id,)
+        ).fetchone()
+    return row_to_route(settings, row) if row is not None else None
+
+
+def webhook_routes(settings: Settings) -> list[Route]:
+    """Every active webhook subscription, for the feeder to watch."""
+    with connect(settings) as connection:
+        rows: list[sqlite3.Row] = connection.execute(
+            f"SELECT {ROUTE_COLUMNS} FROM router_routes "
+            "WHERE delivery = 'webhook' AND status = 'active' ORDER BY id"
+        ).fetchall()
+    return [row_to_route(settings, row) for row in rows]
 
 
 def list_routes(settings: Settings, user_id: int) -> dict[str, object]:
@@ -227,7 +170,7 @@ def list_routes(settings: Settings, user_id: int) -> dict[str, object]:
             f"SELECT {ROUTE_COLUMNS} FROM router_routes WHERE user_id = ? ORDER BY id",
             (user_id,),
         ).fetchall()
-        routes: list[Route] = [row_to_route(row) for row in rows]
+        routes: list[Route] = [row_to_route(settings, row) for row in rows]
         items: list[dict[str, object]] = [
             route.to_dict(backlog=backlog_of(connection, route, owned)) for route in routes
         ]
@@ -242,35 +185,72 @@ def update_route(
     name: str | None = None,
     status: str | None = None,
     filter_data: object = None,
+    delivery: str | None = None,
+    webhook_url: str | None = None,
+    rotate_secret: bool = False,
 ) -> dict[str, object]:
+    """Change a subscription; switching to webhook or rotating mints a new secret."""
     route: Route = get_route(settings, user_id, route_id)
     if status is not None and status not in STATUSES:
         raise RouteInvalidError(f"status must be one of {sorted(STATUSES)}")
     new_filter: RouteFilter = route.filter if filter_data is None else filter_from(filter_data)
+    mode: str = route.delivery if delivery is None else delivery
+    current: WebhookTarget | None = route.target
+    if rotate_secret and current is not None:
+        current = WebhookTarget(current.url, "")
+    target, minted = target_for(mode, webhook_url, current)
     with connect(settings) as connection:
         connection.execute(
-            "UPDATE router_routes SET name = ?, status = ?, filter_json = ?, "
-            "updated_at = datetime('now') WHERE id = ? AND user_id = ?",
+            "UPDATE router_routes SET name = ?, status = ?, filter_json = ?, delivery = ?, "
+            "target_encrypted = ?, push_cursor = CASE WHEN delivery = ? THEN push_cursor "
+            "ELSE ack_cursor END, updated_at = datetime('now') WHERE id = ? AND user_id = ?",
             (
                 route.name if name is None else name.strip()[:64],
                 route.status if status is None else status,
-                json.dumps(asdict(new_filter), ensure_ascii=False),
+                new_filter.dumps(),
+                mode,
+                seal_target(settings, target) if target else "",
+                mode,
                 route_id,
                 user_id,
             ),
         )
+        if status == "active":
+            # 暂停期间到点的 webhook 批次被置为 held; 恢复后按原顺序重新排队
+            connection.execute(
+                "UPDATE router_outbox SET status = 'queued', next_attempt_at = datetime('now') "
+                "WHERE kind = 'webhook' AND route_id = ? AND status = 'held'",
+                (route_id,),
+            )
         connection.commit()
-    return get_route(settings, user_id, route_id).to_dict()
+    updated: Route = get_route(settings, user_id, route_id)
+    return with_secret(updated, minted, updated.to_dict())
 
 
 def delete_route(settings: Settings, user_id: int, route_id: int) -> dict[str, object]:
     get_route(settings, user_id, route_id)
     with connect(settings) as connection:
         connection.execute(
+            "DELETE FROM router_outbox WHERE kind = 'webhook' AND route_id = ?", (route_id,)
+        )
+        connection.execute(
             "DELETE FROM router_routes WHERE id = ? AND user_id = ?", (route_id, user_id)
         )
         connection.commit()
     return {"id": route_id, "deleted": True}
+
+
+def advance(settings: Settings, route_id: int, column: str, position: int) -> None:
+    """Move ``ack_cursor`` or ``push_cursor`` forward; never backwards."""
+    if column not in ("ack_cursor", "push_cursor"):
+        raise ValueError(column)
+    with connect(settings) as connection:
+        connection.execute(
+            f"UPDATE router_routes SET {column} = MAX({column}, ?), "
+            "updated_at = datetime('now') WHERE id = ?",
+            (position, route_id),
+        )
+        connection.commit()
 
 
 def ack_route(settings: Settings, user_id: int, route_id: int, cursor: str) -> dict[str, object]:
@@ -279,11 +259,5 @@ def ack_route(settings: Settings, user_id: int, route_id: int, cursor: str) -> d
     parsed = decode_cursor(cursor)
     if parsed.instance_id != (route.scope.instance_id or 0) and parsed.instance_id != 0:
         raise CursorInvalidError("cursor does not belong to this subscription's scope")
-    with connect(settings) as connection:
-        connection.execute(
-            "UPDATE router_routes SET ack_cursor = MAX(ack_cursor, ?), "
-            "updated_at = datetime('now') WHERE id = ? AND user_id = ?",
-            (parsed.position, route_id, user_id),
-        )
-        connection.commit()
+    advance(settings, route_id, "ack_cursor", parsed.position)
     return get_route(settings, user_id, route_id).to_dict()

@@ -92,7 +92,7 @@ def purge_terminal(settings: Settings, *, now: datetime | None = None) -> int:
     moment: str = _stamp(now or datetime.now(UTC))
     with connect(settings) as connection:
         changed: sqlite3.Cursor = connection.execute(
-            "DELETE FROM router_outbox WHERE status IN ('sent', 'failed', 'unknown') "
+            "DELETE FROM router_outbox WHERE status IN ('sent', 'failed', 'unknown', 'dead') "
             "AND give_up_at <= ?",
             (moment,),
         )

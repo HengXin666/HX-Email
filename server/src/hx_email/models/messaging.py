@@ -18,6 +18,7 @@ MESSAGE_ROUTER_COLUMNS: Final[tuple[tuple[str, str], ...]] = (
 ROUTE_COLUMNS: Final[tuple[tuple[str, str], ...]] = (
     ("name", "TEXT NOT NULL DEFAULT ''"),
     ("updated_at", "TEXT NOT NULL DEFAULT ''"),
+    ("push_cursor", "INTEGER NOT NULL DEFAULT 0"),
 )
 
 

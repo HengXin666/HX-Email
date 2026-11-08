@@ -108,9 +108,10 @@ export interface GithubAttachResult {
   installation: GithubInstallation;
 }
 
-// ===== Router hub & persistent subscriptions (契约 v2, 阶段 2) =====
+// ===== Router hub & persistent subscriptions (契约 v2, 阶段 2; 推送通道阶段 3) =====
 
 export type RouterDirection = "inbound" | "outbound" | "both";
+export type RouterDelivery = "pull" | "webhook";
 
 export interface RouterSubscriptionFilter {
   direction: RouterDirection;
@@ -126,7 +127,11 @@ export interface RouterSubscription {
   source: string;
   address: string;
   filter: RouterSubscriptionFilter;
-  delivery: string;
+  delivery: RouterDelivery;
+  /** Only on webhook subscriptions; the secret is never read back. */
+  webhook?: { url: string; push_cursor: string } | null;
+  /** Present once: in the reply that created the webhook or rotated its secret. */
+  webhook_secret?: string;
   status: "active" | "paused";
   ack_cursor: string;
   created_at: string;
@@ -146,7 +151,46 @@ export interface RouterSubscriptionCreate {
   name?: string;
   filter?: Partial<RouterSubscriptionFilter>;
   from?: "now" | "earliest";
+  delivery?: RouterDelivery;
+  webhook_url?: string;
 }
+
+export interface RouterSubscriptionUpdate {
+  name?: string;
+  status?: "active" | "paused";
+  delivery?: RouterDelivery;
+  webhook_url?: string;
+}
+
+export type RouterWebhookStatus = "queued" | "sending" | "sent" | "held" | "failed" | "dead";
+
+export interface RouterWebhookDelivery {
+  delivery_id: string;
+  status: RouterWebhookStatus;
+  attempts: number;
+  range: string;
+  messages: number;
+  next_attempt_at: string;
+  last_error: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RouterWebhookPing {
+  ok: boolean;
+  status_code: number;
+  error: string;
+  elapsed_ms: number;
+}
+
+/** Frames the subscription WebSocket sends (see ws_routes.py). */
+export type RouterSocketFrame =
+  | { type: "ready"; subscription_id: number; cursor: string; ack_cursor: string }
+  | { type: "messages"; messages: RouterEvent[]; next_cursor: string }
+  | { type: "heartbeat"; next_cursor: string }
+  | { type: "acked"; ack_cursor: string }
+  | { type: "pong" }
+  | { type: "error"; code: string; message: string };
 
 export interface RouterEvent {
   id: string;
@@ -184,6 +228,7 @@ export interface RouterSource {
 export interface RouterHubStats {
   waiting: number;
   published: number;
+  webhook_subscriptions?: number;
 }
 
 export interface RouterApiKey {

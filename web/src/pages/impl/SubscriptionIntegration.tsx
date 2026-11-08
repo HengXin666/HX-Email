@@ -9,6 +9,7 @@ import { buildSnippets } from "./subscription_snippets";
 
 interface Props {
   selected: RouterSubscription | null;
+  webhookSecret?: string;
 }
 
 const CopyIcon: React.FC<{ text: string }> = ({ text }) => {
@@ -34,12 +35,12 @@ const CopyIcon: React.FC<{ text: string }> = ({ text }) => {
 };
 
 /** Router API keys plus copy-paste snippets bound to the selected subscription. */
-export const SubscriptionIntegration: React.FC<Props> = ({ selected }) => {
+export const SubscriptionIntegration: React.FC<Props> = ({ selected, webhookSecret = "" }) => {
   const { toast } = useToast();
   const [keys, setKeys] = useState<RouterApiKey[]>([]);
   const [keyName, setKeyName] = useState("agent");
   const [issued, setIssued] = useState("");
-  const [tab, setTab] = useState("curl");
+  const [tab, setTab] = useState(selected?.delivery === "webhook" ? "webhook" : "curl");
 
   const loadKeys = useCallback(async () => {
     try {
@@ -81,8 +82,9 @@ export const SubscriptionIntegration: React.FC<Props> = ({ selected }) => {
         token: issued || "<hxr_router_key>",
         subscriptionId: selected?.id ?? null,
         source: selected?.source ?? "",
+        webhookSecret,
       }),
-    [issued, selected],
+    [issued, selected, webhookSecret],
   );
   const current = snippets.find((item) => item.key === tab) ?? snippets[0];
 

@@ -13,6 +13,7 @@ import asyncio
 import json
 import time
 from collections.abc import AsyncIterator, Callable
+from dataclasses import dataclass
 from functools import partial
 from typing import Final
 
@@ -22,7 +23,8 @@ from hx_email.config import Settings
 from hx_email.database import connect
 from hx_email.server.contract.event import event_view
 from hx_email.server.hub.bus import BUS, Matcher, async_waiter, matcher_for
-from hx_email.server.hub.subscriptions import Route, ack_route, get_route
+from hx_email.server.hub.route_model import Route
+from hx_email.server.hub.subscriptions import ack_route, get_route
 from hx_email.server.router.impl.reader import (
     ReadPage,
     Source,
@@ -142,7 +144,15 @@ async def wait_route(
     return {**base, **page}
 
 
-async def stream_source(
+@dataclass(frozen=True)
+class Batch:
+    """What one wake-up produced: accepted views (empty on a heartbeat) and the cursor."""
+
+    messages: list[dict[str, object]]
+    cursor: str
+
+
+async def iterate_source(
     settings: Settings,
     user_id: int,
     source: str,
@@ -151,12 +161,9 @@ async def stream_source(
     direction: str = "inbound",
     accept: Accept = accept_all,
     ack_route_id: int = 0,
-    ready: bool = False,
-) -> AsyncIterator[str]:
-    """SSE frames forever: one ``data`` frame per message, a comment as heartbeat."""
+) -> AsyncIterator[Batch]:
+    """Batches forever, one per wake-up or heartbeat; SSE and WebSocket share this loop."""
     position: str = start
-    if ready:
-        yield sse_frame({"cursor": position}, event="ready")
     while True:
         page: dict[str, object] = await wait_source(
             settings,
@@ -169,13 +176,40 @@ async def stream_source(
         )
         position = str(page["next_cursor"])
         items: object = page["messages"]
-        if isinstance(items, list) and items:
-            for item in items:
-                yield sse_frame(item, str(item.get("cursor", "")))
-            if ack_route_id:
-                await anyio.to_thread.run_sync(ack_route, settings, user_id, ack_route_id, position)
-        else:
+        accepted: list[dict[str, object]] = list(items) if isinstance(items, list) else []
+        if accepted and ack_route_id:
+            await anyio.to_thread.run_sync(ack_route, settings, user_id, ack_route_id, position)
+        yield Batch(accepted, position)
+
+
+async def stream_source(
+    settings: Settings,
+    user_id: int,
+    source: str,
+    start: str,
+    *,
+    direction: str = "inbound",
+    accept: Accept = accept_all,
+    ack_route_id: int = 0,
+    ready: bool = False,
+) -> AsyncIterator[str]:
+    """SSE frames forever: one ``data`` frame per message, a comment as heartbeat."""
+    if ready:
+        yield sse_frame({"cursor": start}, event="ready")
+    batches: AsyncIterator[Batch] = iterate_source(
+        settings,
+        user_id,
+        source,
+        start,
+        direction=direction,
+        accept=accept,
+        ack_route_id=ack_route_id,
+    )
+    async for batch in batches:
+        if not batch.messages:
             yield ":\n\n"
+        for item in batch.messages:
+            yield sse_frame(item, str(item.get("cursor", "")))
 
 
 def route_stream(
@@ -191,4 +225,19 @@ def route_stream(
         accept=route.filter.accepts,
         ack_route_id=route.id if auto_ack else 0,
         ready=True,
+    )
+
+
+def route_batches(
+    settings: Settings, user_id: int, route: Route, start: str, auto_ack: bool
+) -> AsyncIterator[Batch]:
+    """WebSocket feed on a subscription: same resume and filter rules as SSE."""
+    return iterate_source(
+        settings,
+        user_id,
+        route.source,
+        start or route.cursor(),
+        direction=route.filter.direction,
+        accept=route.filter.accepts,
+        ack_route_id=route.id if auto_ack else 0,
     )

@@ -12,7 +12,8 @@ import react from "@vitejs/plugin-react";
 import { configDefaults, defineConfig } from "vitest/config";
 var apiTarget = (_a = process.env.HX_EMAIL_API_TARGET) !== null && _a !== void 0 ? _a : "http://127.0.0.1:8000";
 var apiProxy = {
-    "/api/v1": apiTarget,
+    // ws: true 让订阅页的 WebSocket (/api/v1/router/subscriptions/{id}/ws) 也走代理
+    "/api/v1": { target: apiTarget, ws: true },
     "/api/external": apiTarget,
     "/google": apiTarget,
 };

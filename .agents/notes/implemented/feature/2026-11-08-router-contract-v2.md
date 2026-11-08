@@ -7,8 +7,8 @@ Decision-ID: router-contract-v2
 ## Code
 
 - `server/src/hx_email/server/contract/address.py`
-- `server/src/hx_email/server/router/envelope.py`
-- `server/src/hx_email/server/router/impl/reader.py`
+- `server/src/hx_email/server/router/envelope/session.py`
+- `server/src/hx_email/server/router/impl/reader/source.py`
 
 ## Problem
 

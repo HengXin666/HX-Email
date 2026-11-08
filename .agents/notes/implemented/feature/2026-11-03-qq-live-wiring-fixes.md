@@ -8,7 +8,7 @@ Decision-ID: qq-live-wiring-fixes
 
 - `server/src/hx_email/server/messaging/engine.py`
 - `server/src/hx_email/api/impl/messaging/event_routes.py`
-- `server/src/hx_email/server/router/impl/reader.py`
+- `server/src/hx_email/server/router/impl/reader/page.py`
 - `server/src/hx_email/server/router/bounds.py`
 
 ## Problem
@@ -57,6 +57,7 @@ Decision-ID: qq-live-wiring-fixes
 这四处修复都是真机联调发现的, 现有单测 (`server/tests/test_router_core.py`, `test_router_qq.py` 等) 用的是假 OneBot 与内存库, 覆盖不到容器内 NapCat 读哪个配置文件, OneBot `httpClients` 实际发什么头, 以及两条写入路径交叉读写这些行为.
 
 修复后的真机收发证据:
+
 - 扫码登录成功, 账号 2242792762, 昵称 机器人SG, token 校验不再报 `token verify failed!`
 - 经 `call_action` 调用 `send_private_msg` 发出私聊消息, 返回 `message_id` 1282981854
 - NapCat 以 `Authorization` 头推送事件到 `POST /api/v1/messaging/events/qq`, 响应中 `stored=true`

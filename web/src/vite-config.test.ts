@@ -11,8 +11,11 @@ describe("vite API proxy", () => {
     const devProxy = config.server?.proxy;
     const previewProxy = config.preview?.proxy;
 
-    expect(devProxy?.["/api/v1"]).toBe("http://127.0.0.1:8000");
-    expect(previewProxy?.["/api/v1"]).toBe("http://127.0.0.1:8000");
+    // /api/v1 也要转发 WebSocket (订阅页的 /router/subscriptions/{id}/ws)
+    const api = { target: "http://127.0.0.1:8000", ws: true };
+    expect(devProxy?.["/api/v1"]).toEqual(api);
+    expect(previewProxy?.["/api/v1"]).toEqual(api);
+    expect(devProxy?.["/api/external"]).toBe("http://127.0.0.1:8000");
   });
 });
 

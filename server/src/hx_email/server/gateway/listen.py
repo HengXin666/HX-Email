@@ -26,9 +26,9 @@ from hx_email.server.router.envelope import (
 from hx_email.server.router.impl.reader import (
     COLUMNS,
     ReadPage,
-    _row_to_envelope,
     peer_of,
     read_messages,
+    row_to_envelope,
 )
 from hx_email.server.router.impl.store import StoreResult, store_inbound
 from hx_email.server.router.providers.impl.qq_events import to_envelope
@@ -85,7 +85,7 @@ def recent_messages(
             "ORDER BY id DESC LIMIT ?",
             (instance_id, address, peer, pattern, size),
         ).fetchall()
-    return [_row_to_envelope(settings, row, False) for row in reversed(rows)]
+    return [row_to_envelope(settings, row, False) for row in reversed(rows)]
 
 
 def store_envelopes(

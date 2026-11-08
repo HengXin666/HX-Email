@@ -25,6 +25,7 @@ from hx_email.database import connect
 from hx_email.server.gateway.impl.breaker import BREAKER
 from hx_email.server.gateway.providers import HUB, SHAPER, InstanceRow, load_instance
 from hx_email.server.hub.bus import BUS, Hit
+from hx_email.server.push.webhook_deliver import submit
 from hx_email.server.router.envelope import (
     InboundMessage,
     Sender,
@@ -64,7 +65,10 @@ def mark(settings: Settings, delivery_id: int, status: str, error: str) -> None:
 def seconds_until_next(settings: Settings) -> float | None:
     with connect(settings) as connection:
         row: sqlite3.Row | None = connection.execute(
-            "SELECT MIN(next_attempt_at) AS due FROM router_outbox WHERE status = 'queued'"
+            "SELECT MIN(next_attempt_at) AS due FROM router_outbox AS o "
+            "WHERE status = 'queued' AND NOT (kind = 'webhook' AND EXISTS ("
+            "SELECT 1 FROM router_outbox AS f WHERE f.kind = 'webhook' "
+            "AND f.route_id = o.route_id AND f.status = 'sending'))"
         ).fetchone()
     if row is None or not row["due"]:
         return None
@@ -129,7 +133,9 @@ class Dispatcher:
             if entry.kind == "send":
                 self.process(settings, entry)
             else:
-                mark(settings, entry.id, "failed", "webhook delivery is not enabled")
+                # webhook 在小线程池里投递, 慢接收端不拖住平台出站; 投完再唤醒本线程领下一批
+                submit(settings, entry, lambda: self.wake(settings))
+                continue
             with self.done:
                 self.done.notify_all()
         return 0.0 if entries else seconds_until_next(settings)

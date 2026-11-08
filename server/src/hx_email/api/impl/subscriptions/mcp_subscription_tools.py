@@ -26,6 +26,7 @@ from hx_email.api.impl.gateway.mcp_tools import (
 from hx_email.config import Settings
 from hx_email.server.hub.consume import wait_route, wait_source
 from hx_email.server.hub.subscriptions import ack_route, create_route, list_routes
+from hx_email.server.push.webhook_feed import FEEDER
 
 FILTER: Final[JsonDict] = {
     "type": "object",
@@ -48,7 +49,8 @@ SUBSCRIPTION_TOOLS: Final[list[JsonDict]] = [
         "name": "subscription_create",
         "description": (
             "创建持久订阅: source 是会话或前缀 (如 qq:3/group, github:7/repo/o/r), "
-            "重启与断线后从 ack 续读, 不丢消息"
+            "重启与断线后从 ack 续读, 不丢消息; delivery=webhook 时服务端把批次签名后 POST 到 "
+            "webhook_url, 返回的 webhook_secret 只出现这一次"
         ),
         "inputSchema": schema(
             {
@@ -56,6 +58,8 @@ SUBSCRIPTION_TOOLS: Final[list[JsonDict]] = [
                 "name": STR,
                 "filter": FILTER,
                 "from": {"type": "string", "enum": ["now", "earliest"]},
+                "delivery": {"type": "string", "enum": ["pull", "webhook"]},
+                "webhook_url": STR,
             },
             ["source"],
         ),
@@ -125,7 +129,11 @@ async def call_hub_tool(
                 name=text_arg(arguments, "name"),
                 filter_data=arguments.get("filter"),
                 start=text_arg(arguments, "from", "now"),
+                delivery=text_arg(arguments, "delivery", "pull"),
+                webhook_url=text_arg(arguments, "webhook_url") or None,
             )
 
-        return await anyio.to_thread.run_sync(create)
+        created: JsonDict = await anyio.to_thread.run_sync(create)
+        await anyio.to_thread.run_sync(FEEDER.reload, settings)
+        return created
     return await anyio.to_thread.run_sync(list_routes, settings, user_id)
