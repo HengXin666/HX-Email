@@ -9,6 +9,7 @@ import type {
   GithubVerifyResult,
   MessagingInstance,
 } from "../../types/messaging";
+import { GithubOutboundSettings } from "./GithubOutboundSettings";
 
 const GITHUB_KIND: string = "github";
 const CALLBACK_KEYS: readonly string[] = ["connected", "slug", "error"];
@@ -89,6 +90,7 @@ const FlagRow: React.FC<{ label: string; ok: boolean }> = ({ label, ok }) => (
 export function GithubAppConnect() {
   const { toast } = useToast();
   const [instanceId, setInstanceId] = useState<number | null>(null);
+  const [githubInstance, setGithubInstance] = useState<MessagingInstance | null>(null);
   const [result, setResult] = useState<GithubVerifyResult | null>(null);
   const [attachedId, setAttachedId] = useState<number | null>(null);
   const [busy, setBusy] = useState<BusyKey>("");
@@ -134,6 +136,7 @@ export function GithubAppConnect() {
         );
         if (github) {
           setInstanceId(github.id);
+          setGithubInstance(github);
           await verify(github.id, true);
         }
       } catch (error: unknown) {
@@ -275,6 +278,8 @@ export function GithubAppConnect() {
               </div>
             )}
           </div>
+
+          {githubInstance && <GithubOutboundSettings instance={githubInstance} />}
         </div>
       )}
     </Card>

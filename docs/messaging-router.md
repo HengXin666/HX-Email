@@ -516,7 +516,7 @@ MCP server 名为 `hx-router`, 传输为 streamable HTTP (`/mcp`) 与 stdio (`hx
 
 ### 5.6a `action_invoke`
 
-执行平台在 `capabilities_list` 里声明的动作 (每个动作带 `targets`, `requires` 与 `params`). 入参 `{target, action, params, idempotency_key, wait_seconds}`, `params` 是字符串到字符串的对象, 最多 8 个键; REST 对应 `POST /api/v1/router/actions`. `action=message_send` 等同于 `message_send`. 返回与 `message_send` 同形, 多一个 `action` 字段; GitHub 已声明的动作见 docs/providers/github-app.md 4.3
+执行平台在 `capabilities_list` 里声明的动作 (每个动作带 `targets`, `requires` 与 `params`). 入参 `{target, action, params, idempotency_key, wait_seconds}`, `params` 是字符串到字符串的对象, 最多 8 个键; REST 对应 `POST /api/v1/router/actions`. `action=message_send` 等同于 `message_send`. 返回与 `message_send` 同形, 多一个 `action` 字段. 参数可声明 `required_if` (另一参数取某些值时才必填, 如 review 的 `body`). 实例配置 `disabled_actions` (逗号分隔) 可关掉某些动作, 关掉的返回 `action_not_supported`. GitHub 已声明的动作 (`comment_create`, `reaction_add`, `review_submit`, `discussion_create`, `discussion_comment_create`) 见 docs/providers/github-app.md 4.3
 
 ### 5.7 `route_subscribe`
 
@@ -865,7 +865,7 @@ MCP server 名为 `hx-router`, 传输为 streamable HTTP (`/mcp`) 与 stdio (`hx
 | `provider_error`       | 平台返回错误                                                         | 由 `SendResult.retryable` 决定 |
 | `delivery_unknown`     | 平台调用结果未知, 状态为 `unknown`, 见第 7.3 节                      | false                          |
 | `cursor_invalid`       | cursor 无法解析或属于其它实例                                        | false                          |
-| `action_not_supported` | 平台没有声明该动作, 或动作不接受该地址种类                           | false                          |
+| `action_not_supported` | 平台没有声明该动作, 动作不接受该地址种类, 或该动作在实例上被关掉     | false                          |
 | `invalid_payload`      | 动作参数缺失, 多出或不合声明                                         | false                          |
 
 ### 9.5 provider 结果从哪来

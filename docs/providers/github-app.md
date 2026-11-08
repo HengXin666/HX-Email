@@ -66,16 +66,17 @@
 
 ### 2.2 权限最小集 (逐条说明)
 
-| 权限 (Repository permissions) | 级别         | 阶段          | 为什么需要                                                                                         |
-| ----------------------------- | ------------ | ------------- | -------------------------------------------------------------------------------------------------- |
-| Metadata                      | Read-only    | 第一阶段起    | GitHub 对所有 App 强制要求, 用于读取仓库基本信息, 解析 `owner/repo` 与 installation 的对应关系     |
-| Issues                        | Read & write | 第一阶段起    | 订阅 `issues` 与 `issue_comment` 事件的前提, 也是发 issue 评论, 开 issue, 关 issue, 加标签所需权限 |
-| Pull requests                 | Read & write | 第一阶段起    | 订阅 `pull_request`, `pull_request_review`, `pull_request_review_comment` 事件, 并回复 review 评论 |
-| Contents                      | Read-only    | 2026-11-08 起 | 订阅 `push` 与 `commit_comment` 的前提; 只读, App 仍不改代码, 不推提交, 不建分支                   |
-| Discussions                   | Read-only    | 2026-11-08 起 | 订阅 `discussion` 与 `discussion_comment`; 在 discussion 下回复时再升为 Read & write               |
+| 权限 (Repository permissions) | 级别         | 阶段          | 为什么需要                                                                                                                            |
+| ----------------------------- | ------------ | ------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Metadata                      | Read-only    | 第一阶段起    | GitHub 对所有 App 强制要求, 用于读取仓库基本信息, 解析 `owner/repo` 与 installation 的对应关系                                        |
+| Issues                        | Read & write | 第一阶段起    | 订阅 `issues` 与 `issue_comment` 事件的前提, 也是发 issue 评论, 开 issue, 关 issue, 加标签所需权限                                    |
+| Pull requests                 | Read & write | 第一阶段起    | 订阅 `pull_request`, `pull_request_review`, `pull_request_review_comment` 事件, 并回复 review 评论                                    |
+| Contents                      | Read-only    | 2026-11-08 起 | 订阅 `push` 与 `commit_comment` 的前提; 只读, App 仍不改代码, 不推提交, 不建分支                                                      |
+| Discussions                   | Read & write | 2026-11-09 起 | 订阅 `discussion` 与 `discussion_comment`; 写权限用于 `discussion_create` 与 `discussion_comment_create` (2026-11-08 至 11-09 为只读) |
 
 - Issues 写权限同时覆盖 PR 主线程上的普通评论, 因为 PR 主线程评论走的是 issue comments 接口, 这一点需复核
 - 加标签走 issue labels 接口, 依赖 Issues 写权限, 对 PR 加标签同样走 issue 接口, 需复核
+- Discussions 从只读升为读写后, 新建的 App (manifest 一键创建) 直接带写权限; 已经安装的 App 不会自动扩权: 要在 App 设置页把 Discussions 改为 Read & write, 再由每个 installation 的所有者在 GitHub 上接受新权限 (GitHub 会给所有者发邮件, 也可在 Settings > Applications > Installed GitHub Apps 里点 Review request). 接受前两个 discussion 动作返回 `permission_denied`, 入站不受影响
 - 第一阶段只做入站时 Pull requests 可以先降为 Read-only, 第二阶段开始回复行内评论前必须改为 Read & write, 推荐一开始直接给 Read & write, 避免中途让仓库所有者重新确认权限
 
 ### 2.3 一律不申请的权限
@@ -111,7 +112,7 @@
 | `installation_repositories`   | added, removed                             | 否, 只更新仓库到安装的映射                                           |
 
 - `installation` 与 `installation_repositories` 无需在订阅页勾选, GitHub 会默认投递给 App, 需复核, 复核方法是新建开发用 App 后安装到测试仓库并在 Advanced 页查看是否收到这两类投递
-- `push` 与 `commit_comment` 需要 Contents 只读, discussion 两类需要 Discussions 只读, 见 2.2
+- `push` 与 `commit_comment` 需要 Contents 只读, discussion 两类事件只需 Discussions 只读, 写 discussion 才要读写, 见 2.2
 - 应用一键创建 (manifest) 默认勾选以上全部事件与权限
 - 未列出的事件与未列出的 action 一律返回 2xx 后丢弃, 不入库
 - edited 只覆盖同一 `dedup_key` 已有记录的 `text`, 不新增消息
@@ -208,18 +209,33 @@ envelope 以规格第 3.1 节为准, 每个字段都有确定的列, 存储增�
 
 ### 4.3 声明式动作 (action_invoke)
 
-除上表的 `message_send` 外, 平台能力声明 (`contract/builtin.py`) 里的 GitHub 动作经 MCP `action_invoke` 或 REST `POST /api/v1/router/actions` 调用, 入参为 `{target, action, params, idempotency_key, wait_seconds}`. 目前落地两个:
+除上表的 `message_send` 外, 平台能力声明 (`contract/builtin.py`) 里的 GitHub 动作经 MCP `action_invoke` 或 REST `POST /api/v1/router/actions` 调用, 入参为 `{target, action, params, idempotency_key, wait_seconds}`. 声明在 `contract/github_actions.py`, 目前落地五个:
 
-| 动作             | 目标        | params                                                                                         | REST 接口                                                                                                             | 结果                   |
-| ---------------- | ----------- | ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ---------------------- |
-| `comment_create` | issue 或 PR | `text` 必填; `reply_to` 可选, `rc:<id>` 时回复 review 评论                                     | 与上表评论, 回复 review 评论相同, 同样带隐藏标记                                                                      | `ic:<id>` 或 `rc:<id>` |
-| `reaction_add`   | issue 或 PR | `content` 取 `+1 -1 laugh confused heart hooray rocket eyes`; `message_id` 可选 `ic:` 或 `rc:` | `POST /repos/{o}/{r}/issues/{n}/reactions`, `.../issues/comments/{id}/reactions`, `.../pulls/comments/{id}/reactions` | `re:<reaction id>`     |
+| 动作                        | 目标            | params                                                                                         | REST 接口                                                                                                             | 结果                   |
+| --------------------------- | --------------- | ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ---------------------- |
+| `comment_create`            | issue 或 PR     | `text` 必填; `reply_to` 可选, `rc:<id>` 时回复 review 评论                                     | 与上表评论, 回复 review 评论相同, 同样带隐藏标记                                                                      | `ic:<id>` 或 `rc:<id>` |
+| `reaction_add`              | issue 或 PR     | `content` 取 `+1 -1 laugh confused heart hooray rocket eyes`; `message_id` 可选 `ic:` 或 `rc:` | `POST /repos/{o}/{r}/issues/{n}/reactions`, `.../issues/comments/{id}/reactions`, `.../pulls/comments/{id}/reactions` | `re:<reaction id>`     |
+| `review_submit`             | PR (issue 地址) | `event` 取 `APPROVE REQUEST_CHANGES COMMENT`; `body` 在 `REQUEST_CHANGES` 与 `COMMENT` 时必填  | 先 GraphQL `issueOrPullRequest { __typename }` 确认是 PR, 再 `POST /repos/{o}/{r}/pulls/{n}/reviews`, body 带隐藏标记 | `rv:<review id>`       |
+| `discussion_create`         | repo            | `title`, `body`, `category` 必填, `category` 按名称或 slug 匹配 (不区分大小写)                 | GraphQL: 分页查 `repository { id discussionCategories }`, 再 `createDiscussion`, body 带隐藏标记                      | `dn:<databaseId>`      |
+| `discussion_comment_create` | discussion      | `body` 必填; `reply_to` 可选, 父评论 node id 或 `dc:<databaseId>`                              | GraphQL: 查 `repository.discussion(number) { id }`, `dc:` 时分页查顶层评论换 node id, 再 `addDiscussionComment`       | `dc:<databaseId>`      |
 
-- 校验全部来自声明: 动作名不在声明里, 或目标种类不在 `targets` 里, 返回 `action_not_supported`; 参数缺失, 多出, 不在 `choices` 或不合 `pattern` 返回 `invalid_payload`, 两者都是 422, 不入队
+- 校验全部来自声明: 动作名不在声明里, 目标种类不在 `targets` 里, 或该动作在实例上被关掉, 返回 `action_not_supported`; 参数缺失 (含 `required_if` 条件必填), 多出, 不在 `choices` 或不合 `pattern` 返回 `invalid_payload`, 两者都是 422, 不入队
 - 动作与 `message_send` 共用 outbox 一行 (payload 带 `action` 与 `params`), 幂等, 整形, 熔断与重试只有一份
 - 表情没有正文可放标记, 但 GitHub 对同一身份同一表情返回已有那条 (200), 重复调用无害; 所以表情请求超时按可重试处理, 不进 `unknown`
 - 表情不写入消息流 (没有正文), 只在投递记录里可查
-- 其余动作 (提交 review, 建 discussion, discussion 评论) 尚未声明, 也就调不到
+- `review_submit` 与两个 discussion 动作不可幂等: 写请求超时进 `unknown`, 与 `message_send` 相同; 前置的查询 (PR 校验, 查分类, 查 discussion id) 不写入, 超时按可重试处理. 目前没有对账去按标记查 review 与 discussion, `unknown` 行要人工看
+- 普通 issue 上调 `review_submit` 得到 `failed` (`invalid_payload`), 不会去调 reviews 接口
+- 查分类与查 discussion id 每次调用都现查, 不缓存; 列表按 25 或 50 一页, 最多 20 页, 找到即停, 只持有当前一页
+- GraphQL 的 `errors`: `RATE_LIMITED` 可重试, `NOT_FOUND` 为 `not_found`, `FORBIDDEN` 或 "not accessible by integration" 为 `permission_denied` (常见于 Discussions 仍是只读或所有者未接受新权限), 其余为 `unprocessable`
+- GitHub App 提交的 APPROVE 是否计入分支保护的必需审批, 取决于仓库规则, 需复核
+
+#### 4.3.1 按实例开关动作
+
+- 实例配置键 `disabled_actions`, 逗号分隔的动作名, 默认空, 即声明的动作全部开启 (之后新增的动作也默认开启). 网关 `invoke_action` 在校验目标与参数前检查, 被关掉的动作返回 422 `action_not_supported`, 不入队
+- 写入走已有的 `PUT /api/v1/messaging/instances/{id}/config` (与已有配置合并, App 私钥等字段保持不变); 前端在 GitHub App 接入卡片下列出 `message_send` 以外的 GitHub 动作, 每个一个开关
+- `message_send` 不在开关里: 它也是控制台发送的入口, 关它要停用整个实例
+- 只拦新的调用; 已经入队的行仍会投递
+- 重新走 manifest 创建 App 会整体重写 App 配置, `disabled_actions` 随之清空 (回到全部开启)
 
 ## 5. Webhook 接收实现要点
 

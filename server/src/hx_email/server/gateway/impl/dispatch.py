@@ -105,6 +105,8 @@ def record_outbound(settings: Settings, entry: Entry, platform_message_id: str) 
     BUS.publish([Hit(address.instance_id, address.address, "outbound")])
 
 
+# 带 action 的行交给 provider.invoke; 没实现 ActionProvider 的平台得到 action_not_supported
+# 决策记录: .agents/notes/implemented/feature/2026-11-09-github-outbound-actions.md
 def invoke_on(provider: object, ref: SessionRef, entry: Entry, action: str) -> SendResult:
     """A declared non-send action; the gateway already checked its params."""
     if not isinstance(provider, ActionProvider):

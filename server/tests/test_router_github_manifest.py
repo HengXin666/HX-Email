@@ -139,7 +139,7 @@ def test_manifest_permissions_and_events_are_exact() -> None:
         "issues": "write",
         "pull_requests": "write",
         "contents": "read",
-        "discussions": "read",
+        "discussions": "write",
     }
     assert sorted(manifest["default_events"]) == sorted(  # type: ignore[arg-type]
         [

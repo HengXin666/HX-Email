@@ -2,8 +2,23 @@ import type {
   GithubAttachResult,
   GithubManifestStart,
   GithubVerifyResult,
+  RouterActionSpec,
 } from "../../types/messaging";
 import { request } from "../core";
+
+interface CapabilitiesPage {
+  platforms: { platform: string; actions: RouterActionSpec[] }[];
+}
+
+/**
+ * 出站动作开关的动作列表直接取能力声明, 前端不另写一份
+ * 决策记录: .agents/notes/implemented/feature/2026-11-09-github-outbound-actions.md
+ */
+function githubActions(): Promise<RouterActionSpec[]> {
+  return request<CapabilitiesPage>("/router/capabilities?platform=github").then(
+    (page: CapabilitiesPage) => page.platforms[0]?.actions ?? [],
+  );
+}
 
 export const routerGithubApi = {
   // The server decides the public root: a browser opened on localhost says nothing about
@@ -16,6 +31,8 @@ export const routerGithubApi = {
       method: "POST",
       body: JSON.stringify({ instance_id: instanceId }),
     }),
+
+  githubActions,
 
   githubAttach: (installationId: number, instanceId: number): Promise<GithubAttachResult> =>
     request<GithubAttachResult>(`/router/github/installations/${installationId}/attach`, {

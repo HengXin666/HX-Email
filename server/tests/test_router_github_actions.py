@@ -1,4 +1,4 @@
-"""GitHub 出站动作: comment_create 与 reaction_add 经 action_invoke 走 outbox 到 provider."""
+"""GitHub 出站动作: 评论, 表情, review, discussion 经 action_invoke 走 outbox 到 provider."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from hx_email.config import Settings
 from hx_email.database import connect, migrate
 from hx_email.server.gateway.impl import dispatch as dispatch_module
 from hx_email.server.gateway.impl.breaker import BREAKER
-from hx_email.server.gateway.providers import HUB, SHAPER
+from hx_email.server.gateway.providers import HUB, SHAPER, github_config, load_instance
 from hx_email.server.messaging.registry import clear_runtime
 from hx_email.server.router.provider import ActionCall, SessionRef
 from hx_email.server.router.providers.github import GitHubAppProvider
@@ -55,13 +55,31 @@ class FakeTransport:
             HttpResponse(201, {}, {"token": "ghs_t", "expires_at": expires}),
         )
 
+        self.gql: list[tuple[str, list[HttpResponse | Exception]]] = []
+
     def add(self, method: str, url_part: str, response: HttpResponse | Exception) -> None:
         self.routes.insert(0, (method, url_part, response))
+
+    def add_gql(self, query_part: str, *responses: HttpResponse | Exception) -> None:
+        """GraphQL 全走同一个 URL, 按 query 片段匹配; 多个回答按调用顺序依次给出."""
+        self.gql.insert(0, (query_part, list(responses)))
+
+    def graphql(self, body: object) -> HttpResponse:
+        query = str(body.get("query", "")) if isinstance(body, dict) else ""
+        for part, answers in self.gql:
+            if part in query:
+                answer = answers.pop(0) if len(answers) > 1 else answers[0]
+                if isinstance(answer, Exception):
+                    raise answer
+                return answer
+        raise AssertionError(f"unexpected GraphQL {query[:60]}")
 
     def request(
         self, method: str, url: str, headers: Mapping[str, str], body: object | None
     ) -> HttpResponse:
         self.calls.append((method, url, body))
+        if url.endswith("/graphql"):
+            return self.graphql(body)
         for route_method, part, response in self.routes:
             if route_method == method and part in url:
                 if isinstance(response, Exception):
@@ -71,6 +89,18 @@ class FakeTransport:
 
     def posted(self, url_part: str) -> list[object]:
         return [body for method, url, body in self.calls if method == "POST" and url_part in url]
+
+    def gql_variables(self, query_part: str) -> list[object]:
+        return [
+            body.get("variables")
+            for _m, url, body in self.calls
+            if url.endswith("/graphql") and isinstance(body, dict)
+            if query_part in str(body.get("query"))
+        ]
+
+
+def gql(data: dict[str, object]) -> HttpResponse:
+    return HttpResponse(200, {}, {"data": data})
 
 
 def ref(number: int) -> SessionRef:
@@ -107,7 +137,7 @@ def test_provider_invoke_comment_reaction_and_timeout() -> None:
     transport.add("POST", "/issues/43/reactions", TransportTimeoutError("slow"))
     slow = provider.invoke(ref(43), ActionCall("d_3", "reaction_add", {"content": "+1"}))
     assert slow.status == "retry" and slow.error_code == "provider_timeout"
-    unknown = provider.invoke(ref(42), ActionCall("d_4", "discussion_create", {}))
+    unknown = provider.invoke(ref(42), ActionCall("d_4", "label_add", {}))
     assert unknown.status == "failed" and unknown.error_code == "action_not_supported"
 
 
@@ -160,6 +190,14 @@ def test_capabilities_declare_actions_with_params(env: dict[str, Any]) -> None:
     reaction = {p["name"]: p for p in actions["reaction_add"]["params"]}
     assert reaction["content"]["required"] is True and "rocket" in reaction["content"]["choices"]
     assert actions["comment_create"]["requires"] == ["issues:write", "pull_requests:write"]
+    review = {p["name"]: p for p in actions["review_submit"]["params"]}
+    assert review["body"]["required"] is False
+    assert review["body"]["required_if"] == {
+        "param": "event",
+        "values": ["REQUEST_CHANGES", "COMMENT"],
+    }
+    assert actions["discussion_create"]["requires"] == ["discussions:write"]
+    assert actions["discussion_comment_create"]["targets"] == ["discussion"]
 
 
 def test_actions_over_rest_and_mcp(env: dict[str, Any]) -> None:
@@ -217,7 +255,36 @@ def test_actions_over_rest_and_mcp(env: dict[str, Any]) -> None:
             "invalid_payload",
         ),
         (":repo:hx/HX-Email", "comment_create", {"text": "x"}, "action_not_supported"),
-        (":issue:hx/HX-Email#42", "discussion_create", {"text": "x"}, "action_not_supported"),
+        (":issue:hx/HX-Email#42", "label_add", {"text": "x"}, "action_not_supported"),
+        (":issue:hx/HX-Email#42", "review_submit", {"event": "LGTM"}, "invalid_payload"),
+        (":issue:hx/HX-Email#42", "review_submit", {"event": "REQUEST_CHANGES"}, "invalid_payload"),
+        (
+            ":issue:hx/HX-Email#42",
+            "review_submit",
+            {"event": "COMMENT", "body": "  "},
+            "invalid_payload",
+        ),
+        (":repo:hx/HX-Email", "review_submit", {"event": "APPROVE"}, "action_not_supported"),
+        (
+            ":issue:hx/HX-Email#42",
+            "discussion_create",
+            {"title": "t", "body": "b", "category": "General"},
+            "action_not_supported",
+        ),
+        (":repo:hx/HX-Email", "discussion_create", {"title": "t", "body": "b"}, "invalid_payload"),
+        (":discussion:hx/HX-Email#5", "discussion_comment_create", {}, "invalid_payload"),
+        (
+            ":discussion:hx/HX-Email#5",
+            "discussion_comment_create",
+            {"body": "b", "reply_to": "x!"},
+            "invalid_payload",
+        ),
+        (
+            ":issue:hx/HX-Email#42",
+            "discussion_comment_create",
+            {"body": "b"},
+            "action_not_supported",
+        ),
     ],
 )
 def test_invalid_actions_are_422(
@@ -235,3 +302,91 @@ def test_invalid_actions_are_422(
     )
     assert response.status_code == 422 and response.json()["error"]["code"] == code
     assert env["transport"].posted("/repos/hx/HX-Email/") == []
+    assert env["transport"].posted("/graphql") == []
+
+
+def test_review_and_discussion_over_rest_and_mcp(env: dict[str, Any]) -> None:
+    client, headers, gh, transport = env["client"], env["headers"], env["gh"], env["transport"]
+    transport.add_gql(
+        "issueOrPullRequest",
+        gql({"repository": {"issueOrPullRequest": {"__typename": "PullRequest"}}}),
+    )
+    transport.add("POST", "/pulls/42/reviews", HttpResponse(200, {}, {"id": 801}))
+    review = client.post(
+        f"{API}/router/actions",
+        json={
+            "target": f"github:{gh}:issue:hx/HX-Email#42",
+            "action": "review_submit",
+            "params": {"event": "APPROVE"},
+            "idempotency_key": "act-review-01",
+        },
+        headers=headers,
+    ).json()
+    assert review["status"] == "sent" and review["platform_message_id"] == "rv:801", review
+    categories = {
+        "pageInfo": {"hasNextPage": False, "endCursor": "c"},
+        "nodes": [{"id": "DIC_1", "name": "General", "slug": "general"}],
+    }
+    transport.add_gql(
+        "discussionCategories",
+        gql({"repository": {"id": "R_1", "discussionCategories": categories}}),
+    )
+    transport.add_gql(
+        "createDiscussion", gql({"createDiscussion": {"discussion": {"databaseId": 31}}})
+    )
+    created = call_tool(
+        env["settings"],
+        env["user_id"],
+        "action_invoke",
+        {
+            "target": f"github:{gh}/repo/hx/HX-Email",
+            "action": "discussion_create",
+            "params": {"title": "发布计划", "body": "大家看看", "category": "General"},
+            "idempotency_key": "act-discuss-01",
+        },
+    )
+    assert created["status"] == "sent" and created["platform_message_id"] == "dn:31"
+
+
+def test_disabled_actions_per_instance(env: dict[str, Any]) -> None:
+    client, headers, gh, transport = env["client"], env["headers"], env["gh"], env["transport"]
+    saved = client.put(
+        f"{API}/messaging/instances/{gh}/config",
+        json={"config": {"disabled_actions": "reaction_add, review_submit"}},
+        headers=headers,
+    )
+    assert saved.status_code == 200
+    assert saved.json()["instance"]["config"]["disabled_actions"] == "reaction_add, review_submit"
+    assert github_config(env["settings"], gh).app_id == "1234"  # App 凭据没被开关覆盖
+    instance = load_instance(env["settings"], gh)
+    assert instance is not None
+    assert instance.disabled_actions() == frozenset({"reaction_add", "review_submit"})
+    body = {
+        "target": f"github:{gh}:issue:hx/HX-Email#42",
+        "action": "reaction_add",
+        "params": {"content": "+1"},
+        "idempotency_key": "act-toggle-01",
+    }
+    refused = client.post(f"{API}/router/actions", json=body, headers=headers)
+    assert refused.status_code == 422
+    assert refused.json()["error"]["code"] == "action_not_supported"
+    assert transport.posted("/reactions") == []
+    transport.add("POST", "/issues/42/comments", HttpResponse(201, {}, {"id": 556}))
+    still_on = client.post(
+        f"{API}/router/actions",
+        json={**body, "action": "comment_create", "params": {"text": "hi"}},
+        headers=headers,
+    ).json()
+    assert still_on["status"] == "sent", still_on
+    client.put(
+        f"{API}/messaging/instances/{gh}/config",
+        json={"config": {"disabled_actions": ""}},
+        headers=headers,
+    )
+    transport.add("POST", "/issues/42/reactions", HttpResponse(201, {}, {"id": 79}))
+    again = client.post(
+        f"{API}/router/actions",
+        json={**body, "idempotency_key": "act-toggle-02"},
+        headers=headers,
+    ).json()
+    assert again["status"] == "sent" and again["platform_message_id"] == "re:79"

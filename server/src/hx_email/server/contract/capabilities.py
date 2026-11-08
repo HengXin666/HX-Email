@@ -15,6 +15,7 @@ account but not a risk tier (docs/providers/qq-zone.md 4).
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Final, Literal
 
@@ -64,6 +65,16 @@ class ParamSpec:
     choices: tuple[str, ...] = ()
     pattern: str = ""
     max_length: int = 0
+    required_if_param: str = ""
+    required_if_values: tuple[str, ...] = ()
+
+    def needed(self, params: Mapping[str, str]) -> bool:
+        """Required outright, or because another param took one of ``required_if_values``."""
+        if self.required:
+            return True
+        if not self.required_if_param:
+            return False
+        return params.get(self.required_if_param, "") in self.required_if_values
 
     def problem(self, value: str) -> str:
         """Why ``value`` is not accepted, or ``""`` when it is."""
@@ -83,6 +94,11 @@ class ParamSpec:
             "choices": list(self.choices),
             "pattern": self.pattern,
             "max_length": self.max_length,
+            "required_if": (
+                {"param": self.required_if_param, "values": list(self.required_if_values)}
+                if self.required_if_param
+                else {}
+            ),
         }
 
 

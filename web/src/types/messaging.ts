@@ -108,6 +108,26 @@ export interface GithubAttachResult {
   installation: GithubInstallation;
 }
 
+/** One parameter of a declared router action, as GET /router/capabilities lists it. */
+export interface RouterActionParam {
+  name: string;
+  description: string;
+  required: boolean;
+  choices: string[];
+  pattern: string;
+  max_length: number;
+  required_if: { param?: string; values?: string[] };
+}
+
+/** A declared outbound action (message_send, comment_create, review_submit ...). */
+export interface RouterActionSpec {
+  name: string;
+  targets: string[];
+  requires: string[];
+  description: string;
+  params: RouterActionParam[];
+}
+
 // ===== Router hub & persistent subscriptions (契约 v2, 阶段 2; 推送通道阶段 3) =====
 
 export type RouterDirection = "inbound" | "outbound" | "both";

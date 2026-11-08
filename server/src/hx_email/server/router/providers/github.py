@@ -53,13 +53,9 @@ from hx_email.server.router.providers.impl.github.github_http import (
     github_headers,
     retryable,
 )
-from hx_email.server.router.providers.impl.github_reactions import (
-    REACTION_PREFIX,
-    ReactionRequest,
-    reaction_request,
-)
+from hx_email.server.router.providers.impl.github_write.actions import invoke_github
+from hx_email.server.router.providers.impl.github_write.graphql import MARKER_TEMPLATE
 
-MARKER_TEMPLATE: str = "<!-- hx-router delivery={delivery_id} -->"
 GITHUB_CAPABILITIES: Capabilities = Capabilities(
     supports_qr_login=False,
     supports_groups=True,
@@ -198,27 +194,10 @@ class GitHubAppProvider:
         url, request_body, prefix = action_request(action)
         return self.post(session.instance_id, action.repo_full_name, url, request_body, prefix)
 
-    # comment_create 复用 send 的评论路径与隐藏标记; reaction_add 天然幂等, 超时直接重试不进 unknown
+    # 动作分发在 impl/github_write: 评论复用 send 的标记, 表情超时重试, 其余写超时进 unknown
     # 决策记录: .agents/notes/implemented/feature/2026-11-09-github-outbound-actions.md
     def invoke(self, session: SessionRef, call: ActionCall) -> SendResult:
-        if call.action == "comment_create":
-            payload = OutboundPayload(
-                call.delivery_id, call.params.get("text", ""), call.params.get("reply_to", ""), ""
-            )
-            return self.send(session, payload)
-        if call.action == "reaction_add":
-            request: ReactionRequest | None = reaction_request(session.address, call.params)
-            if request is None:
-                return failed("invalid_payload", f"cannot react on {session.address}")
-            return self.post(
-                session.instance_id,
-                request.repo_full_name,
-                request.url,
-                request.body,
-                REACTION_PREFIX,
-                idempotent=True,
-            )
-        return failed("action_not_supported", f"github has no action {call.action}")
+        return invoke_github(self, session, call)
 
     def post(
         self,

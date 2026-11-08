@@ -68,6 +68,15 @@ describe("GithubAppConnect", () => {
   it("verifies on load and attaches an installation", async () => {
     vi.spyOn(api, "listInstances").mockResolvedValue([githubInstance]);
     vi.spyOn(api, "githubVerify").mockResolvedValue(verifiedResult);
+    vi.spyOn(api, "githubActions").mockResolvedValue([
+      {
+        name: "review_submit",
+        targets: ["issue"],
+        requires: ["pull_requests:write"],
+        description: "",
+        params: [],
+      },
+    ]);
     const attach = vi
       .spyOn(api, "githubAttach")
       .mockResolvedValue({ attached: true, installation: { id: 42, account: "octo-org" } });
@@ -78,5 +87,6 @@ describe("GithubAppConnect", () => {
     fireEvent.click(screen.getByRole("button", { name: /绑定到这个实例/ }));
     await waitFor(() => expect(attach).toHaveBeenCalledWith(42, 7));
     expect(await screen.findByText(/已绑定 octo-org/)).toBeInTheDocument();
+    expect(await screen.findByRole("checkbox", { name: "review_submit" })).toBeChecked();
   });
 });

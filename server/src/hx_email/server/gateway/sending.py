@@ -137,7 +137,7 @@ def checked_params(spec: ActionSpec, params: dict[str, str]) -> dict[str, str]:
     clean: dict[str, str] = {}
     for name, param in known.items():
         value: str = str(params.get(name) or "")
-        if param.required and not value.strip():
+        if param.needed(params) and not value.strip():
             raise InvalidPayloadError(f"{spec.name} needs {name}")
         problem: str = param.problem(value) if value else ""
         if problem or len(value) > MAX_PARAM_LENGTH:
@@ -147,7 +147,7 @@ def checked_params(spec: ActionSpec, params: dict[str, str]) -> dict[str, str]:
     return clean
 
 
-# 动作按能力声明校验 (动作名, 目标地址种类, 参数), 再与 message_send 走同一条 outbox 行
+# 动作按声明与实例开关校验 (动作名, 开关, 目标种类, 参数), 再与 message_send 共用 outbox 行
 # 决策记录: .agents/notes/implemented/feature/2026-11-09-github-outbound-actions.md
 def invoke_action(
     settings: Settings,
@@ -181,19 +181,22 @@ def invoke_action(
     spec: ActionSpec | None = caps.action(action) if caps is not None else None
     if caps is None or spec is None:
         raise ActionNotSupportedError(f"{address.platform} has no action {action}")
+    if action in instance.disabled_actions():
+        raise ActionNotSupportedError(f"{action} is turned off on instance {instance.id}")
     kind: AddressKind | None = caps.legacy_kind(address.session_type)
     if kind is None or kind.name not in spec.targets:
         raise ActionNotSupportedError(
             f"{action} targets {', '.join(spec.targets)}, not {address.session_type}"
         )
     clean: dict[str, str] = checked_params(spec, params)
+    body: str = clean.get("text") or clean.get("body", "")  # 进消息流的正文
     limit: int = profile_for(instance, address.session_type).max_text_length
-    if len(clean.get("text", "")) > limit:
-        raise TextTooLongError(f"text is {len(clean['text'])} characters, limit is {limit}")
+    if len(body) > limit:
+        raise TextTooLongError(f"text is {len(body)} characters, limit is {limit}")
     payload: dict[str, object] = {
         "action": action,
         "params": clean,
-        "text": clean.get("text", ""),
+        "text": body,
         "reply_to": clean.get("reply_to", ""),
     }
     return queue_and_wait(

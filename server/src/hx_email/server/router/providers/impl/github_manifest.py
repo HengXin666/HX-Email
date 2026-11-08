@@ -36,13 +36,14 @@ INGRESS_PATH: Final[str] = "/api/v1/router/ingress/github/{instance_id}"
 CALLBACK_PATH: Final[str] = "/api/v1/router/github/callback"
 NAME_PREFIX: Final[str] = "hx-email-"
 CODE_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
-# 权限最小集: contents 与 discussions 只读, 仅为收 push, commit_comment, discussion 事件
+# 权限最小集: contents 只读, 仅为收 push 与 commit_comment; discussions 要写, 供 discussion_create
+# 与 discussion_comment_create; 已安装的 App 扩权后要所有者在 GitHub 上重新同意
 DEFAULT_PERMISSIONS: Final[dict[str, str]] = {
     "metadata": "read",
     "issues": "write",
     "pull_requests": "write",
     "contents": "read",
-    "discussions": "read",
+    "discussions": "write",
 }
 # installation 与 installation_repositories 默认投递, 写进来 GitHub 会拒掉整个 manifest
 DEFAULT_EVENTS: Final[tuple[str, ...]] = (

@@ -54,6 +54,8 @@ LOGGER: logging.Logger = logging.getLogger("hx_email.gateway.providers")
 SUPPORTED_KINDS: tuple[str, ...] = ("qq", "github", "qqbot")
 QZONE_TYPES: frozenset[str] = frozenset({"qzonepost"})
 EMPTY_GITHUB: GitHubAppConfig = GitHubAppConfig("", "", "", "", "")
+# 实例配置里逗号分隔的关闭动作名; 默认空, 即声明的动作全部开启, 新动作上线也默认开启
+DISABLED_ACTIONS_KEY: str = "disabled_actions"
 GITHUB_PROFILE: RateProfile = from_provider_limits("github", GITHUB_LIMITS)
 
 # 整形器是进程级单例: REST, MCP, 前端发送与出站分发共用同一个桶, 否则各走各的桶就等于没限流
@@ -72,6 +74,11 @@ class InstanceRow:
     name: str
     status: str
     config: dict[str, str]
+
+    def disabled_actions(self) -> frozenset[str]:
+        """Actions the owner turned off for this instance; empty means all declared are on."""
+        raw: str = self.config.get(DISABLED_ACTIONS_KEY, "")
+        return frozenset(name.strip() for name in raw.split(",") if name.strip())
 
 
 class ProviderHub:
@@ -208,7 +215,11 @@ def load_instance(settings: Settings, instance_id: int) -> InstanceRow | None:
     config: dict[str, str] = dict(record.config) if record.kind in ("qq", "qqbot") else {}
     if record.kind == "github":
         app: GitHubAppConfig = github_config(settings, instance_id)
-        config = {"app_id": app.app_id, "app_slug": app.app_slug}
+        config = {
+            "app_id": app.app_id,
+            "app_slug": app.app_slug,
+            DISABLED_ACTIONS_KEY: record.config.get(DISABLED_ACTIONS_KEY, ""),
+        }
     return InstanceRow(record.id, record.user_id, record.kind, record.name, record.status, config)
 
 
