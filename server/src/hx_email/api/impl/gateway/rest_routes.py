@@ -1,17 +1,15 @@
 """REST face of the router gateway under ``/api/v1/router`` (docs/messaging-router.md 6).
 
 Each route is a thin call into ``server/gateway``; MCP calls the very same functions,
-so REST and MCP cannot drift apart. Sync routes run in FastAPI's thread pool, which is
-what lets ``wait`` block on a condition variable without stalling the event loop.
+so REST and MCP cannot drift apart. Short reads stay sync in the thread pool; ``wait``
+and ``stream`` are coroutines that sleep on the hub (``server/hub``), so a waiting
+consumer holds no worker thread.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import sqlite3
-from collections.abc import AsyncIterator
-from functools import partial
 from typing import Annotated, Literal
 
 import anyio
@@ -23,6 +21,7 @@ from hx_email.api.impl.gateway.admin_routes import register_gateway_admin_routes
 from hx_email.api.impl.gateway.auth import caller_user_id
 from hx_email.api.impl.gateway.mcp_server import register_mcp_route
 from hx_email.api.impl.router.errors import install_router_error_handler
+from hx_email.api.impl.subscriptions.subscription_routes import register_subscription_routes
 from hx_email.config import Settings
 from hx_email.server.gateway.catalog import (
     capabilities_list,
@@ -31,15 +30,15 @@ from hx_email.server.gateway.catalog import (
     sources_list,
 )
 from hx_email.server.gateway.impl.dispatch import DISPATCHER, seconds_until_next
-from hx_email.server.gateway.listen import pull, wait_messages
+from hx_email.server.gateway.listen import pull
 from hx_email.server.gateway.sending import delivery_status, send_message
+from hx_email.server.hub.consume import stream_source, wait_source
 from hx_email.server.router.impl.outbox_admin import recover_after_restart
 
 LOGGER: logging.Logger = logging.getLogger("hx_email.gateway.rest")
 
 PREFIX: str = "/router"
 Direction = Literal["inbound", "outbound", "both"]
-HEARTBEAT_SECONDS: float = 25.0
 
 
 class SelectRequest(BaseModel):
@@ -58,17 +57,13 @@ class SendRequest(BaseModel):
     wait_seconds: float = Field(default=5.0, ge=0, le=5)
 
 
-def sse_frame(payload: dict[str, object], frame_id: str = "") -> str:
-    head: str = f"id: {frame_id}\n" if frame_id else ""
-    return f"{head}data: {json.dumps(payload, ensure_ascii=False)}\n\n"
-
-
 # REST 与 MCP 调同一组 server/gateway 函数, 两个入口不会各自漂移
 # 决策记录: .agents/notes/implemented/feature/2026-11-06-router-gateway-facade.md
 def register_gateway(app: FastAPI, api: APIRouter, settings: Settings) -> None:
     """Mount REST under ``/api/v1/router``, MCP at ``/mcp``, and the startup recovery."""
     register_gateway_rest_routes(api, settings)
     register_gateway_admin_routes(api, settings)
+    register_subscription_routes(api, settings)
     register_mcp_route(app, settings)
     install_router_error_handler(app)
 
@@ -182,7 +177,7 @@ def register_gateway_rest_routes(router: APIRouter, settings: Settings) -> None:
         return found
 
     @router.get(f"{PREFIX}/wait")
-    def wait(
+    async def wait(
         source: str,
         cursor: str = "",
         timeout_seconds: int = Query(default=25, ge=1, le=55),
@@ -190,47 +185,34 @@ def register_gateway_rest_routes(router: APIRouter, settings: Settings) -> None:
         direction: Direction = "inbound",
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        user_id: int = caller_user_id(settings, authorization)
-        return wait_messages(
+        user_id: int = await anyio.to_thread.run_sync(caller_user_id, settings, authorization)
+        return await wait_source(
             settings,
             user_id,
             source,
             cursor,
-            timeout_seconds=timeout_seconds,
+            timeout_seconds=float(timeout_seconds),
             limit=limit,
             direction=direction,
         )
 
     @router.get(f"{PREFIX}/stream")
-    def stream(
+    async def stream(
         source: str,
         cursor: str = "",
+        direction: Direction = "inbound",
         authorization: Annotated[str | None, Header()] = None,
         last_event_id: Annotated[str | None, Header(alias="Last-Event-ID")] = None,
     ) -> StreamingResponse:
-        user_id: int = caller_user_id(settings, authorization)
+        user_id: int = await anyio.to_thread.run_sync(caller_user_id, settings, authorization)
         start: str = last_event_id or cursor
-        pull(settings, user_id, source, start, limit=1)  # validate scope before streaming
-
-        async def frames() -> AsyncIterator[str]:
-            position: str = start
-            while True:
-                page: dict[str, object] = await anyio.to_thread.run_sync(
-                    partial(
-                        wait_messages,
-                        settings,
-                        user_id,
-                        source,
-                        position,
-                        timeout_seconds=HEARTBEAT_SECONDS,
-                    )
-                )
-                position = str(page["next_cursor"])
-                items: object = page["messages"]
-                if isinstance(items, list) and items:
-                    for item in items:
-                        yield sse_frame(item, str(item.get("cursor", "")))
-                else:
-                    yield ":\n\n"
-
-        return StreamingResponse(frames(), media_type="text/event-stream")
+        # 先同步校验一次范围与游标, 出错直接回 4xx 而不是开一条立刻断的流
+        await anyio.to_thread.run_sync(
+            lambda: pull(settings, user_id, source, start, limit=1, direction=direction)
+        )
+        frames = stream_source(settings, user_id, source, start, direction=direction)
+        return StreamingResponse(
+            frames,
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )

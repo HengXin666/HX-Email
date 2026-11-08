@@ -15,6 +15,10 @@ MESSAGE_ROUTER_COLUMNS: Final[tuple[tuple[str, str], ...]] = (
     ("raw_ref", "TEXT NOT NULL DEFAULT ''"),
     ("dedup_key", "TEXT NOT NULL DEFAULT ''"),
 )
+ROUTE_COLUMNS: Final[tuple[tuple[str, str], ...]] = (
+    ("name", "TEXT NOT NULL DEFAULT ''"),
+    ("updated_at", "TEXT NOT NULL DEFAULT ''"),
+)
 
 
 def migrate_messaging_schema(connection: sqlite3.Connection) -> None:
@@ -74,6 +78,18 @@ def add_missing_message_columns(connection: sqlite3.Connection) -> None:
             connection.execute(f"ALTER TABLE messaging_messages ADD COLUMN {name} {definition}")
 
 
+def add_missing_route_columns(connection: sqlite3.Connection) -> None:
+    """Subscriptions need a display name, an update stamp and a per-user index."""
+    rows: list[sqlite3.Row] = connection.execute("PRAGMA table_info(router_routes)").fetchall()
+    existing: set[str] = {str(row[1]) for row in rows}
+    for name, definition in ROUTE_COLUMNS:
+        if name not in existing:
+            connection.execute(f"ALTER TABLE router_routes ADD COLUMN {name} {definition}")
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_router_routes_user ON router_routes(user_id, id)"
+    )
+
+
 # 路由层订阅与分发的决策记录, 实现规格见 docs/messaging-router.md
 # .agents/notes/implemented/feature/2026-11-02-messaging-router-gateway.md
 # GitHub App 一键创建与秘密字段只写不读的决策
@@ -111,6 +127,7 @@ def migrate_router_schema(connection: sqlite3.Connection) -> None:
         )
         """
     )
+    add_missing_route_columns(connection)
     connection.execute(
         """
         CREATE TABLE IF NOT EXISTS router_outbox (

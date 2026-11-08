@@ -16,6 +16,7 @@ import { Privacy } from "./pages/Privacy";
 import { RefreshLogPage } from "./pages/RefreshLog";
 import { SendMail } from "./pages/SendMail";
 import { Settings } from "./pages/Settings";
+import { Subscriptions } from "./pages/Subscriptions";
 import { TempMail } from "./pages/TempMail";
 import { Terms } from "./pages/Terms";
 import { TokenTool } from "./pages/TokenTool";
@@ -121,6 +122,14 @@ const App: React.FC = () => {
         element={
           <RequireAuth>
             <Messaging />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/subscriptions"
+        element={
+          <RequireAuth>
+            <Subscriptions />
           </RequireAuth>
         }
       />

@@ -633,6 +633,25 @@ MCP server 名为 `hx-router`, 传输为 streamable HTTP (`/mcp`) 与 stdio (`hx
 - 有新数据时服务端发 `notifications/resources/updated`, 客户端再调用 `resources/read` 或 `messages_pull`
 - 通知是提示不是数据, 丢失通知不会丢数据
 
+### 5.13 阶段 2 已落地的订阅接口
+
+5.7 到 5.11 是最初的设计稿. 阶段 2 实际落地的形态如下, 以本节为准:
+
+- 名称: 对外叫 subscription, MCP 工具为 `subscriptions_list`, `subscription_create`, `subscription_wait`, `subscription_ack`; 原有 `events_wait` 保留, 仍按 source 加 cursor 等待. 存储表仍是 `router_routes`, 新增 `name`, `updated_at` 两列与 `(user_id, id)` 索引, 每个账号最多 50 条.
+- id 是整数, 不再加 `r_` 前缀; `source` 接受 v1 前缀与契约 v2 地址或选择器 (见 2.5), 返回同时带 `source` 与 `address`.
+- `filter` 只有 `direction`, `kinds`, `exclude_self` (默认 true), `mention_self`, `contains` 五个键, 作用在 3.5 的 Event v2 视图上; 未知键报 `route_invalid`.
+- `from` 为 `now` (默认, ack 停在当前最新一条) 或 `earliest`.
+- `delivery` 本阶段只有 `pull`: 消费者用 `/subscriptions/{id}/events` 长轮询或 `/subscriptions/{id}/stream` 收 SSE, 用 `/ack` 推进. 长轮询不推进 ack, 处理完再确认, 得到至少一次语义; SSE 的 `auto_ack=true` 在每批推出后确认, 适合看板这类不在乎重放的消费者. webhook 与 WebSocket 在阶段 3, MCP resource 通知在阶段 7.
+- 暂停的订阅 `/events` 立即返回 `paused: true`, `/stream` 返回 `route_invalid`.
+- 积压 `backlog` 是 ack 之后范围内未过滤的条数, 超过 999 时封顶并带 `backlog_capped: true`.
+- 错误码新增 `route_not_found` (404), `route_invalid` (422), `route_limit` (409).
+
+等待的实现 (`server/hub/`):
+
+- `bus.py`: 每个等待者按自己的 source 与可读实例注册一个匹配器; 每次落库 (入站与出站记录) 调 `BUS.publish([Hit(instance_id, chat_id, direction)])`, 只唤醒命中的等待者. 原来进程内唯一的 `threading.Condition` 与版本号已删除, 不再一条消息唤醒所有人. 匹配器只会多匹配不会漏匹配, 被误唤醒的等待者按 cursor 重读一次再睡.
+- `consume.py`: `/wait`, `/stream`, `/subscriptions/{id}/events`, `/subscriptions/{id}/stream`, MCP 的 `events_wait` 与 `subscription_wait` 都是协程, 先注册等待者再读库 (读库借一次工作线程, 毫秒级), 然后在 `asyncio.Event` 上睡, 等待期间不占线程池. 跨线程唤醒用 `loop.call_soon_threadsafe`.
+- 被过滤掉的整页不会触发睡眠: 游标前移后立即读下一页, 直到有符合条件的消息, 没有更多, 或超时.
+
 ## 6. REST 兼容面
 
 前缀 `/api/v1/router`, 鉴权统一为 `Authorization: Bearer <路由 API Key>`, 前端会话 token 同样被接受; 平台回调入口与 API Key 管理接口例外
@@ -646,12 +665,17 @@ MCP server 名为 `hx-router`, 传输为 streamable HTTP (`/mcp`) 与 stdio (`hx
 | POST   | `/messages`                                | body 同 `message_send`, 也可用 `Idempotency-Key` 头代替 `idempotency_key` | 同 `message_send`, 排队时 HTTP 202                                       | API Key                                          | `message_send`                      |
 | GET    | `/deliveries/{delivery_id}`                | 无                                                                        | 同 `delivery_status`                                                     | API Key                                          | `delivery_status` 按 delivery_id 查 |
 | GET    | `/deliveries`                              | query `idempotency_key`, `sink`, 两者必填                                 | 同 `delivery_status`, 无记录时 404                                       | API Key                                          | `delivery_status` 按幂等键查        |
-| POST   | `/routes`                                  | body 同 `route_subscribe`                                                 | 同 `route_subscribe`, HTTP 201                                           | API Key                                          | `route_subscribe`                   |
-| DELETE | `/routes/{route_id}`                       | 无                                                                        | 同 `route_unsubscribe`                                                   | API Key                                          | `route_unsubscribe`                 |
-| GET    | `/routes`                                  | query `status`                                                            | 同 `routes_list`                                                         | API Key                                          | `routes_list`                       |
-| GET    | `/routes/{route_id}/wait`                  | query `cursor`, `timeout_seconds`, `limit`                                | 同 `events_wait`                                                         | API Key                                          | `events_wait`                       |
-| POST   | `/routes/{route_id}/ack`                   | body `{cursor}`                                                           | 同 `route_ack`                                                           | API Key                                          | `route_ack`                         |
-| GET    | `/routes/{route_id}/stream`                | 头 `Last-Event-ID` 为 cursor                                              | `text/event-stream`, 每帧 `id` 为 cursor                                 | API Key                                          | 对应 resource 订阅                  |
+| POST   | `/subscriptions`                           | body `{source, name, filter, from}`                                       | 订阅对象, 含 `ack_cursor`, HTTP 201                                      | API Key                                          | `subscription_create`               |
+| GET    | `/subscriptions`                           | 无                                                                        | `{subscriptions: [... backlog], limit}`                                  | API Key                                          | `subscriptions_list`                |
+| GET    | `/subscriptions/{id}`                      | 无                                                                        | 订阅对象                                                                 | API Key                                          | 无                                  |
+| PATCH  | `/subscriptions/{id}`                      | body `{name?, status?, filter?}`                                          | 订阅对象                                                                 | API Key                                          | 无                                  |
+| DELETE | `/subscriptions/{id}`                      | 无                                                                        | `{id, deleted: true}`                                                    | API Key                                          | 无                                  |
+| GET    | `/subscriptions/{id}/events`               | query `cursor`, `timeout_seconds` (0 到 55), `limit`                      | 同 `events_wait`, 另带 `subscription_id`, `ack_cursor`                   | API Key                                          | `subscription_wait`                 |
+| POST   | `/subscriptions/{id}/ack`                  | body `{cursor}`                                                           | 订阅对象, 只前进不回退                                                   | API Key                                          | `subscription_ack`                  |
+| GET    | `/subscriptions/{id}/stream`               | query `auto_ack`, `cursor`; 头 `Last-Event-ID`                            | `text/event-stream`, 首帧 `event: ready`, 每帧 `id` 为 cursor            | API Key                                          | 无                                  |
+| GET    | `/wait`                                    | query `source`, `cursor`, `timeout_seconds`, `limit`, `direction`         | 同 `events_wait`                                                         | API Key                                          | `events_wait`                       |
+| GET    | `/stream`                                  | query `source`, `cursor`, `direction`; 头 `Last-Event-ID`                 | `text/event-stream`                                                      | API Key                                          | 无                                  |
+| GET    | `/hub`                                     | 无                                                                        | `{waiting, published}`                                                   | API Key                                          | 无                                  |
 | POST   | `/instances/{instance_id}/outbound/hold`   | 无                                                                        | `{outbound: "manual_hold"}`                                              | 前端会话                                         | 无                                  |
 | POST   | `/instances/{instance_id}/outbound/resume` | 无                                                                        | `{outbound: "open"}`                                                     | 前端会话                                         | 无                                  |
 | POST   | `/api-keys`                                | body `{name}`                                                             | `{id, name, key, key_prefix, created_at}`, `key` 只返回这一次, HTTP 201  | 前端会话                                         | 无                                  |
@@ -865,6 +889,7 @@ MCP server 名为 `hx-router`, 传输为 streamable HTTP (`/mcp`) 与 stdio (`hx
 ### 阶段 2: 订阅与推送
 
 - 范围: `hub.py`, `route_subscribe`, `route_unsubscribe`, `routes_list`, `events_wait`, `route_ack`, MCP resource 通知, SSE 流, REST 兼容面全部路由
+- 落地情况 (2026-11-08): hub, 持久订阅, 长轮询与 SSE 改协程, 前端 "消息订阅" 页与接入示例已完成, 实际接口见 5.13; MCP resource 通知移到 MCP 补全阶段
 - 里程碑: MCP 客户端订阅一个 QQ 群后, 群内新消息在 1 秒内触发 `notifications/resources/updated`, 断开重连后从 `ack_cursor` 续读无遗漏
 - 验收: ADR 0005 的 A1, A2, A3, A6 全部通过
 

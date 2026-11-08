@@ -9,6 +9,7 @@ export { platformsApi } from "./platforms";
 export { poolApi } from "./pool";
 export { refreshApi } from "./refresh";
 export { routerGithubApi } from "./router_github";
+export { routerHubApi } from "./router_hub";
 export { settingsApi } from "./settings";
 export { tempMailApi } from "./temp-mail";
 export { tokenApi } from "./token";

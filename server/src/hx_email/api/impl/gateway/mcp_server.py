@@ -3,8 +3,9 @@
 Stateless JSON-RPC 2.0: every POST carries one request (or a batch) and gets a JSON
 response; notifications get 202. No session table, no SSE channel kept open, no SDK:
 the official ``mcp`` package would add a dependency tree and an anyio task group per
-session for the six methods we need. Listening is the ``events_wait`` tool, which
-blocks on the gateway's condition variable inside the thread pool.
+session for the six methods we need. Listening is ``events_wait`` or a persistent
+subscription's ``subscription_wait``; both are awaited on the hub inside the event
+loop, so a waiting MCP client holds no worker thread.
 
 Auth: ``Authorization: Bearer <hxr_ router key | console session>`` on every request.
 Tool failures come back as ``result.isError=true`` with ``{code, message, retryable}``.
@@ -21,6 +22,11 @@ from fastapi.responses import JSONResponse, Response
 
 from hx_email.api.impl.gateway.auth import caller_user_id
 from hx_email.api.impl.gateway.mcp_tools import TOOLS, ToolInputError, call_tool
+from hx_email.api.impl.subscriptions.mcp_subscription_tools import (
+    HUB_TOOL_NAMES,
+    SUBSCRIPTION_TOOLS,
+    call_hub_tool,
+)
 from hx_email.config import Settings
 from hx_email.server.router.errors import RouterError
 
@@ -32,6 +38,7 @@ METHOD_NOT_FOUND: Final[int] = -32601
 INVALID_PARAMS: Final[int] = -32602
 
 JsonDict = dict[str, object]
+ALL_TOOLS: Final[list[JsonDict]] = [*TOOLS, *SUBSCRIPTION_TOOLS]
 
 
 def rpc_error(request_id: object, code: int, message: str) -> JsonDict:
@@ -71,14 +78,15 @@ def handle_one(settings: Settings, user_id: int, message: object) -> JsonDict | 
                 "instructions": (
                     "统一消息路由: capabilities_list 看平台能力, sources_list -> sessions_list -> "
                     "session_select 拿 cursor, "
-                    "然后 messages_pull / events_wait 监听, message_send 发送."
+                    "然后 messages_pull / events_wait 监听; 要断线续读就 subscription_create "
+                    "再 subscription_wait + subscription_ack; message_send 发送."
                 ),
             },
         )
     if method == "ping":
         return rpc_result(request_id, {})
     if method == "tools/list":
-        return rpc_result(request_id, {"tools": TOOLS})
+        return rpc_result(request_id, {"tools": ALL_TOOLS})
     if method != "tools/call":
         return rpc_error(request_id, METHOD_NOT_FOUND, f"method not found: {method}")
     arguments: object = params.get("arguments") or {}
@@ -86,6 +94,33 @@ def handle_one(settings: Settings, user_id: int, message: object) -> JsonDict | 
         return rpc_error(request_id, INVALID_PARAMS, "arguments must be an object")
     try:
         payload: JsonDict = call_tool(settings, user_id, str(params.get("name") or ""), arguments)
+    except ToolInputError as error:
+        return rpc_error(request_id, INVALID_PARAMS, str(error))
+    except RouterError as error:
+        return rpc_result(request_id, tool_result(error.to_dict(), is_error=True))
+    return rpc_result(request_id, tool_result(payload))
+
+
+def hub_call(message: object) -> tuple[object, str, JsonDict] | None:
+    """(id, tool name, arguments) when ``message`` calls a hub tool, else None."""
+    if not isinstance(message, dict) or message.get("method") != "tools/call":
+        return None
+    params: object = message.get("params")
+    if message.get("jsonrpc") != "2.0" or "id" not in message or not isinstance(params, dict):
+        return None
+    name: str = str(params.get("name") or "")
+    arguments: object = params.get("arguments") or {}
+    if name not in HUB_TOOL_NAMES or not isinstance(arguments, dict):
+        return None
+    return message.get("id"), name, arguments
+
+
+async def handle_hub(
+    settings: Settings, user_id: int, call: tuple[object, str, JsonDict]
+) -> JsonDict:
+    request_id, name, arguments = call
+    try:
+        payload: JsonDict = await call_hub_tool(settings, user_id, name, arguments)
     except ToolInputError as error:
         return rpc_error(request_id, INVALID_PARAMS, str(error))
     except RouterError as error:
@@ -107,7 +142,12 @@ def register_mcp_route(app: FastAPI, settings: Settings) -> None:
         messages: list[object] = body if isinstance(body, list) else [body]
         replies: list[JsonDict] = []
         for message in messages:
-            reply: JsonDict | None = await run_in_threadpool(handle_one, settings, user_id, message)
+            call: tuple[object, str, JsonDict] | None = hub_call(message)
+            reply: JsonDict | None = (
+                await handle_hub(settings, user_id, call)
+                if call is not None
+                else await run_in_threadpool(handle_one, settings, user_id, message)
+            )
             if reply is not None:
                 replies.append(reply)
         if not replies:

@@ -107,3 +107,94 @@ export interface GithubAttachResult {
   attached: boolean;
   installation: GithubInstallation;
 }
+
+// ===== Router hub & persistent subscriptions (契约 v2, 阶段 2) =====
+
+export type RouterDirection = "inbound" | "outbound" | "both";
+
+export interface RouterSubscriptionFilter {
+  direction: RouterDirection;
+  kinds: string[];
+  exclude_self: boolean;
+  mention_self: boolean;
+  contains: string;
+}
+
+export interface RouterSubscription {
+  id: number;
+  name: string;
+  source: string;
+  address: string;
+  filter: RouterSubscriptionFilter;
+  delivery: string;
+  status: "active" | "paused";
+  ack_cursor: string;
+  created_at: string;
+  updated_at: string;
+  expires_at: string | null;
+  backlog?: number;
+  backlog_capped?: boolean;
+}
+
+export interface RouterSubscriptionList {
+  subscriptions: RouterSubscription[];
+  limit: number;
+}
+
+export interface RouterSubscriptionCreate {
+  source: string;
+  name?: string;
+  filter?: Partial<RouterSubscriptionFilter>;
+  from?: "now" | "earliest";
+}
+
+export interface RouterEvent {
+  id: string;
+  cursor: string;
+  platform: string;
+  session: string;
+  address?: string;
+  kind?: string;
+  direction: string;
+  text: string;
+  sender: { id: string; name: string; is_self: boolean };
+  occurred_at: string;
+  flags?: Record<string, boolean | null>;
+}
+
+export interface RouterEventPage {
+  messages: RouterEvent[];
+  next_cursor: string;
+  has_more: boolean;
+  gap: boolean;
+  timed_out: boolean;
+  ack_cursor?: string;
+  paused?: boolean;
+}
+
+export interface RouterSource {
+  platform: string;
+  instance_id: number;
+  address: string;
+  name: string;
+  state: string;
+  outbound: string;
+}
+
+export interface RouterHubStats {
+  waiting: number;
+  published: number;
+}
+
+export interface RouterApiKey {
+  id: number;
+  name: string;
+  key_prefix: string;
+  created_at: string;
+  last_used_at?: string | null;
+  revoked_at?: string | null;
+}
+
+export interface RouterIssuedKey extends RouterApiKey {
+  key: string;
+}

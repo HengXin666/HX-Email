@@ -19,6 +19,9 @@ HTTP_STATUS_BY_CODE: Final[dict[str, int]] = {
     "provider_error": 502,
     "delivery_unknown": 409,
     "cursor_invalid": 400,
+    "route_not_found": 404,
+    "route_invalid": 422,
+    "route_limit": 409,
 }
 DEFAULT_STATUS: Final[int] = 502
 

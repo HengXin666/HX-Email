@@ -2,8 +2,9 @@
 
 Schemas are plain JSON Schema dicts with ``additionalProperties: false``; ``call_tool``
 validates required keys and unknown keys, then calls the same ``server/gateway``
-functions the REST routes call. Route persistence (route_subscribe and friends) is not
-in this round: listening is ``messages_pull`` plus ``events_wait`` on a source prefix.
+functions the REST routes call. Waiting tools (``events_wait``) and persistent
+subscriptions run as coroutines in ``api/impl/subscriptions/mcp_subscription_tools.py``;
+this module keeps their schemas and the sync tools.
 """
 
 from __future__ import annotations
@@ -19,13 +20,14 @@ from hx_email.server.gateway.catalog import (
     sessions_list,
     sources_list,
 )
-from hx_email.server.gateway.listen import pull, wait_messages
+from hx_email.server.gateway.listen import pull
 from hx_email.server.gateway.sending import delivery_status, send_message
 from hx_email.server.router.errors import RouterError, SessionNotFoundError
 
 JsonDict = dict[str, object]
 STR: Final[JsonDict] = {"type": "string"}
 INT: Final[JsonDict] = {"type": "integer"}
+BOOL: Final[JsonDict] = {"type": "boolean"}
 DIRECTION: Final[JsonDict] = {"type": "string", "enum": ["inbound", "outbound", "both"]}
 PLATFORM: Final[JsonDict] = {"type": "string", "enum": sorted(REGISTRY.platform_names())}
 ADDRESS_HINT: Final[str] = "v2 地址如 qq:3/group/123, github:7/repo/o/r/issue/42; v1 仍可用"
@@ -126,8 +128,10 @@ class ToolInputError(ValueError):
     """Arguments do not match the tool's input schema."""
 
 
-def check_arguments(name: str, arguments: JsonDict) -> None:
-    tool: JsonDict = next(item for item in TOOLS if item["name"] == name)
+def check_arguments(
+    name: str, arguments: JsonDict, catalogue: list[JsonDict] | None = None
+) -> None:
+    tool: JsonDict = next(item for item in (catalogue or TOOLS) if item["name"] == name)
     spec: object = tool["inputSchema"]
     if not isinstance(spec, dict):  # pragma: no cover - static table
         return
@@ -196,15 +200,6 @@ def handlers(settings: Settings, user_id: int) -> dict[str, Callable[[JsonDict],
             direction=text_arg(a, "direction", "inbound"),
             include_raw=bool(a.get("include_raw", False)),
         ),
-        "events_wait": lambda a: wait_messages(
-            settings,
-            user_id,
-            text_arg(a, "source"),
-            text_arg(a, "cursor"),
-            timeout_seconds=float(int_arg(a, "timeout_seconds", 25)),
-            limit=int_arg(a, "limit", 20),
-            direction=text_arg(a, "direction", "inbound"),
-        ),
         "message_send": lambda a: send_message(
             settings,
             user_id,
@@ -221,7 +216,7 @@ def handlers(settings: Settings, user_id: int) -> dict[str, Callable[[JsonDict],
 
 def call_tool(settings: Settings, user_id: int, name: str, arguments: JsonDict) -> JsonDict:
     """Run one tool; raises ToolInputError or RouterError for the caller to wrap."""
-    if name not in TOOL_NAMES:
+    if name not in TOOL_NAMES or name == "events_wait":
         raise ToolInputError(f"unknown tool: {name}")
     check_arguments(name, arguments)
     return handlers(settings, user_id)[name](arguments)

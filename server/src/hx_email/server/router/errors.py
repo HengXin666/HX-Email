@@ -80,6 +80,24 @@ class CursorInvalidError(RouterError):
     code = "cursor_invalid"
 
 
+class RouteNotFoundError(RouterError):
+    """Subscription id does not exist or belongs to another user."""
+
+    code = "route_not_found"
+
+
+class RouteInvalidError(RouterError):
+    """Subscription filter, status or start value is not accepted."""
+
+    code = "route_invalid"
+
+
+class RouteLimitError(RouterError):
+    """The account already holds the maximum number of subscriptions."""
+
+    code = "route_limit"
+
+
 ERROR_TYPES: Final[dict[str, type[RouterError]]] = {
     error_type.code: error_type
     for error_type in (
@@ -92,6 +110,9 @@ ERROR_TYPES: Final[dict[str, type[RouterError]]] = {
         ProviderError,
         DeliveryUnknownError,
         CursorInvalidError,
+        RouteNotFoundError,
+        RouteInvalidError,
+        RouteLimitError,
     )
 }
 

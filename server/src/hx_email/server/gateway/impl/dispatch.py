@@ -23,8 +23,8 @@ from datetime import UTC, datetime
 from hx_email.config import Settings
 from hx_email.database import connect
 from hx_email.server.gateway.impl.breaker import BREAKER
-from hx_email.server.gateway.listen import SIGNAL
 from hx_email.server.gateway.providers import HUB, SHAPER, InstanceRow, load_instance
+from hx_email.server.hub.bus import BUS, Hit
 from hx_email.server.router.envelope import (
     InboundMessage,
     Sender,
@@ -89,7 +89,8 @@ def record_outbound(settings: Settings, entry: Entry, platform_message_id: str) 
         store_inbound(settings, message)
     except (ValueError, OSError) as error:
         LOGGER.warning("cannot record outbound %s: %s", entry.delivery_id, error)
-    SIGNAL.notify()
+        return
+    BUS.publish([Hit(address.instance_id, address.address, "outbound")])
 
 
 class Dispatcher:
