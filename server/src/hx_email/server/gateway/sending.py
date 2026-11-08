@@ -31,6 +31,11 @@ from hx_email.server.router.impl.outbox_admin import find_send, get_entry, set_i
 MAX_WAIT_SECONDS: Final[float] = 5.0
 QQ_TYPES: Final[frozenset[str]] = frozenset({"private", "group", "temp", "qzonepost"})
 GITHUB_TYPES: Final[frozenset[str]] = frozenset({"issue", "repo"})
+SENDABLE_BY_KIND: Final[dict[str, frozenset[str]]] = {
+    "qq": QQ_TYPES,
+    "github": GITHUB_TYPES,
+    "qqbot": frozenset({"channel"}),
+}
 
 
 def iso(stamp: str) -> str:
@@ -53,7 +58,7 @@ def delivery_view(entry: Entry, deduplicated: bool = False) -> dict[str, object]
 
 
 def check_sendable(instance: InstanceRow, address: SessionAddress, title: str) -> None:
-    allowed: frozenset[str] = QQ_TYPES if instance.kind == "qq" else GITHUB_TYPES
+    allowed: frozenset[str] = SENDABLE_BY_KIND.get(instance.kind, frozenset())
     if address.session_type not in allowed:
         raise SessionNotSendableError(f"{address.session_type} sessions cannot be sent to")
     if address.session_type == "repo" and not title.strip():

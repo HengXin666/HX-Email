@@ -6,6 +6,8 @@ QQ (NapCat, OneBot 11) and GitHub (App) as implemented today. v1 mapping:
 - ``qq:<iid>/temp/<gid>-<qq>`` is ``qq:<iid>:temp:<gid>-<qq>``
 - ``qq:<iid>/qzone/<qq>/post/<tid>`` is ``qq:<iid>:qzonepost:<qq>_<tid>`` (QQ 空间说说;
   ``qzone`` alone is a grouping level for "every post in this space")
+- ``qqbot:<iid>/guild/<guild>/channel/<channel>`` is ``qqbot:<iid>:channel:<guild>/<channel>``
+  (QQ 频道走官方机器人 API, 是独立平台, 见 ADR 0009)
 - ``github:<iid>/repo/<owner>/<name>`` is ``github:<iid>:repo:<owner>/<name>``
 - ``github:<iid>/repo/<owner>/<name>/issue/<n>`` is ``github:<iid>:issue:<owner>/<name>#<n>``
   (issue and pull request share GitHub's number space, so one kind covers both threads)
@@ -174,4 +176,41 @@ GITHUB: Final[PlatformCapabilities] = PlatformCapabilities(
     ),
 )
 
-REGISTRY: Final[CapabilityRegistry] = CapabilityRegistry((QQ, GITHUB))
+QQBOT: Final[PlatformCapabilities] = PlatformCapabilities(
+    platform="qqbot",
+    title="QQ 频道 (官方机器人)",
+    risk_level="official",
+    delivery="push",
+    rate_profile="qqbot",
+    kinds=(
+        AddressKind(
+            "guild",
+            id_pattern=DIGITS,
+            description="频道, id 为 guild_id; 只作分组, 订阅它即订阅其下全部子频道",
+        ),
+        AddressKind(
+            "channel",
+            parent="guild",
+            id_pattern=DIGITS,
+            legacy_type="channel",
+            legacy_peer="{guild}/{channel}",
+            sendable=True,
+            description="文字子频道, id 为 channel_id; 公域机器人只收到 @ 它或回复它的消息",
+        ),
+    ),
+    event_kinds=("message",),
+    default_event_kind="message",
+    signals=("from_self", "mention_self", "reply_to_self"),
+    actions=(
+        ActionSpec(
+            "message_send",
+            targets=("channel",),
+            description=(
+                "发到子频道; reply_to 为 5 分钟内的消息 id 时是被动回复, 不带是主动消息, "
+                "默认每个子频道每天 20 条, 每个频道每天最多 2 个子频道"
+            ),
+        ),
+    ),
+)
+
+REGISTRY: Final[CapabilityRegistry] = CapabilityRegistry((QQ, GITHUB, QQBOT))

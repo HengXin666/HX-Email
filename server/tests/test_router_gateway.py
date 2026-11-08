@@ -290,7 +290,7 @@ def test_contract_v2_over_http(env: dict[str, Any]) -> None:
     client, headers, qq, settings = env["client"], env["headers"], env["qq"], env["settings"]
     caps = client.get(f"{API}/router/capabilities", headers=headers).json()
     assert caps["contract"] == 2
-    assert {p["platform"] for p in caps["platforms"]} == {"qq", "github"}
+    assert {p["platform"] for p in caps["platforms"]} == {"qq", "github", "qqbot"}
     client.post(
         f"{API}/messaging/events/qq", json=qq_event(91), headers={"Authorization": "Bearer tkn"}
     )

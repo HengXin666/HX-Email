@@ -24,7 +24,7 @@ from hx_email.config import Settings
 from hx_email.server.messaging.engine import QQEngineManager
 from hx_email.server.messaging.impl.config import pick_free_port
 from hx_email.server.messaging.impl.probe import probe_qq_login
-from hx_email.server.messaging.registry import catalog, drop_adapter, get_kind
+from hx_email.server.messaging.registry import catalog, creation_error, drop_adapter
 from hx_email.server.messaging.store import (
     create_instance,
     delete_instance,
@@ -66,13 +66,10 @@ def register_messaging_routes(router: APIRouter, settings: Settings) -> None:
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
         user = require_user(settings, authorization)
-        if (kind := get_kind(payload.kind)) is None or kind.adapter_factory is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Messaging kind {payload.kind} cannot be created here",
-            )
-        name: str = payload.name.strip() or payload.kind
         config: dict[str, str] = dict(payload.config)
+        if (reason := creation_error(payload.kind, config)) is not None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=reason)
+        name: str = payload.name.strip() or payload.kind
         instance: MessagingInstance = create_instance(settings, user.id, payload.kind, name, config)
         return {"success": True, "instance": instance_dict(instance)}
 

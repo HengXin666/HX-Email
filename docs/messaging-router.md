@@ -91,24 +91,25 @@ address := <platform>:<instance_id>( /<kind>[/<id>] )*
 id      := 由该 kind 的 id_parts 个 "/" 分段组成 (GitHub repo 为 2: owner/name)
 ```
 
-| v2                                   | 含义                                 | 对应 v1                                                       |
-| ------------------------------------ | ------------------------------------ | ------------------------------------------------------------- |
-| `qq:3`                               | 账号下全部会话 (选择器)              | `qq:3:`                                                       |
-| `qq:3/group`                         | 账号下全部群 (选择器)                | `qq:3:group:`                                                 |
-| `qq:3/group/555`                     | 群会话                               | `qq:3:group:555`                                              |
-| `qq:3/private/10001`                 | 好友私聊                             | `qq:3:private:10001`                                          |
-| `qq:3/temp/555-10001`                | 群临时会话                           | `qq:3:temp:555-10001`                                         |
-| `github:7/repo/hx/HX-Email`          | 仓库本身, 作为选择器时含其下全部线程 | `github:7:repo:hx/HX-Email` 加 `github:7:issue:hx/HX-Email#*` |
-| `github:7/repo/hx/HX-Email/issue/42` | issue 或 PR 线程                     | `github:7:issue:hx/HX-Email#42`                               |
-| `qq:3/qzone/10001`                   | 该 QQ 号空间的全部说说 (选择器)      | `qq:3:qzonepost:10001_*`                                      |
-| `qq:3/qzone/10001/post/<tid>`        | 一条说说及其评论                     | `qq:3:qzonepost:10001_<tid>`                                  |
+| v2                                      | 含义                                 | 对应 v1                                                       |
+| --------------------------------------- | ------------------------------------ | ------------------------------------------------------------- |
+| `qq:3`                                  | 账号下全部会话 (选择器)              | `qq:3:`                                                       |
+| `qq:3/group`                            | 账号下全部群 (选择器)                | `qq:3:group:`                                                 |
+| `qq:3/group/555`                        | 群会话                               | `qq:3:group:555`                                              |
+| `qq:3/private/10001`                    | 好友私聊                             | `qq:3:private:10001`                                          |
+| `qq:3/temp/555-10001`                   | 群临时会话                           | `qq:3:temp:555-10001`                                         |
+| `github:7/repo/hx/HX-Email`             | 仓库本身, 作为选择器时含其下全部线程 | `github:7:repo:hx/HX-Email` 加 `github:7:issue:hx/HX-Email#*` |
+| `github:7/repo/hx/HX-Email/issue/42`    | issue 或 PR 线程                     | `github:7:issue:hx/HX-Email#42`                               |
+| `qqbot:5/guild/<频道>/channel/<子频道>` | QQ 频道的文字子频道 (官方机器人)     | `qqbot:5:channel:<频道>/<子频道>`                             |
+| `qq:3/qzone/10001`                      | 该 QQ 号空间的全部说说 (选择器)      | `qq:3:qzonepost:10001_*`                                      |
+| `qq:3/qzone/10001/post/<tid>`           | 一条说说及其评论                     | `qq:3:qzonepost:10001_<tid>`                                  |
 
 - 区分规则: 实例号后紧跟 `/` 或结束为 v2, 紧跟 `:` 为 v1. 所有接受 session, sink, source 的入口两种都收, 以 v1 落库与去重, 所以同一会话用两种写法发送共享幂等键
 - 前缀按路径段匹配, 不按字符: `group/12` 不覆盖 `group/123`; 选择器可以停在一个 kind 上 (`qq:3/group`) 表示该 kind 全部对象, 停在一个对象上表示它及其下全部子对象
 - kind 的层级, id 段数, 正则, 与 v1 的映射 (`legacy_type`, `legacy_peer` 模板如 `{repo}#{issue}`) 全部写在平台声明里 (`server/contract/builtin.py`), 核心不再枚举平台与类型; 新平台或新层级只加声明与 provider
 - 所有返回 session 或 sink 的地方同时返回 `address` (v2); 一个无法映射的 v1 值返回空字符串而不是报错
-- `capabilities_list` (MCP) 与 `GET /api/v1/router/capabilities` (REST) 返回每个平台的地址层级, 事件种类, 已支持的信号与可用动作; 只声明已实现的能力; GitHub discussion 与 commit 已于 2026-11-08 加入声明 (只收不发), QQ 空间 (`qzone`, `post`) 于 2026-11-09 加入, QQ 频道在实现它的阶段加入
-- 风控等级与整形档位按平台声明, 可按 kind 覆盖: 每个地址层级在 capabilities 里带 `risk_level` 与 `rate_profile`. QQ 聊天为 `third_party` / `qq`, QQ 空间为 `unofficial_web` / `qzone`, GitHub 为 `official` / `github`
+- `capabilities_list` (MCP) 与 `GET /api/v1/router/capabilities` (REST) 返回每个平台的地址层级, 事件种类, 已支持的信号与可用动作; 只声明已实现的能力; GitHub discussion 与 commit 已于 2026-11-08 加入声明 (只收不发), QQ 空间 (`qzone`, `post`) 于 2026-11-09 加入; QQ 频道是独立平台 `qqbot` (官方机器人, `guild`, `channel`), 同日加入, 见 ADR 0009 与 docs/providers/qq-bot.md
+- 风控等级与整形档位按平台声明, 可按 kind 覆盖: 每个地址层级在 capabilities 里带 `risk_level` 与 `rate_profile`. QQ 聊天为 `third_party` / `qq`, QQ 空间为 `unofficial_web` / `qzone`, QQ 频道为 `official` / `qqbot`, GitHub 为 `official` / `github`
 - 决策记录: `.agents/notes/implemented/feature/2026-11-08-router-contract-v2.md`, ADR 0006
 
 ## 3. 统一 envelope

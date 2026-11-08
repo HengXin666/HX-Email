@@ -15,7 +15,7 @@ from hx_email.server.contract.builtin import REGISTRY
 from hx_email.server.router.errors import SessionNotFoundError
 
 SessionType = Literal[
-    "private", "group", "temp", "repo", "issue", "discussion", "commit", "qzonepost"
+    "private", "group", "temp", "repo", "issue", "discussion", "commit", "qzonepost", "channel"
 ]
 Direction = Literal["inbound", "outbound"]
 
@@ -44,6 +44,12 @@ class SessionAddress:
         return "private" if self.session_type in ("private", "temp") else "group"
 
 
+def type_belongs(platform: str, session_type: str) -> bool:
+    """会话类型按平台声明: ``qq:3:channel:1`` 与 ``qqbot:3:group:1`` 都不是合法地址."""
+    caps = REGISTRY.get(platform)
+    return caps is not None and caps.legacy_kind(session_type) is not None
+
+
 # v2 地址在这里折回 v1, 落库, 幂等, 出站都只认 v1
 # 决策记录: .agents/notes/implemented/feature/2026-11-08-router-contract-v2.md
 def parse_session(address: str) -> SessionAddress:
@@ -63,6 +69,7 @@ def parse_session(address: str) -> SessionAddress:
         and instance_text.isdigit()
         and int(instance_text) > 0
         and session_type in SESSION_TYPES
+        and type_belongs(platform, session_type)
         and bool(peer)
     )
     if not valid:

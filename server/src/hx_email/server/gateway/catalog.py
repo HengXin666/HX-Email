@@ -35,7 +35,7 @@ from hx_email.server.router.provider import SessionRef
 
 LOGGER: logging.Logger = logging.getLogger("hx_email.gateway.catalog")
 SENDABLE_TYPES: Final[frozenset[str]] = frozenset(
-    {"private", "group", "temp", "qzonepost", "issue", "repo"}
+    {"private", "group", "temp", "qzonepost", "issue", "repo", "channel"}
 )
 MAX_SESSIONS: Final[int] = 200
 

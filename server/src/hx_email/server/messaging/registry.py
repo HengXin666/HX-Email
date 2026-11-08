@@ -34,6 +34,8 @@ class PluginKind:
     capabilities: Capabilities
     adapter_factory: Callable[[Settings, MessagingInstance], MessagingAdapter] | None
     description: str = ""
+    # 只走消息路由, 没有旧 adapter 的平台 (QQ 官方机器人): 允许用通用接口建实例
+    router_only: bool = False
 
 
 def create_qq_adapter(settings: Settings, instance: MessagingInstance) -> MessagingAdapter:
@@ -62,6 +64,21 @@ PLUGIN_KINDS: tuple[PluginKind, ...] = (
             "GitHub App (官方 API): webhook 监听 issue/PR 评论, installation token 回帖与建 issue;"
             "用下方「一键创建 GitHub App」接入。"
         ),
+    ),
+    PluginKind(
+        key="qqbot",
+        display_name="QQ 频道 (官方机器人)",
+        available=True,
+        capabilities=Capabilities(
+            risk_level="official",
+            risk_notice="官方机器人身份, 不涉及个人号; 主动消息按子频道每天限量。",
+        ),
+        adapter_factory=None,
+        description=(
+            "QQ 开放平台机器人 (AppID + AppSecret): 子频道消息经 webhook 回调接收, "
+            "OpenAPI 回复与推送; 回调地址 /api/v1/router/ingress/qqbot/{实例 id}。"
+        ),
+        router_only=True,
     ),
     PluginKind(
         key="wechat",
@@ -147,3 +164,13 @@ def clear_runtime() -> None:
     """Drop all cached adapters (used by tests and instance deletion flows)."""
     for instance_id in list(_RUNTIME):
         drop_adapter(instance_id)
+
+
+def creation_error(key: str, config: dict[str, str]) -> str | None:
+    """通用建实例接口拒绝的原因; ``None`` 表示可以建."""
+    kind: PluginKind | None = get_kind(key)
+    if kind is None or (kind.adapter_factory is None and not kind.router_only):
+        return f"Messaging kind {key} cannot be created here"
+    if kind.router_only and not (config.get("app_id") and config.get("app_secret")):
+        return f"Messaging kind {key} needs app_id and app_secret"
+    return None

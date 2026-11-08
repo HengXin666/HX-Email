@@ -23,7 +23,7 @@ from hx_email.server.messaging.types import (
 from hx_email.server.router.providers.impl.github.github_auth import SECRET_CONFIG_KEYS
 
 # GitHub 私钥与 webhook secret 和 QQ 的 event_token 一样只写不读
-MASKED_CONFIG_KEYS: frozenset[str] = frozenset({"event_token"}) | SECRET_CONFIG_KEYS
+MASKED_CONFIG_KEYS: frozenset[str] = frozenset({"event_token", "app_secret"}) | SECRET_CONFIG_KEYS
 
 
 def require_instance(

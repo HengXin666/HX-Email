@@ -40,15 +40,18 @@ from hx_email.server.router.providers.impl.github.github_auth import (
     open_app_config,
 )
 from hx_email.server.router.providers.impl.github.github_contract import GITHUB_LIMITS
+from hx_email.server.router.providers.impl.qqbot.qqbot_contract import QQBOT_PROFILE
+from hx_email.server.router.providers.impl.qqbot.qqbot_http import API_BASE, BotConfig
 from hx_email.server.router.providers.impl.qzone.qzone_contract import (
     QZONE_CONSERVATIVE,
     QZONE_DEFAULT,
 )
 from hx_email.server.router.providers.qq import QQNapCatProvider
+from hx_email.server.router.providers.qqbot import QQBotProvider
 from hx_email.server.router.providers.qzone import QzoneProvider
 
 LOGGER: logging.Logger = logging.getLogger("hx_email.gateway.providers")
-SUPPORTED_KINDS: tuple[str, ...] = ("qq", "github")
+SUPPORTED_KINDS: tuple[str, ...] = ("qq", "github", "qqbot")
 QZONE_TYPES: frozenset[str] = frozenset({"qzonepost"})
 EMPTY_GITHUB: GitHubAppConfig = GitHubAppConfig("", "", "", "", "")
 GITHUB_PROFILE: RateProfile = from_provider_limits("github", GITHUB_LIMITS)
@@ -111,6 +114,13 @@ class ProviderHub:
                     lambda instance_id: github_config(settings, instance_id)
                 )
             return self.github
+        if instance.kind == "qqbot":
+            config = BotConfig(
+                instance.config.get("app_id", ""),
+                instance.config.get("app_secret", ""),
+                instance.config.get("api_base", "") or API_BASE,
+            )
+            return cast(MessagingProvider, QQBotProvider(instance.id, config))
         raise SessionNotFoundError(f"platform {instance.kind} has no router provider yet")
 
     def qzone_for(self, settings: Settings, instance: InstanceRow) -> QzoneProvider:
@@ -159,6 +169,8 @@ HUB: ProviderHub = ProviderHub()
 def profile_for(instance: InstanceRow, session_type: str = "") -> RateProfile:
     if instance.kind == "github":
         return GITHUB_PROFILE
+    if instance.kind == "qqbot":
+        return QQBOT_PROFILE
     conservative: bool = instance.config.get("rate_profile") == "conservative"
     if session_type in QZONE_TYPES:
         return QZONE_CONSERVATIVE if conservative else QZONE_DEFAULT
@@ -193,7 +205,7 @@ def load_instance(settings: Settings, instance_id: int) -> InstanceRow | None:
     record: MessagingInstance | None = get_instance_by_id(settings, instance_id)
     if record is None:
         return None
-    config: dict[str, str] = dict(record.config) if record.kind == "qq" else {}
+    config: dict[str, str] = dict(record.config) if record.kind in ("qq", "qqbot") else {}
     if record.kind == "github":
         app: GitHubAppConfig = github_config(settings, instance_id)
         config = {"app_id": app.app_id, "app_slug": app.app_slug}

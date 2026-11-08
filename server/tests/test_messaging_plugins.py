@@ -134,7 +134,14 @@ def test_messaging_catalog_lists_four_platforms(tmp_path: Any) -> None:
 
     assert response.status_code == 200
     plugins = response.json()["plugins"]
-    assert [item["key"] for item in plugins] == ["qq", "github", "wechat", "telegram", "discord"]
+    assert [item["key"] for item in plugins] == [
+        "qq",
+        "github",
+        "qqbot",
+        "wechat",
+        "telegram",
+        "discord",
+    ]
     qq = next(item for item in plugins if item["key"] == "qq")
     assert qq["available"] is True
     assert qq["capabilities"]["supports_qr_login"] is True

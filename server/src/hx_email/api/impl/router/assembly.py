@@ -21,6 +21,7 @@ from collections.abc import Callable
 from fastapi import APIRouter
 
 from hx_email.api.impl.router.ingress.ingress_github import build_github_ingress_router
+from hx_email.api.impl.router.ingress.ingress_qqbot import build_qqbot_ingress_router
 from hx_email.api.impl.router.ingress.ingress_queue import (
     DeliveryLedger,
     IngressWorker,
@@ -108,4 +109,5 @@ def register_router_ingress(app: object, settings: Settings) -> IngressWorker:
         raise TypeError("register_router_ingress expects a FastAPI app")
     router, worker = build_github_ingress(settings)
     app.include_router(router)
+    app.include_router(build_qqbot_ingress_router(settings))
     return worker
