@@ -11,11 +11,10 @@ from typing import Annotated, Final
 from fastapi import APIRouter, Body, Header, HTTPException, status
 
 from hx_email.api.dependencies import require_admin
-from hx_email.api.impl.messaging.serializers import instance_dict
+from hx_email.api.impl.messaging.instances.github_user import KIND, run_check
 from hx_email.config import Settings
 from hx_email.server.contract.github_user.config import (
     CLI_KEY,
-    LOGIN_KEY,
     REPOSITORY_KEY,
     config_problem,
 )
@@ -23,24 +22,10 @@ from hx_email.server.messaging.store import (
     create_instance,
     get_instance,
     update_instance_config,
-    update_instance_status,
 )
 from hx_email.server.messaging.types import MessagingInstance
-from hx_email.server.router.providers.impl.github_user.gh_setup import SetupReport, check_setup
 
 PREFIX: Final[str] = "/router/github_user"
-KIND: Final[str] = "github_user"
-
-
-async def run_check(
-    settings: Settings, user_id: int, instance: MessagingInstance
-) -> dict[str, object]:
-    report: SetupReport = await check_setup(instance.config)
-    config: dict[str, str] = {**instance.config, LOGIN_KEY: report.login if report.ok else ""}
-    saved: MessagingInstance | None = update_instance_config(settings, user_id, instance.id, config)
-    update_instance_status(settings, instance.id, "online" if report.ok else "error")
-    fresh: MessagingInstance | None = get_instance(settings, user_id, instance.id) or saved
-    return {"report": report.to_dict(), "instance": instance_dict(fresh) if fresh else {}}
 
 
 def owned(settings: Settings, user_id: int, instance_id: int) -> MessagingInstance:

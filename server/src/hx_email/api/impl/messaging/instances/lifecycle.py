@@ -6,8 +6,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, Header, HTTPException, status
 
-from hx_email.api.dependencies import require_user
+from hx_email.api.dependencies import require_admin, require_user
 from hx_email.api.impl.mcp_resources.watch import announce_list_changed
+from hx_email.api.impl.messaging.instances.github_user import (
+    ACCOUNT_KEYS,
+    account_changed,
+    run_check,
+)
+from hx_email.api.impl.messaging.instances.github_user import KIND as GITHUB_USER_KIND
 from hx_email.api.impl.messaging.schemas import (
     MessagingConfigUpdate,
     MessagingInstanceCreate,
@@ -20,6 +26,7 @@ from hx_email.api.impl.messaging.serializers import (
     status_dict,
 )
 from hx_email.config import Settings
+from hx_email.server.contract.github_user.config import LOGIN_KEY, config_problem
 from hx_email.server.messaging.registry import catalog, creation_error, drop_adapter
 from hx_email.server.messaging.store import (
     create_instance,
@@ -110,8 +117,11 @@ def register_lifecycle_routes(router: APIRouter, settings: Settings) -> None:
             ) from error
         return {"success": True, "status": status_dict(adapter.status())}
 
+    # github_user 改 cli 或仓库即视同重新接入: 仅管理员, 先校验格式, 保存后立刻重新检查;
+    # login 只由检查写入, 请求里带的一律忽略
+    # 决策记录: .agents/notes/implemented/feature/2026-11-10-github-user-config-recheck.md
     @router.put("/messaging/instances/{instance_id}/config")
-    def update_config(
+    async def update_config(
         instance_id: int,
         payload: MessagingConfigUpdate,
         authorization: Annotated[str | None, Header()] = None,
@@ -123,7 +133,20 @@ def register_lifecycle_routes(router: APIRouter, settings: Settings) -> None:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Messaging instance not found",
             )
-        merged: dict[str, str] = {**current.config, **payload.config}
+        incoming: dict[str, str] = dict(payload.config)
+        recheck: bool = False
+        if current.kind == GITHUB_USER_KIND:
+            incoming.pop(LOGIN_KEY, None)
+            recheck = account_changed(current.config, incoming)
+            if recheck:
+                require_admin(settings, authorization)
+                incoming = {
+                    key: value.strip() if key in ACCOUNT_KEYS else value
+                    for key, value in incoming.items()
+                }
+                if (problem := config_problem({**current.config, **incoming})) is not None:
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=problem)
+        merged: dict[str, str] = {**current.config, **incoming}
         updated = update_instance_config(settings, user.id, instance_id, merged)
         if updated is None:
             raise HTTPException(
@@ -131,6 +154,8 @@ def register_lifecycle_routes(router: APIRouter, settings: Settings) -> None:
                 detail="Messaging instance not found",
             )
         drop_adapter(instance_id)
+        if recheck:
+            return {"success": True, **await run_check(settings, user.id, updated)}
         return {"success": True, "instance": instance_dict(updated)}
 
     @router.post("/messaging/instances/{instance_id}/disconnect")

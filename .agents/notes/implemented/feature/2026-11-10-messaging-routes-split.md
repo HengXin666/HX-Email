@@ -29,4 +29,4 @@ Decision-ID: messaging-routes-split
 ## Consequences
 
 - 用例 `server/tests/test_router_github_user.py::test_instance_detail_over_messaging_rest`: 检查通过的实例详情返回 200, 状态 `online`, 登录名与仓库可见, 误写入的 `event_token` 打码, capabilities 与目录一致; 不存在的 id 为 404; login 仍为 400.
-- `PUT .../config` 修改 `cli` 后不会自动重新检查, 仍需调用 `/router/github_user/check` (本次未做).
+- `PUT .../config` 修改 `cli` 或仓库后的自动重新检查由后续决策 `github-user-config-recheck` 补上.

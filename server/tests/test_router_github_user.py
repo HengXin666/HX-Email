@@ -640,3 +640,29 @@ def test_instance_detail_over_messaging_rest(env: dict[str, Any]) -> None:
     assert client.get(f"{API}/messaging/instances/999", headers=headers).status_code == 404
     login = client.post(f"{API}/messaging/instances/{iid}/login", headers=headers)
     assert login.status_code == 400 and "not available yet" in login.json()["detail"]
+
+
+def test_config_cli_change_rechecks(env: dict[str, Any], tmp_path: Path) -> None:
+    client, headers, gh = env["client"], env["headers"], env["gh"]
+    user_ok(gh)
+    saved = client.post(
+        f"{API}/router/github_user/save",
+        json={"cli": str(gh.path), "repository": REPO},
+        headers=headers,
+    ).json()
+    iid = saved["instance"]["id"]
+    url = f"{API}/messaging/instances/{iid}/config"
+    plain = client.put(url, json={"config": {"observe_ci": "1", "login": "x"}}, headers=headers)
+    assert plain.status_code == 200 and "report" not in plain.json()
+    assert plain.json()["instance"]["config"]["login"] == "hx-agent"
+    relative = client.put(url, json={"config": {"cli": "gh"}}, headers=headers)
+    assert relative.status_code == 400
+    missing = client.put(
+        url, json={"config": {"cli": str(tmp_path / "no-such-gh")}}, headers=headers
+    ).json()
+    assert missing["report"]["code"] == "cli_not_found"
+    assert missing["instance"]["status"] == "error" and missing["instance"]["config"]["login"] == ""
+    back = client.put(url, json={"config": {"cli": f" {gh.path} "}}, headers=headers).json()
+    assert back["report"]["ok"] is True and back["instance"]["status"] == "online"
+    assert back["instance"]["config"]["cli"] == str(gh.path)
+    assert back["instance"]["config"]["observe_ci"] == "1"

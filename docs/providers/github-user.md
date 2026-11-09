@@ -48,7 +48,7 @@ setup 检查依次报告: `cli_not_configured`, `cli_not_absolute`, `cli_not_fou
 `not_authenticated` (提示 `<cli> auth login`), `cli_timeout`, `cli_failed`, `repo_not_visible`, `repo_no_read`, `repo_no_push`; 通过时返回登录名,
 经典 token 还返回 scope 列表与缺少的 scope. 通过才置实例 `online`, 轮询与出站只认 `online` 实例.
 
-实例详情 `GET /api/v1/messaging/instances/{id}` (2026-11-10 起) 返回实例, 脱敏后的配置与目录声明的 capabilities, `status` 即最近一次检查的结果; 它没有会话型 adapter, `connect`, `login` 等接口仍返回 400, 重新检查走 `/router/github_user/check`.
+实例详情 `GET /api/v1/messaging/instances/{id}` (2026-11-10 起) 返回实例, 脱敏后的配置与目录声明的 capabilities, `status` 即最近一次检查的结果; 它没有会话型 adapter, `connect`, `login` 等接口仍返回 400, 重新检查走 `/router/github_user/check`. 经 `PUT /api/v1/messaging/instances/{id}/config` 改 `cli` 或 `repository` 时 (仅管理员) 先做与 save 相同的格式校验, 保存后立即重新检查并返回 `report`; 请求里的 `login` 一律忽略.
 
 入站 (守护线程里的 asyncio 循环, `server/gateway/impl/github_user_poll.py`):
 
