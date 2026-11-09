@@ -3,6 +3,8 @@
 Address grammar: docs/messaging-router.md section 2, `qq:<instance_id>:<session_type>:<peer>`.
 Envelope mapping: docs/messaging-router.md section 3.3. Only `post_type == "message"`
 becomes an envelope; notice, request and meta_event are dropped with a debug log.
+Trigger signals (`kind`, `mentions`, `flags`) come from the event's `self_id` and its
+`at` segments; `reply_to_self` is left to the store's reply lookup.
 """
 
 from __future__ import annotations
@@ -140,6 +142,36 @@ def flatten_segments(segments: object) -> tuple[str, list[dict[str, object]], st
     return "".join(parts), attachments, reply_to
 
 
+def segment_mentions(segments: object, self_id: str) -> list[dict[str, object]]:
+    """`at` segments as `[{id, name, is_self}]`; `@all` is not a mention of anyone."""
+    items: list[object] = list(segments) if isinstance(segments, list) else []
+    mentions: list[dict[str, object]] = []
+    for item in items:
+        segment: Mapping[str, object] = as_mapping(item)
+        target: str = str(as_mapping(segment.get("data")).get("qq", ""))
+        if segment.get("type") != "at" or not DIGITS.match(target):
+            continue
+        name: str = str(as_mapping(segment.get("data")).get("name", ""))
+        mentions.append({"id": target, "name": name, "is_self": target == self_id})
+    return mentions
+
+
+# 触发信号由 self_id 与 at 段算出, reply_to_self 交给入库时按 reply_to 补判
+# 决策记录: .agents/notes/implemented/feature/2026-11-09-qq-trigger-signals.md
+def trigger_fields(segments: object, self_id: str, from_self: bool) -> dict[str, object]:
+    """`kind`, `mentions` and `flags` for a chat message; unknown without `self_id`."""
+    mentions: list[dict[str, object]] = segment_mentions(segments, self_id)[:50]
+    if not self_id:
+        return {"kind": "message", "mentions": mentions, "flags": {}}
+    mention_self: bool = not from_self and any(item["is_self"] for item in mentions)
+    flags: dict[str, object] = {
+        "from_self": from_self,
+        "mention_self": mention_self,
+        "reply_to_self": False,
+    }
+    return {"kind": "message", "mentions": mentions, "flags": flags}
+
+
 def image_attachment(data: Mapping[str, object]) -> dict[str, object]:
     """Attachment reference `{kind, url, name, size}` (router 3.1); content is not fetched."""
     size_text: str = str(data.get("file_size") or "0")
@@ -170,6 +202,8 @@ def to_envelope(instance_id: int, event: Mapping[str, object]) -> dict[str, obje
     sender: Mapping[str, object] = as_mapping(event.get("sender"))
     user_id: str = str(event.get("user_id", ""))
     text, attachments, reply_to = flatten_segments(event.get("message"))
+    self_id: str = str(event.get("self_id") or "")
+    from_self: bool = user_id != "" and user_id == self_id
     return {
         "platform": PLATFORM,
         "instance_id": instance_id,
@@ -179,7 +213,7 @@ def to_envelope(instance_id: int, event: Mapping[str, object]) -> dict[str, obje
         "sender": {
             "id": user_id,
             "name": str(sender.get("nickname", "")),
-            "is_self": user_id != "" and user_id == str(event.get("self_id", "")),
+            "is_self": from_self,
         },
         "text": text,
         "reply_to": reply_to,
@@ -188,4 +222,5 @@ def to_envelope(instance_id: int, event: Mapping[str, object]) -> dict[str, obje
         "occurred_at": occurred_at,
         "dedup_key": key,
         "raw": dict(event),
+        **trigger_fields(event.get("message"), self_id, from_self),
     }

@@ -5,8 +5,18 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Mapping
+from pathlib import Path
 
 import pytest
+from hx_email.config import Settings
+from hx_email.database import migrate
+from hx_email.server.contract.builtin import REGISTRY
+from hx_email.server.contract.event import event_view
+from hx_email.server.hub.route_model import filter_from
+from hx_email.server.messaging.store import create_instance
+from hx_email.server.router.envelope import validate_inbound
+from hx_email.server.router.impl.reader import read_messages
+from hx_email.server.router.impl.store import store_inbound
 from hx_email.server.router.providers.impl import qq_events as ev
 from hx_email.server.router.providers.impl import qq_limits
 from hx_email.server.router.providers.impl import qq_types as qt
@@ -102,6 +112,53 @@ def test_at_envelope():
     at_one = {"type": "at", "data": {"qq": "10002"}}
     at_all = {"type": "at", "data": {"qq": "all"}}
     assert envelope([at_one, text(" 看一下"), at_all])["text"] == "@10002 看一下@all"
+
+
+def test_at_self_sets_mention_flags():
+    at_self = {"type": "at", "data": {"qq": "20002", "name": "bot"}}
+    env = envelope([at_self, text(" 帮忙"), {"type": "at", "data": {"qq": "all"}}])
+    assert env["kind"] == "message"
+    assert env["mentions"] == [{"id": "20002", "name": "bot", "is_self": True}]
+    assert env["flags"] == {"from_self": False, "mention_self": True, "reply_to_self": False}
+
+
+def test_at_other_is_not_mention_self():
+    env = envelope([{"type": "at", "data": {"qq": "10002"}}, text(" 看一下")])
+    assert env["mentions"] == [{"id": "10002", "name": "", "is_self": False}]
+    assert env["flags"]["mention_self"] is False
+
+
+def test_own_message_never_mentions_self():
+    env = envelope([{"type": "at", "data": {"qq": "20002"}}], user_id=20002)
+    assert env["flags"] == {"from_self": True, "mention_self": False, "reply_to_self": False}
+
+
+def test_missing_self_id_leaves_flags_unknown():
+    env = envelope([{"type": "at", "data": {"qq": "20002"}}], self_id=None)
+    assert env["flags"] == {}
+
+
+def test_stored_reply_and_mention_reach_view_and_filter(tmp_path: Path) -> None:
+    settings = Settings(data_dir=tmp_path, admin_username="admin", admin_password="admin")
+    migrate(settings)
+    iid = create_instance(settings, 1, "qq", "qq", {}).id
+    own = event([text("发布推迟")], user_id=20002, message_id=777)
+    at_self = {"type": "at", "data": {"qq": "20002"}}
+    reply = event([{"type": "reply", "data": {"id": "777"}}, at_self, text(" 收到")])
+    for item in (own, reply | {"message_id": 778}):
+        mapped = ev.to_envelope(iid, item)
+        assert mapped is not None
+        store_inbound(settings, validate_inbound(mapped, iid))
+    page = read_messages(settings, 1, f"qq:{iid}/group/123456789", "", limit=10)
+    views = [event_view(item.to_dict()) for item in page.messages]
+    assert views[0]["flags"] == {"from_self": True, "mention_self": False, "reply_to_self": False}
+    assert views[1]["flags"] == {"from_self": False, "mention_self": True, "reply_to_self": True}
+    wanted = filter_from({"mention_self": True})
+    assert [wanted.accepts(view) for view in views] == [False, True]
+    caps = REGISTRY.get("qq")
+    flags = views[1]["flags"]
+    assert caps is not None and isinstance(flags, dict)
+    assert set(caps.signals) == set(flags)
 
 
 def test_non_message_events_dropped_with_debug(caplog):
