@@ -27,8 +27,10 @@ from hx_email.server.router.providers.impl.github_user.gh_mapping import (
     MAX_PAGES,
     PAGE_SIZE,
     as_list,
+    latest_comment,
     next_page,
     number_of,
+    pick_discussion,
     poll_interval,
     repository_of,
     user_envelope,
@@ -38,20 +40,30 @@ from hx_email.server.router.providers.impl.github_user.gh_mapping import (
 DIRECT_REASONS: Final[frozenset[str]] = frozenset(
     {"mention", "team_mention", "review_requested", "assign", "author"}
 )
+# 两步查: 先只取标题与时间挑出是哪一个 discussion, 再按编号取正文; 正文不批量拉, stdout 保持很小
+COMMENT_FIELDS: Final[str] = "databaseId body url createdAt author { login } replyTo { databaseId }"
 DISCUSSIONS_QUERY: Final[str] = """
 query($owner: String!, $name: String!) {
   repository(owner: $owner, name: $name) {
     discussions(first: 20, orderBy: {field: UPDATED_AT, direction: DESC}) {
       nodes {
-        databaseId number title body url createdAt author { login }
-        comments(last: 1) {
-          nodes { databaseId body url createdAt author { login } replyTo { databaseId } }
-        }
+        number title createdAt
+        comments(last: 3) { nodes { createdAt replies(last: 1) { nodes { createdAt } } } }
       }
     }
   }
 }
 """
+DISCUSSION_QUERY: Final[str] = """
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    discussion(number: $number) {
+      databaseId number title body url createdAt author { login }
+      comments(last: 3) { nodes { FIELDS replies(last: 1) { nodes { FIELDS } } } }
+    }
+  }
+}
+""".replace("FIELDS", COMMENT_FIELDS)
 Sink = Callable[[list[JsonDict]], int]
 Mapper = Callable[[str, JsonDict, str], list[Draft]]
 
@@ -122,37 +134,46 @@ def node_user(node: JsonDict) -> JsonDict:
     return {"login": text_of(as_dict(node.get("author")).get("login")), "type": "User"}
 
 
-async def discussion_drafts(cli: GhCli, repo: str, thread: JsonDict, origin: str) -> list[Draft]:
-    """Notifications carry no discussion number: match the title among recently updated ones."""
-    owner, name = repo.split("/", 1)
-    body: JsonDict = {"query": DISCUSSIONS_QUERY, "variables": {"owner": owner, "name": name}}
+async def graphql_repository(cli: GhCli, query: str, variables: JsonDict) -> JsonDict:
+    body: JsonDict = {"query": query, "variables": variables}
     response: HttpResponse = await cli.api("POST", "graphql", body)
     if response.status != 200 or response.as_dict().get("errors"):
         raise PollError("discussions lookup", response.status)
-    nodes = as_list(
-        as_dict(
-            as_dict(as_dict(response.as_dict().get("data")).get("repository")).get("discussions")
-        ).get("nodes")
-    )
+    return as_dict(as_dict(response.as_dict().get("data")).get("repository"))
+
+
+# 通知不带编号: 同标题里取最近一次动态离通知时间最近的; 最新评论含楼中楼回复
+# 决策记录: .agents/notes/implemented/feature/2026-11-09-github-user-live-fixes.md
+async def discussion_drafts(cli: GhCli, repo: str, thread: JsonDict, origin: str) -> list[Draft]:
+    """Notifications carry no discussion number: match the title among recently updated ones."""
+    owner, name = repo.split("/", 1)
+    names: JsonDict = {"owner": owner, "name": name}
+    listed: JsonDict = await graphql_repository(cli, DISCUSSIONS_QUERY, names)
     title: str = text_of(as_dict(thread.get("subject")).get("title"))
-    found: JsonDict | None = next((n for n in nodes if text_of(n.get("title")) == title), None)
-    if found is None:
+    nodes: list[JsonDict] = as_list(as_dict(listed.get("discussions")).get("nodes"))
+    picked: JsonDict | None = pick_discussion(nodes, title, text_of(thread.get("updated_at")))
+    if picked is None:
+        return []
+    numbered: JsonDict = names | {"number": picked.get("number")}
+    found: JsonDict = as_dict(
+        (await graphql_repository(cli, DISCUSSION_QUERY, numbered)).get("discussion")
+    )
+    if not found:
         return []
     discussion: JsonDict = {
         "id": found.get("databaseId"),
         "number": found.get("number"),
-        "title": title,
+        "title": text_of(found.get("title")) or title,
         "body": found.get("body"),
         "html_url": found.get("url"),
         "created_at": found.get("createdAt"),
         "user": node_user(found),
     }
     repository: JsonDict = repository_of(repo, thread.get("repository"))
-    latest: list[JsonDict] = as_list(as_dict(found.get("comments")).get("nodes"))
-    if not latest:
+    node: JsonDict | None = latest_comment(found)
+    if node is None:
         payload: JsonDict = {"action": "created", "discussion": discussion}
         return mappers()["discussion"]("discussion", payload | {"repository": repository}, origin)
-    node: JsonDict = latest[-1]
     comment: JsonDict = {
         "id": node.get("databaseId"),
         "body": node.get("body"),
@@ -209,7 +230,8 @@ async def poll_inbox(
         return InboxRound(0, 0, True, interval, last_modified)
     if response.status != 200:
         raise PollError("notifications", response.status)
-    fresh: str = response.headers.get("last-modified", "")
+    # 实测: 未读列表为空的 200 不带 Last-Modified; 保留上一轮的值, 下一轮仍能拿到不计配额的 304
+    fresh: str = response.headers.get("last-modified", "") or last_modified
     stored: int = 0
     done: list[str] = []
     complete: bool = True

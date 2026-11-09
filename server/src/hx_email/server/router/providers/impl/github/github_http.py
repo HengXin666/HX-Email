@@ -29,6 +29,7 @@ DEFAULT_TIMEOUT_SECONDS: Final[float] = 20.0
 SERVER_ERROR_FLOOR: Final[int] = 500
 RATE_LIMIT_STATUS: Final[int] = 429
 FORBIDDEN_STATUS: Final[int] = 403
+MAX_DETAIL_CHARS: Final[int] = 300
 
 
 class TransportTimeoutError(Exception):
@@ -149,6 +150,29 @@ def is_abuse(response: HttpResponse) -> bool:
     return "abuse" in message
 
 
+# 终态失败带上 GitHub 自己的原因 (message 与 errors[]), 否则调用方只看到状态码, 不知道该改什么;
+# 例如 422 "Review Can not approve your own pull request". 截断到 MAX_DETAIL_CHARS, 不存整个响应
+# 决策记录: .agents/notes/implemented/feature/2026-11-09-github-user-live-fixes.md
+def github_detail(body: dict[str, object]) -> str:
+    """``message`` plus the ``errors`` entries GitHub sends with 4xx answers, one short line."""
+    parts: list[str] = []
+    message: str = str(body.get("message") or "").strip()
+    if message:
+        parts.append(message)
+    errors: object = body.get("errors")
+    for item in errors if isinstance(errors, list) else []:
+        raw: object = (item.get("message") or item.get("code")) if isinstance(item, dict) else item
+        text: str = str(raw or "").strip()
+        if text and text not in parts:
+            parts.append(text)
+    return "; ".join(parts)[:MAX_DETAIL_CHARS]
+
+
+def with_detail(text: str, response: HttpResponse) -> str:
+    detail: str = github_detail(response.as_dict())
+    return f"{text}: {detail}" if detail else text
+
+
 def classify_response(response: HttpResponse, now_epoch: int, prefix: str) -> SendResult:
     """Map a GitHub answer onto the outbox retry matrix (spec 6.2)."""
     if 200 <= response.status < 300:
@@ -183,17 +207,19 @@ def classify_response(response: HttpResponse, now_epoch: int, prefix: str) -> Se
         return SendResult(
             status="failed",
             error_code="permission_denied",
-            error_message=f"GitHub refused: HTTP {response.status}",
+            error_message=with_detail(f"GitHub refused: HTTP {response.status}", response),
         )
     if response.status == 404:
         return SendResult(
-            status="failed", error_code="not_found", error_message="repository or thread is gone"
+            status="failed",
+            error_code="not_found",
+            error_message=with_detail("repository or thread is gone", response),
         )
     if response.status == 422:
         return SendResult(
             status="failed",
             error_code="unprocessable",
-            error_message="GitHub rejected the payload as unprocessable",
+            error_message=with_detail("GitHub rejected the payload as unprocessable", response),
         )
     return SendResult(
         status="failed",

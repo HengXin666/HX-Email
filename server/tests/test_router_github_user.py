@@ -370,7 +370,7 @@ def test_save_check_and_actions_over_rest(env: dict[str, Any]) -> None:
     ).json()
     actions = {a["name"]: a for a in caps["platforms"][0]["actions"]}
     assert actions["comment_create"]["requires"] == ["repo"]
-    assert actions["discussion_create"]["requires"] == ["repo", "write:discussion"]
+    assert actions["discussion_create"]["requires"] == ["repo"]
     gh.add("POST", "issues/42/comments", status=201, body={"id": 901})
     body = {
         "target": f"github_user:{iid}/repo/hx/HX-Email/issue/42",

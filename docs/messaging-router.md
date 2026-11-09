@@ -517,7 +517,7 @@ MCP server 名为 `hx-router`, 传输为 streamable HTTP (`/mcp`) 与 stdio (`hx
 
 ### 5.6a `action_invoke`
 
-执行平台在 `capabilities_list` 里声明的动作 (每个动作带 `targets`, `requires` 与 `params`). 入参 `{target, action, params, idempotency_key, wait_seconds}`, `params` 是字符串到字符串的对象, 最多 8 个键; REST 对应 `POST /api/v1/router/actions`. `action=message_send` 等同于 `message_send`. 返回与 `message_send` 同形, 多一个 `action` 字段. 参数可声明 `required_if` (另一参数取某些值时才必填, 如 review 的 `body`). 实例配置 `disabled_actions` (逗号分隔) 可关掉某些动作, 关掉的返回 `action_not_supported`. GitHub 已声明的动作 (`comment_create`, `reaction_add`, `review_submit`, `discussion_create`, `discussion_comment_create`) 见 docs/providers/github-app.md 4.3; `github_user` 声明同一组动作与参数, `requires` 写成 OAuth scope (`repo`, discussion 另列 `write:discussion`), 见 docs/providers/github-user.md 4
+执行平台在 `capabilities_list` 里声明的动作 (每个动作带 `targets`, `requires` 与 `params`). 入参 `{target, action, params, idempotency_key, wait_seconds}`, `params` 是字符串到字符串的对象, 最多 8 个键; REST 对应 `POST /api/v1/router/actions`. `action=message_send` 等同于 `message_send`. 返回与 `message_send` 同形, 多一个 `action` 字段. 参数可声明 `required_if` (另一参数取某些值时才必填, 如 review 的 `body`). 实例配置 `disabled_actions` (逗号分隔) 可关掉某些动作, 关掉的返回 `action_not_supported`. GitHub 已声明的动作 (`comment_create`, `reaction_add`, `review_submit`, `discussion_create`, `discussion_comment_create`) 见 docs/providers/github-app.md 4.3; `github_user` 声明同一组动作与参数, `requires` 写成 OAuth scope (全部只要 `repo`, 仓库 discussion 不需要 `write:discussion`), 见 docs/providers/github-user.md 4
 
 ### 5.7 `route_subscribe`
 
@@ -716,6 +716,13 @@ resources (`api/impl/mcp_resources/`):
 outputSchema: 全部 13 个工具声明 `outputSchema` (`api/impl/mcp/output_schemas.py`), 成功时同时返回 `structuredContent` 与 JSON 文本块 (兼容旧客户端). schema 只钉住调用方依赖的键并允许追加字段. `isError: true` 的结果只带文本块, 不带 `structuredContent`.
 
 scope: 见 8.3. `tools/list` 只列出该 key 有权调用的工具; 不足时返回 JSON-RPC 错误 `-32003`, `data` 为 `{code: "insufficient_scope", message, retryable: false, required_scope}`. 没有 `mcp` scope 的 key 连 `/mcp` 都进不去 (HTTP 403).
+
+第三方客户端实测 (2026-11-09, 本地服务 + 真实 github_user 实例):
+
+- 官方 python SDK `mcp` 2.3.0 (`streamable_http_client` + `ClientSession`): 客户端发 `2025-11-25`, 服务端回 `2025-06-18`, SDK 接受并在之后的请求带 `MCP-Protocol-Version: 2025-06-18`. 会话头, `tools/list` 按 scope 过滤 (全 scope 13 个工具, `mcp + router:read` 7 个), 全部成功的 `tools/call` 通过 SDK 的 `outputSchema` 校验且 `structuredContent` 与文本块一致; `resources/list` 两页 (50 + 3, 坏 cursor 得 `invalid cursor`), `templates/list`, `read`, `subscribe`/`unsubscribe` 正常; SDK 自动开的 GET 流收到 `notifications/resources/updated`; 退出时发 `DELETE /mcp` 得 204. 受限 key 调 `action_invoke`, `message_send`, `resources/subscribe` 得 `-32003`.
+- 原始 HTTP: GET 流首帧 `: stream open`, 15 秒心跳; 断线期间的更新用 `Last-Event-ID: <n>` 重连补发, `Last-Event-ID: 0` 补发缓冲里全部; `DELETE` 后同一会话再 POST 得 404.
+- `@modelcontextprotocol/inspector --cli` 2.14.0 (`--transport http --header "Authorization: Bearer ..."`): `tools/list`, `tools/call` (返回带 `structuredContent`), `resources/list`, `resources/templates/list`, `resources/read` 正常.
+- 不兼容或差异, 均不需要改服务端: (1) SDK 2.x 把 `resources/subscribe` 标为在 `2026-07-28` 起移除 (改用 `listen`), 在握手协商的版本上只给 `DeprecationWarning`; 服务端不支持 `2025-11-25` 与 `2026-07-28` (无 `discover`), SDK 走握手降级. (2) Inspector CLI 只允许调用 `tools/list` 列出的工具, 受限 key 调未列出的工具在客户端就报 `tool_not_found`, 看不到服务端的 `-32003`. (3) Inspector CLI 把读不存在的资源的 `-32002` 显示为通用 `error`. (4) Inspector 的 npm 包声明 node `^22.23.4 || ^24.22.1 || >=26.12.1`, 26.12.0 上有引擎警告但能跑.
 
 ## 6. REST 兼容面
 

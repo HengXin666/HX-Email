@@ -27,3 +27,4 @@ Accepted (2026-11-09). 修订 ADR 0005 中 "MCP 无状态, 不开 SSE 通道" �
 - 多进程或多副本部署时, 会话只存在于创建它的进程: 需要按 `Mcp-Session-Id` 做粘性路由, 或把会话表与通知缓冲搬到共享存储 (例如 Redis pub/sub). 当前部署是单进程, 不做.
 - 重启或会话过期后, 客户端要重新 `initialize` 并重新 `resources/subscribe`; 缓冲以外的通知无法补发, 客户端用 cursor 读取补齐.
 - 会话按凭据绑定: 同一把 key 换了明文 (重新签发) 就是新凭据, 旧会话 404.
+- 已用官方 python SDK 2.3.0 与 Inspector CLI 2.14.0 实测互通 (docs/messaging-router.md 5.15 末尾); SDK 发起 `2025-11-25` 时降级到 `2025-06-18`. 若以后要支持 `2026-07-28` (无握手的 `discover` 与 `listen`), 需要另开 ADR.

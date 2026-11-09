@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import replace
+from datetime import datetime
 from typing import Final
 
 from hx_email.server.router.providers.impl.github.github_events import AppIdentity, JsonDict
@@ -97,3 +98,48 @@ def repository_of(full_name: str, raw: object) -> JsonDict:
 
 def as_list(value: object) -> list[JsonDict]:
     return [as_dict(item) for item in value] if isinstance(value, list) else []
+
+
+def epoch_of(stamp: str) -> float | None:
+    """ISO 8601 (``2026-11-09T15:39:12Z``) to epoch seconds; ``None`` when unparsable."""
+    try:
+        return datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def comment_nodes(discussion: JsonDict) -> list[JsonDict]:
+    """Top-level comments and the replies under them, as returned (bounded by the query)."""
+    found: list[JsonDict] = []
+    for comment in as_list(as_dict(discussion.get("comments")).get("nodes")):
+        found.append(comment)
+        found += as_list(as_dict(comment.get("replies")).get("nodes"))
+    return found
+
+
+def latest_comment(discussion: JsonDict) -> JsonDict | None:
+    """Newest comment or reply by ``createdAt``; a reply in an older thread can be the newest."""
+    nodes: list[JsonDict] = comment_nodes(discussion)
+    return max(nodes, key=lambda node: text_of(node.get("createdAt"))) if nodes else None
+
+
+def last_activity(discussion: JsonDict) -> str:
+    stamps: list[str] = [text_of(discussion.get("createdAt"))]
+    stamps += [text_of(node.get("createdAt")) for node in comment_nodes(discussion)]
+    return max(stamps)
+
+
+# 同标题的 discussion 不止一个时, 取最近一次动态离通知 updated_at 最近的; 只有一个时原样返回
+# (决策见 gh_inbox.discussion_drafts 旁引用的 note)
+def pick_discussion(nodes: list[JsonDict], title: str, updated_at: str) -> JsonDict | None:
+    same: list[JsonDict] = [node for node in nodes if text_of(node.get("title")) == title]
+    target: float | None = epoch_of(updated_at)
+    if len(same) < 2 or target is None:
+        return same[0] if same else None
+    goal: float = target
+
+    def distance(node: JsonDict) -> float:
+        when: float | None = epoch_of(last_activity(node))
+        return abs(when - goal) if when is not None else float("inf")
+
+    return min(same, key=distance)

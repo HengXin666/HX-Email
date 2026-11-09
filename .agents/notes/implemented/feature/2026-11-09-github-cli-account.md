@@ -39,5 +39,5 @@ GitHub App 以 `<slug>[bot]` 身份行动, 只靠仓库级 webhook 收事件, �
 
 - 部署机器上要有 gh 与包装脚本; CLI 由服务进程的用户执行, 所以只有管理员能配置路径.
 - 编辑正文新加的 `@` 收不到; 重启后 observe 游标不回补停机期间的动态.
-- 没有用真实 gh 账号联调, 复核项见 docs/providers/github-user.md 7.
+- 已用真实 gh 账号联调, 结论与仍未验证的项见 docs/providers/github-user.md 7; 联调后的修正见 `.agents/notes/implemented/feature/2026-11-09-github-user-live-fixes.md`.
 - `reconcile_unknown` 与 App 一样暂无调用方, 用户账号 provider 也没有实现它.

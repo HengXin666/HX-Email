@@ -14,8 +14,10 @@ from hx_email.server.contract.capabilities import ActionSpec
 from hx_email.server.contract.github_actions import GITHUB_ACTIONS
 
 REPO_SCOPE: Final[tuple[str, ...]] = ("repo",)
-# 仓库 discussion 写入随 repo scope 授予; write:discussion 一并列出 (需复核)
-DISCUSSION_SCOPES: Final[tuple[str, ...]] = ("repo", "write:discussion")
+# 仓库 discussion 的 GraphQL 读写只要 repo (公开仓库 public_repo); write:discussion 管的是团队
+# discussion, 与仓库无关. 已用只有 repo 的经典 token 实测 createDiscussion / addDiscussionComment
+# 决策记录: .agents/notes/implemented/feature/2026-11-09-github-user-live-fixes.md
+DISCUSSION_SCOPES: Final[tuple[str, ...]] = REPO_SCOPE
 SCOPES: Final[dict[str, tuple[str, ...]]] = {
     "message_send": (*REPO_SCOPE, "title when target is repo"),
     "comment_create": REPO_SCOPE,
