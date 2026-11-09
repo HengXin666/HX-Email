@@ -640,6 +640,8 @@ MCP server 名为 `hx-router`, 传输为 streamable HTTP (`/mcp`) 与 stdio (`hx
 
 ### 5.12 MCP resource
 
+本节是最初的设计稿, 阶段 7 落地形态见 5.15.
+
 - `hx-router://routes/{route_id}` 读取返回该 route 自 `ack_cursor` 之后的至多 50 条 envelope
 - 有新数据时服务端发 `notifications/resources/updated`, 客户端再调用 `resources/read` 或 `messages_pull`
 - 通知是提示不是数据, 丢失通知不会丢数据
@@ -675,6 +677,45 @@ MCP server 名为 `hx-router`, 传输为 streamable HTTP (`/mcp`) 与 stdio (`hx
 - WebSocket `/subscriptions/{id}/ws`: 鉴权取 `Authorization` 头, 或子协议 `bearer.<token>` (浏览器用), 同时请求 `hx-router` 子协议. 服务端帧: `{"type": "ready", "subscription_id", "cursor", "ack_cursor"}`, `{"type": "messages", "messages", "next_cursor"}`, 空闲 25 秒一次 `{"type": "heartbeat", "next_cursor"}`, `{"type": "acked", "ack_cursor"}`, `{"type": "pong"}`, `{"type": "error", "code", "message"}`. 客户端帧: `{"type": "ack", "cursor"}`, `{"type": "ping"}`. 关闭码: 4401 未授权, 4404 订阅不存在, 4409 已暂停.
 - MCP `subscription_create` 增加 `delivery` 与 `webhook_url` 参数.
 - 为了守住 300 行上限, `server/router/envelope.py` 拆成包 `envelope/` (`session`, `model`, `raw`), `server/router/impl/reader.py` 拆成包 `impl/reader/` (`source`, `rows`, `page`); 两个包重新导出全部旧名字.
+
+### 5.15 阶段 7 已落地的 MCP 会话, GET 流, resources 与 scope
+
+以本节为准, 覆盖 5.12. 协议版本协商 `2025-06-18` (默认) 与 `2025-03-26`; 仍不用官方 SDK (ADR 0011).
+
+会话 (`api/impl/mcp/session_table.py`):
+
+- `initialize` 生成 `Mcp-Session-Id` (24 字节随机 base64url) 放在响应头里; 之后的 POST, GET, DELETE 都必须带上. 缺头返回 HTTP 400, 未知, 过期, 或不是发起它的同一凭据 (bearer 令牌的 SHA-256) 返回 404, 客户端应重新 `initialize`. 头 `MCP-Protocol-Version` 不认识时 400, 缺省按协商版本处理.
+- `DELETE /mcp` 结束会话: 关闭 GET 流, 撤掉全部资源订阅. 返回 204.
+- 上限: 全进程 256 个会话 (满了 `initialize` 返回 503), 每个凭据 8 个 (超出时挤掉该凭据最久未用的一个). 空闲 30 分钟过期; 有 GET 流挂着时心跳会续期. 过期清理在创建时与每分钟最多一次的查找时顺带做, 没有后台定时器.
+- 会话只在内存里, 重启后全部失效, 客户端按规范拿到 404 后重新 `initialize`.
+
+GET 流 (`api/impl/mcp/transport.py`):
+
+- `GET /mcp` 需 `Accept: text/event-stream` (否则 406) 与会话头. 首帧是注释 `: stream open`, 之后每条服务端消息为 `id: <序号>` + `event: message` + `data: <JSON-RPC 通知>`, 空闲每 15 秒一个注释心跳 `: ping`.
+- 每个会话同时只保留一条 GET 流, 新的 GET 顶替旧的 (旧流结束), 所以每条通知只走一条流.
+- 续传: 会话有 64 帧的环形缓冲, 序号会话内递增. 带 `Last-Event-ID` 重连时补发更新的帧; 太旧的已被覆盖, 只补得到还在缓冲里的部分 (通知只是提示, 数据以 `resources/read` 为准). 不带时从当前位置开始.
+- 从未打开过 GET 流的会话不缓冲任何通知; 打开过以后断开期间进缓冲, 同一资源的 `updated` 在被流送出前只保留一条, 所以缓冲不会被重复通知占满.
+- 客户端断开时 Starlette 取消生成器, `finally` 清掉流槽; 资源订阅留在会话上直到 `resources/unsubscribe`, `DELETE` 或过期.
+
+resources (`api/impl/mcp_resources/`):
+
+| URI                                                      | 内容                                                                                 | 订阅时何时 `updated`                  |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------- |
+| `hx://router/capabilities`                               | `capabilities_list` 的结果                                                           | 不会 (静态)                           |
+| `hx://router/sources`                                    | `sources_list` 的结果                                                                | 不会; 实例增删走 `list_changed`       |
+| `hx://router/instances/{instance_id}`                    | 该实例的 sources 条目 + 最新 `cursor`                                                | 该实例落库任一条消息 (入站或出站记录) |
+| `hx://router/sessions/{session}/messages{?cursor,limit}` | 无 cursor: 最近 `limit` 条 (默认 20, 最多 100) 与 `next_cursor`; 有 cursor: 其后一页 | 该会话落库新消息                      |
+| `hx://router/subscriptions/{subscription_id}`            | 订阅对象 (需 `subscriptions` scope)                                                  | 订阅范围内落库新消息 (积压变化)       |
+| `hx://router/deliveries/{delivery_id}`                   | 一次投递的状态 (只在模板里, 不列出, 不可订阅)                                        | 不支持, 轮询 `delivery_status`        |
+
+- `{session}` 要 URL 编码 (`qq%3A3%3Agroup%3A555` 或 v2 `qq%3A3%2Fgroup%2F555`), 未编码的地址也能解析.
+- `resources/list` 列出 capabilities, sources, 每个实例, 每个订阅; 每页 50 条, `nextCursor` 不透明. `resources/templates/list` 给出上表的四个模板.
+- 读不存在, 不属于调用方, 或格式不对的 URI 返回 JSON-RPC `-32002`. `resources/subscribe` 每个会话最多 32 个 URI.
+- 通知: 被订阅资源变化时推 `notifications/resources/updated {uri}`, 复用阶段 2 hub: 每个订阅是一个常驻 hub 等待者, 回调只把通知放进会话缓冲, 不碰数据库. 订阅增删 (REST 与 MCP) 与实例增删时, 给该用户的所有会话推 `notifications/resources/list_changed`.
+
+outputSchema: 全部 13 个工具声明 `outputSchema` (`api/impl/mcp/output_schemas.py`), 成功时同时返回 `structuredContent` 与 JSON 文本块 (兼容旧客户端). schema 只钉住调用方依赖的键并允许追加字段. `isError: true` 的结果只带文本块, 不带 `structuredContent`.
+
+scope: 见 8.3. `tools/list` 只列出该 key 有权调用的工具; 不足时返回 JSON-RPC 错误 `-32003`, `data` 为 `{code: "insufficient_scope", message, retryable: false, required_scope}`. 没有 `mcp` scope 的 key 连 `/mcp` 都进不去 (HTTP 403).
 
 ## 6. REST 兼容面
 
@@ -817,6 +858,26 @@ MCP server 名为 `hx-router`, 传输为 streamable HTTP (`/mcp`) 与 stdio (`hx
 - 每次成功鉴权更新 `last_used_at`, 同一 Key 每分钟最多写一次, 避免把读请求变成写请求
 - 删除用户时级联吊销其全部 Key
 
+### 8.3 API Key scope (阶段 7)
+
+scope 按能力命名, 不按入口: REST 与 MCP 的同一能力共用一个 scope. 存在 `router_api_keys.scopes` (空格分隔).
+
+| scope                 | 允许                                                                                                                                                           |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `router:read`         | REST 只读路由 (capabilities, sources, sessions, select, messages GET, wait, stream, deliveries, hub); MCP 只读工具; `resources/list`, `templates/list`, `read` |
+| `router:send`         | `POST /router/messages`, `message_send`                                                                                                                        |
+| `router:actions`      | `POST /router/actions`, `action_invoke`                                                                                                                        |
+| `subscriptions`       | `/router/subscriptions/**` (含 webhook 管理与 WebSocket), 订阅类 MCP 工具, 订阅资源                                                                            |
+| `resources:subscribe` | `resources/subscribe` 与 `unsubscribe` (还需 `router:read`)                                                                                                    |
+| `mcp`                 | 使用 `/mcp` (POST, GET, DELETE)                                                                                                                                |
+| `admin`               | 蕴含以上全部及以后新增的 scope                                                                                                                                 |
+
+- 迁移: `scopes` 列以 `router:read router:send router:actions subscriptions resources:subscribe mcp` 为默认值加入, 存量 key 得到引入 scope 前的全部能力, 不会被锁在外面. `POST /router/api-keys` 不传 `scopes` 时同样取这组默认值.
+- 管理: `POST /router/api-keys` 可带 `scopes`; `PATCH /router/api-keys/{id}` `{scopes}` 改权限; `GET /router/api-keys/scopes` 返回全部 scope 与默认值. 这三个接口与吊销一样只认控制台会话. 未知 scope 或空集返回 422 `route_invalid`.
+- 不管 scope 怎么设, key 都不能管理 key, 不能 hold/resume 出站 (仍只认控制台会话). 控制台会话持有全部 scope.
+- 不足时: REST 返回 403 `{"error": {"code": "insufficient_scope", "required_scope": ...}}`, MCP 见 5.15. scope 每次请求现查, 改权限立即生效, 已有 MCP 会话也按新权限判.
+- 前端: 订阅页 "快速对接" 新建密钥时勾选 scope, 已有密钥可 "改权限".
+
 ## 9. 速率整形, 熔断与错误码
 
 ### 9.1 QQ 限流
@@ -870,6 +931,7 @@ MCP server 名为 `hx-router`, 传输为 streamable HTTP (`/mcp`) 与 stdio (`hx
 | `cursor_invalid`       | cursor 无法解析或属于其它实例                                        | false                          |
 | `action_not_supported` | 平台没有声明该动作, 动作不接受该地址种类, 或该动作在实例上被关掉     | false                          |
 | `invalid_payload`      | 动作参数缺失, 多出或不合声明                                         | false                          |
+| `insufficient_scope`   | API Key 缺少该调用所需的 scope (REST 403), 见 8.3                    | false                          |
 
 ### 9.5 provider 结果从哪来
 
@@ -945,6 +1007,9 @@ MCP server 名为 `hx-router`, 传输为 streamable HTTP (`/mcp`) 与 stdio (`hx
 - `server/tests/test_router_cursor.py` 覆盖 cursor 编解码, 增量读, 越界与跨实例 cursor 拒绝, 清理后 cursor 的 `gap=true`
 - `server/tests/test_router_outbox.py` 覆盖两类幂等键, 令牌桶间隔, 重试矩阵的次数与 `give_up_at`, 熔断与恢复, 重启时 send 行置 `unknown` 与 webhook 行回退 `queued`
 - `server/tests/test_router_ingress.py` 覆盖 OneBot 事件去重, 同 `message_id` 不同 `time` 不被吸收, GitHub 签名校验失败返回 401, delivery 去重, edited 覆盖 text
-- `server/tests/test_router_mcp.py` 用 MCP SDK 的内存传输调用全部 tool, 校验入参 schema 拒绝多余字段
+- `server/tests/test_router_mcp.py` 用 MCP SDK 的内存传输调用全部 tool, 校验入参 schema 拒绝多余字段 (设计稿; 实际未引入 SDK, 见下面三个阶段 7 文件)
+- `server/tests/test_router_mcp_session.py` 覆盖会话缺失 (400), 未知与过期 (404), 跨凭据不可用, DELETE, 每凭据与全局上限, GET 流的 Accept 与会话校验, 通知送达, Last-Event-ID 续传, 同资源合并, 断开清理, 心跳, 新流顶替旧流, 环形缓冲有界
+- `server/tests/test_router_mcp_resources.py` 覆盖 resources/list 分页与非法 cursor, templates/list, 各资源 read (含 v2 地址与 cursor 翻页), -32002, list_changed 与 updated 端到端, deliveries 不可订阅
+- `server/tests/test_router_mcp_scopes.py` 覆盖每个 scope 的允许与拒绝 (MCP -32003, REST 403), tools/list 按 scope 过滤, 默认 scope, PATCH, 存量 key 迁移后能力不变, 每个工具的 outputSchema 校验
 - `server/tests/test_router_retention.py` 覆盖保留期删除分批, raw 文件随行删除与孤儿扫描, API Key 吊销后立即拒绝
 - `server/tests/test_router_idle.py` 在 CI 中只校验 "无订阅时路由层除 housekeeping 外没有定时任务", 真实 CPU 与内存验收项 A1 到 A6 在部署机上手工执行并记录到实现 note

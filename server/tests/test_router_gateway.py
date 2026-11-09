@@ -204,6 +204,8 @@ def test_mcp_and_router_keys(env: dict[str, Any]) -> None:
         headers=key_headers,
     )
     assert init.json()["result"]["serverInfo"]["name"] == "hx-router"
+    # 会话化之后 (MCP Streamable HTTP), initialize 之后的请求都要带 Mcp-Session-Id
+    key_headers = {**key_headers, "Mcp-Session-Id": init.headers["Mcp-Session-Id"]}
     tools = client.post(
         "/mcp", json={"jsonrpc": "2.0", "id": 2, "method": "tools/list"}, headers=key_headers
     ).json()
@@ -344,6 +346,10 @@ def test_contract_v2_over_http(env: dict[str, Any]) -> None:
     ).json()
     assert [m["text"] for m in repo["messages"]] == ["t1", "t2"]
     assert repo["messages"][0]["kind"] == "comment"
+    init = client.post(
+        "/mcp", json={"jsonrpc": "2.0", "id": 8, "method": "initialize"}, headers=headers
+    )
+    headers = {**headers, "Mcp-Session-Id": init.headers["Mcp-Session-Id"]}
     tool = client.post(
         "/mcp",
         json={

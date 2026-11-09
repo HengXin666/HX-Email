@@ -157,10 +157,19 @@ export const routerHubApi = {
   listRouterKeys: (): Promise<{ keys: RouterApiKey[] }> =>
     request<{ keys: RouterApiKey[] }>("/router/api-keys"),
 
-  createRouterKey: (name: string): Promise<RouterIssuedKey> =>
+  createRouterKey: (name: string, scopes?: string[]): Promise<RouterIssuedKey> =>
     request<RouterIssuedKey>("/router/api-keys", {
       method: "POST",
-      body: JSON.stringify({ name }),
+      body: JSON.stringify(scopes ? { name, scopes } : { name }),
+    }),
+
+  updateRouterKeyScopes: (
+    id: number,
+    scopes: string[],
+  ): Promise<{ id: number; scopes: string[] }> =>
+    request<{ id: number; scopes: string[] }>(`/router/api-keys/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ scopes }),
     }),
 
   revokeRouterKey: (id: number): Promise<{ id: number; revoked: boolean }> =>

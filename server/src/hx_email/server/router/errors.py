@@ -110,6 +110,19 @@ class InvalidPayloadError(RouterError):
     code = "invalid_payload"
 
 
+class InsufficientScopeError(RouterError):
+    """The API key lacks the scope this call needs (REST 403, MCP JSON-RPC error)."""
+
+    code = "insufficient_scope"
+
+    def __init__(self, required: str, message: str = "") -> None:
+        super().__init__(message or f"API key lacks scope {required}")
+        self.required: str = required
+
+    def to_dict(self) -> dict[str, object]:
+        return {**super().to_dict(), "required_scope": self.required}
+
+
 ERROR_TYPES: Final[dict[str, type[RouterError]]] = {
     error_type.code: error_type
     for error_type in (
@@ -129,6 +142,7 @@ ERROR_TYPES: Final[dict[str, type[RouterError]]] = {
         InvalidPayloadError,
     )
 }
+# InsufficientScopeError 不进 ERROR_TYPES: 它不会从 outbox 的错误码重建
 
 
 def error_from_code(code: str, message: str = "", retryable: bool | None = None) -> RouterError:

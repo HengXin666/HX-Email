@@ -24,6 +24,7 @@ HTTP_STATUS_BY_CODE: Final[dict[str, int]] = {
     "route_limit": 409,
     "action_not_supported": 422,
     "invalid_payload": 422,
+    "insufficient_scope": 403,
 }
 DEFAULT_STATUS: Final[int] = 502
 

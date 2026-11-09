@@ -8,6 +8,7 @@ from fastapi import APIRouter, Header, HTTPException, status
 from fastapi.responses import Response
 
 from hx_email.api.dependencies import require_user
+from hx_email.api.impl.mcp_resources.watch import announce_list_changed
 from hx_email.api.impl.messaging.schemas import (
     MessagingConfigUpdate,
     MessagingInstanceCreate,
@@ -71,6 +72,7 @@ def register_messaging_routes(router: APIRouter, settings: Settings) -> None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=reason)
         name: str = payload.name.strip() or payload.kind
         instance: MessagingInstance = create_instance(settings, user.id, payload.kind, name, config)
+        announce_list_changed(user.id)
         return {"success": True, "instance": instance_dict(instance)}
 
     @router.get("/messaging/instances/{instance_id}")
@@ -94,6 +96,7 @@ def register_messaging_routes(router: APIRouter, settings: Settings) -> None:
                 detail="Messaging instance not found",
             )
         drop_adapter(instance_id)
+        announce_list_changed(user.id)
         return {"success": True}
 
     @router.post("/messaging/instances/{instance_id}/connect")

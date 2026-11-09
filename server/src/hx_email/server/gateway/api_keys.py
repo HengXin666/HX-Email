@@ -13,11 +13,14 @@ import secrets
 import sqlite3
 import threading
 import time
-from dataclasses import dataclass
+from collections.abc import Iterable
+from dataclasses import dataclass, field
 from typing import Final
 
 from hx_email.config import Settings
 from hx_email.database import connect
+from hx_email.server.access.key_scopes import scopes_column
+from hx_email.server.access.scopes import LEGACY_SCOPES, normalize_scopes, parse_stored
 
 KEY_PREFIX: Final[str] = "hxr_"
 MAX_ACTIVE_KEYS: Final[int] = 20
@@ -37,6 +40,16 @@ class IssuedKey:
     key: str
     key_prefix: str
     created_at: str
+    scopes: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class KeyRecord:
+    """An active key as auth sees it: owner, row id, granted scopes."""
+
+    key_id: int
+    user_id: int
+    scopes: frozenset[str]
 
 
 def hash_key(plain: str) -> str:
@@ -44,7 +57,11 @@ def hash_key(plain: str) -> str:
 
 
 # 路由 API Key 按用户签发且只存哈希; 现有外部 API Key 是全局明文, 不能复用
-def issue_key(settings: Settings, user_id: int, name: str) -> IssuedKey:
+def issue_key(
+    settings: Settings, user_id: int, name: str, scopes: Iterable[str] | None = None
+) -> IssuedKey:
+    """New key; ``scopes`` None means the pre-scope capability set (``LEGACY_SCOPES``)."""
+    chosen: tuple[str, ...] = normalize_scopes(LEGACY_SCOPES if scopes is None else scopes)
     plain: str = KEY_PREFIX + base64.urlsafe_b64encode(secrets.token_bytes(32)).decode().rstrip("=")
     with connect(settings) as connection:
         active: sqlite3.Row | None = connection.execute(
@@ -54,8 +71,9 @@ def issue_key(settings: Settings, user_id: int, name: str) -> IssuedKey:
         if active is not None and int(active["n"]) >= MAX_ACTIVE_KEYS:
             raise KeyLimitError(f"at most {MAX_ACTIVE_KEYS} active keys per user")
         cursor: sqlite3.Cursor = connection.execute(
-            "INSERT INTO router_api_keys (user_id, name, key_prefix, key_hash) VALUES (?, ?, ?, ?)",
-            (user_id, name.strip() or "default", plain[:8], hash_key(plain)),
+            "INSERT INTO router_api_keys (user_id, name, key_prefix, key_hash, scopes) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (user_id, name.strip() or "default", plain[:8], hash_key(plain), " ".join(chosen)),
         )
         key_id: int = int(cursor.lastrowid or 0)
         row: sqlite3.Row | None = connection.execute(
@@ -63,17 +81,17 @@ def issue_key(settings: Settings, user_id: int, name: str) -> IssuedKey:
         ).fetchone()
         connection.commit()
     created: str = str(row["created_at"]) if row is not None else ""
-    return IssuedKey(key_id, name.strip() or "default", plain, plain[:8], created)
+    return IssuedKey(key_id, name.strip() or "default", plain, plain[:8], created, list(chosen))
 
 
 def list_keys(settings: Settings, user_id: int) -> list[dict[str, object]]:
     with connect(settings) as connection:
         rows: list[sqlite3.Row] = connection.execute(
-            "SELECT id, name, key_prefix, created_at, last_used_at, revoked_at "
+            "SELECT id, name, key_prefix, created_at, last_used_at, revoked_at, scopes "
             "FROM router_api_keys WHERE user_id = ? ORDER BY id",
             (user_id,),
         ).fetchall()
-    return [dict(row) for row in rows]
+    return [{**dict(row), "scopes": scopes_column(row["scopes"])} for row in rows]
 
 
 def revoke_key(settings: Settings, user_id: int, key_id: int) -> bool:
@@ -89,11 +107,18 @@ def revoke_key(settings: Settings, user_id: int, key_id: int) -> bool:
 
 def verify_key(settings: Settings, plain: str) -> int | None:
     """User id behind an active key, or None."""
+    record: KeyRecord | None = verify_key_record(settings, plain)
+    return record.user_id if record is not None else None
+
+
+def verify_key_record(settings: Settings, plain: str) -> KeyRecord | None:
+    """Owner, id and scopes of an active key, or None."""
     if not plain.startswith(KEY_PREFIX):
         return None
     with connect(settings) as connection:
         row: sqlite3.Row | None = connection.execute(
-            "SELECT id, user_id FROM router_api_keys WHERE key_hash = ? AND revoked_at IS NULL",
+            "SELECT id, user_id, scopes FROM router_api_keys "
+            "WHERE key_hash = ? AND revoked_at IS NULL",
             (hash_key(plain),),
         ).fetchone()
         if row is None:
@@ -111,4 +136,4 @@ def verify_key(settings: Settings, plain: str) -> int | None:
                 "UPDATE router_api_keys SET last_used_at = datetime('now') WHERE id = ?", (key_id,)
             )
             connection.commit()
-    return int(row["user_id"])
+    return KeyRecord(key_id, int(row["user_id"]), parse_stored(str(row["scopes"] or "")))

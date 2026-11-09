@@ -13,6 +13,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from hx_email.api.impl.gateway.auth import session_user_id
 from hx_email.config import Settings
+from hx_email.server.access.key_scopes import update_scopes
+from hx_email.server.access.scopes import ALL_SCOPES, LEGACY_SCOPES
 from hx_email.server.gateway.api_keys import (
     IssuedKey,
     KeyLimitError,
@@ -28,6 +30,13 @@ PREFIX: str = "/router"
 class KeyCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(default="default", max_length=64)
+    # 缺省 None = 引入 scope 之前的能力集, 老脚本只传 name 时行为不变
+    scopes: list[str] | None = Field(default=None, max_length=16)
+
+
+class KeyScopesRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    scopes: list[str] = Field(min_length=1, max_length=16)
 
 
 def register_gateway_admin_routes(router: APIRouter, settings: Settings) -> None:
@@ -37,7 +46,7 @@ def register_gateway_admin_routes(router: APIRouter, settings: Settings) -> None
     ) -> dict[str, object]:
         user_id: int = session_user_id(settings, authorization)
         try:
-            issued: IssuedKey = issue_key(settings, user_id, payload.name)
+            issued: IssuedKey = issue_key(settings, user_id, payload.name, payload.scopes)
         except KeyLimitError as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
         return {
@@ -46,7 +55,25 @@ def register_gateway_admin_routes(router: APIRouter, settings: Settings) -> None
             "key": issued.key,
             "key_prefix": issued.key_prefix,
             "created_at": issued.created_at,
+            "scopes": issued.scopes,
         }
+
+    @router.get(f"{PREFIX}/api-keys/scopes")
+    def key_scopes(authorization: Annotated[str | None, Header()] = None) -> dict[str, object]:
+        session_user_id(settings, authorization)
+        return {"scopes": list(ALL_SCOPES), "default": list(LEGACY_SCOPES)}
+
+    @router.patch(f"{PREFIX}/api-keys/{{key_id}}")
+    def patch_key(
+        key_id: int,
+        payload: KeyScopesRequest,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        user_id: int = session_user_id(settings, authorization)
+        updated: dict[str, object] | None = update_scopes(settings, user_id, key_id, payload.scopes)
+        if updated is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Key not found or already revoked")
+        return updated
 
     @router.get(f"{PREFIX}/api-keys")
     def get_keys(authorization: Annotated[str | None, Header()] = None) -> dict[str, object]:

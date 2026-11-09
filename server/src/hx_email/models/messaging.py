@@ -17,6 +17,10 @@ MESSAGE_ROUTER_COLUMNS: Final[tuple[tuple[str, str], ...]] = (
     # provider 给出的触发信号 {kind, mentions, flags}, 旧行为空串
     ("trigger_json", "TEXT NOT NULL DEFAULT ''"),
 )
+# 与 server/access/scopes.py 的 LEGACY_TEXT 一致; models 不反向依赖 server 层
+LEGACY_KEY_SCOPES: Final[str] = (
+    "router:read router:send router:actions subscriptions resources:subscribe mcp"
+)
 ROUTE_COLUMNS: Final[tuple[tuple[str, str], ...]] = (
     ("name", "TEXT NOT NULL DEFAULT ''"),
     ("updated_at", "TEXT NOT NULL DEFAULT ''"),
@@ -91,6 +95,18 @@ def add_missing_route_columns(connection: sqlite3.Connection) -> None:
     connection.execute(
         "CREATE INDEX IF NOT EXISTS idx_router_routes_user ON router_routes(user_id, id)"
     )
+
+
+# 存量 key 取 LEGACY_SCOPES 作默认值: 迁移后能力不变, 不把已有调用方锁在外面
+# 决策记录: .agents/notes/implemented/feature/2026-11-09-mcp-completion.md
+def add_key_scopes_column(connection: sqlite3.Connection) -> None:
+    """``router_api_keys.scopes``; existing rows get every pre-scope capability."""
+    rows: list[sqlite3.Row] = connection.execute("PRAGMA table_info(router_api_keys)").fetchall()
+    if "scopes" not in {str(row[1]) for row in rows}:
+        connection.execute(
+            "ALTER TABLE router_api_keys ADD COLUMN scopes "
+            f"TEXT NOT NULL DEFAULT '{LEGACY_KEY_SCOPES}'"
+        )
 
 
 # 路由层订阅与分发的决策记录, 实现规格见 docs/messaging-router.md
@@ -202,6 +218,7 @@ def migrate_router_schema(connection: sqlite3.Connection) -> None:
         )
         """
     )
+    add_key_scopes_column(connection)
     # GitHub App Manifest 一键创建的一次性 state, 10 分钟有效, 回调用 UPDATE ... WHERE used = 0 消费
     connection.execute(
         """

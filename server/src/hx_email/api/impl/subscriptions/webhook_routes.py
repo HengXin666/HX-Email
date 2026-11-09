@@ -12,6 +12,7 @@ from fastapi import APIRouter, Header, Query
 
 from hx_email.api.impl.gateway.auth import caller_user_id
 from hx_email.config import Settings
+from hx_email.server.access.scopes import SUBSCRIPTIONS
 from hx_email.server.gateway.impl.dispatch import DISPATCHER
 from hx_email.server.hub.subscriptions import update_route
 from hx_email.server.push.webhook_deliver import list_deliveries, ping, redeliver
@@ -27,7 +28,7 @@ def register_webhook_routes(router: APIRouter, settings: Settings) -> None:
         limit: int = Query(default=20, ge=1, le=100),
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        user_id: int = caller_user_id(settings, authorization)
+        user_id: int = caller_user_id(settings, authorization, SUBSCRIPTIONS)
         return list_deliveries(settings, user_id, route_id, limit)
 
     @router.post(f"{PREFIX}/deliveries/{{delivery_id}}/redeliver")
@@ -35,7 +36,7 @@ def register_webhook_routes(router: APIRouter, settings: Settings) -> None:
         route_id: int, delivery_id: str, authorization: Annotated[str | None, Header()] = None
     ) -> dict[str, object]:
         result: dict[str, object] = redeliver(
-            settings, caller_user_id(settings, authorization), route_id, delivery_id
+            settings, caller_user_id(settings, authorization, SUBSCRIPTIONS), route_id, delivery_id
         )
         DISPATCHER.wake(settings)
         return result
@@ -44,14 +45,17 @@ def register_webhook_routes(router: APIRouter, settings: Settings) -> None:
     def ping_receiver(
         route_id: int, authorization: Annotated[str | None, Header()] = None
     ) -> dict[str, object]:
-        return ping(settings, caller_user_id(settings, authorization), route_id)
+        return ping(settings, caller_user_id(settings, authorization, SUBSCRIPTIONS), route_id)
 
     @router.post(f"{PREFIX}/webhook/rotate")
     def rotate_secret(
         route_id: int, authorization: Annotated[str | None, Header()] = None
     ) -> dict[str, object]:
         result: dict[str, object] = update_route(
-            settings, caller_user_id(settings, authorization), route_id, rotate_secret=True
+            settings,
+            caller_user_id(settings, authorization, SUBSCRIPTIONS),
+            route_id,
+            rotate_secret=True,
         )
         FEEDER.reload(settings)
         return result

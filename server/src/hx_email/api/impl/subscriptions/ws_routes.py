@@ -24,6 +24,7 @@ from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
 from hx_email.api.impl.gateway.auth import caller_user_id
 from hx_email.config import Settings
+from hx_email.server.access.scopes import SUBSCRIPTIONS
 from hx_email.server.hub.consume import Batch, route_batches
 from hx_email.server.hub.route_model import Route
 from hx_email.server.hub.subscriptions import ack_route, get_route
@@ -109,7 +110,7 @@ def register_subscription_ws(router: APIRouter, settings: Settings) -> None:
         authorization, chosen = credentials_of(websocket)
         try:
             user_id: int = await anyio.to_thread.run_sync(
-                caller_user_id, settings, authorization or None
+                caller_user_id, settings, authorization or None, SUBSCRIPTIONS
             )
             route: Route = await anyio.to_thread.run_sync(get_route, settings, user_id, route_id)
         except HTTPException:

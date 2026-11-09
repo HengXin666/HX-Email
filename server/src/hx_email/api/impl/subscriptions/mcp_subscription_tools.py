@@ -23,6 +23,7 @@ from hx_email.api.impl.gateway.mcp_tools import (
     schema,
     text_arg,
 )
+from hx_email.api.impl.mcp_resources.watch import announce_list_changed
 from hx_email.config import Settings
 from hx_email.server.hub.consume import wait_route, wait_source
 from hx_email.server.hub.subscriptions import ack_route, create_route, list_routes
@@ -135,5 +136,6 @@ async def call_hub_tool(
 
         created: JsonDict = await anyio.to_thread.run_sync(create)
         await anyio.to_thread.run_sync(FEEDER.reload, settings)
+        announce_list_changed(user_id)
         return created
     return await anyio.to_thread.run_sync(list_routes, settings, user_id)

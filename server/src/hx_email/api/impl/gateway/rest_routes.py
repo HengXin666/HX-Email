@@ -24,6 +24,7 @@ from hx_email.api.impl.router.errors import install_router_error_handler
 from hx_email.api.impl.router.github_user_routes import register_github_user_routes
 from hx_email.api.impl.subscriptions.subscription_routes import register_subscription_routes
 from hx_email.config import Settings
+from hx_email.server.access.scopes import ACTIONS, SEND
 from hx_email.server.gateway.catalog import (
     capabilities_list,
     session_select,
@@ -158,7 +159,7 @@ def register_gateway_rest_routes(router: APIRouter, settings: Settings) -> None:
         authorization: Annotated[str | None, Header()] = None,
         idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
     ) -> dict[str, object]:
-        user_id: int = caller_user_id(settings, authorization)
+        user_id: int = caller_user_id(settings, authorization, SEND)
         result: dict[str, object] = send_message(
             settings,
             user_id,
@@ -180,7 +181,7 @@ def register_gateway_rest_routes(router: APIRouter, settings: Settings) -> None:
         authorization: Annotated[str | None, Header()] = None,
         idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
     ) -> dict[str, object]:
-        user_id: int = caller_user_id(settings, authorization)
+        user_id: int = caller_user_id(settings, authorization, ACTIONS)
         result: dict[str, object] = invoke_action(
             settings,
             user_id,

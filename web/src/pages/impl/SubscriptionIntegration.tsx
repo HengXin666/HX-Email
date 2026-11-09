@@ -5,6 +5,7 @@ import { Button, Card, Input } from "../../components/ui/Primitives";
 import { useToast } from "../../components/ui/Toast";
 import type { RouterApiKey, RouterSubscription } from "../../types/messaging";
 import { copyToClipboard } from "../../utils/clipboard";
+import { DEFAULT_SCOPES, KeyScopeEditor, ScopePicker } from "./RouterKeyScopes";
 import { buildSnippets } from "./subscription_snippets";
 
 interface Props {
@@ -39,6 +40,7 @@ export const SubscriptionIntegration: React.FC<Props> = ({ selected, webhookSecr
   const { toast } = useToast();
   const [keys, setKeys] = useState<RouterApiKey[]>([]);
   const [keyName, setKeyName] = useState("agent");
+  const [scopes, setScopes] = useState<string[]>(DEFAULT_SCOPES);
   const [issued, setIssued] = useState("");
   const [tab, setTab] = useState(selected?.delivery === "webhook" ? "webhook" : "curl");
 
@@ -57,12 +59,21 @@ export const SubscriptionIntegration: React.FC<Props> = ({ selected, webhookSecr
 
   const createKey = async () => {
     try {
-      const created = await api.createRouterKey(keyName.trim() || "agent");
+      const created = await api.createRouterKey(keyName.trim() || "agent", scopes);
       setIssued(created.key);
       toast("已创建，密钥只显示这一次", "success");
       await loadKeys();
     } catch (error) {
       toast(error instanceof Error ? error.message : "创建失败", "error");
+    }
+  };
+
+  const saveScopes = async (id: number, next: string[]) => {
+    try {
+      await api.updateRouterKeyScopes(id, next);
+      await loadKeys();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "修改权限失败", "error");
     }
   };
 
@@ -93,7 +104,7 @@ export const SubscriptionIntegration: React.FC<Props> = ({ selected, webhookSecr
       <div>
         <h3 className="text-sm font-semibold text-gh-text">快速对接</h3>
         <p className="text-xs text-gh-text-secondary mt-1">
-          给 Agent 发一把 hxr_ 路由密钥（只能读写消息，不能管理密钥或解除熔断），
+          给 Agent 发一把 hxr_ 路由密钥（按勾选的权限读写消息，任何权限都不能管理密钥或解除熔断），
           再把下面的代码贴过去。{selected ? `已代入订阅 #${selected.id}。` : "先在左边选一个订阅。"}
         </p>
       </div>
@@ -105,10 +116,17 @@ export const SubscriptionIntegration: React.FC<Props> = ({ selected, webhookSecr
           onChange={(event) => setKeyName(event.target.value)}
           className="w-40"
         />
-        <Button variant="primary" size="sm" icon={<IconKey size={12} />} onClick={createKey}>
+        <Button
+          variant="primary"
+          size="sm"
+          icon={<IconKey size={12} />}
+          onClick={createKey}
+          disabled={scopes.length === 0}
+        >
           新建路由密钥
         </Button>
       </div>
+      <ScopePicker value={scopes} onChange={setScopes} idPrefix="new-key" />
       {issued && (
         <div className="flex items-center gap-2 rounded-md border border-gh-success/40 bg-gh-success/10 px-3 py-2">
           <code
@@ -126,8 +144,9 @@ export const SubscriptionIntegration: React.FC<Props> = ({ selected, webhookSecr
             <li key={key.id} className="flex items-center gap-2 text-xs text-gh-text-secondary">
               <code className="font-mono text-gh-text">{key.key_prefix}…</code>
               <span>{key.name}</span>
+              <span>{key.last_used_at ? `最近使用 ${key.last_used_at}` : "未使用"}</span>
               <span className="flex-1">
-                {key.last_used_at ? `最近使用 ${key.last_used_at}` : "未使用"}
+                <KeyScopeEditor keyId={key.id} scopes={key.scopes ?? []} onSave={saveScopes} />
               </span>
               <button
                 type="button"

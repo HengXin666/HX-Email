@@ -135,6 +135,10 @@ def test_subscription_lifecycle_over_rest(env: dict[str, Any]) -> None:
 
 def test_subscription_tools_over_mcp(env: dict[str, Any]) -> None:
     client, headers, qq, settings = env["client"], env["headers"], env["qq"], env["settings"]
+    init = client.post(
+        "/mcp", json={"jsonrpc": "2.0", "id": 0, "method": "initialize"}, headers=headers
+    )
+    headers = {**headers, "Mcp-Session-Id": init.headers["Mcp-Session-Id"]}
 
     def call(name: str, arguments: dict[str, object]) -> dict[str, Any]:
         reply = client.post(

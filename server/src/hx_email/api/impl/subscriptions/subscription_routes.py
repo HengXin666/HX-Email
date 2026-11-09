@@ -17,9 +17,11 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from hx_email.api.impl.gateway.auth import caller_user_id
+from hx_email.api.impl.mcp_resources.watch import announce_list_changed
 from hx_email.api.impl.subscriptions.webhook_routes import register_webhook_routes
 from hx_email.api.impl.subscriptions.ws_routes import register_subscription_ws
 from hx_email.config import Settings
+from hx_email.server.access.scopes import SUBSCRIPTIONS
 from hx_email.server.hub.bus import BUS
 from hx_email.server.hub.consume import route_stream, wait_route
 from hx_email.server.hub.route_model import Route
@@ -91,9 +93,10 @@ def register_subscription_routes(router: APIRouter, settings: Settings) -> None:
     def create(
         payload: CreateBody, authorization: Annotated[str | None, Header()] = None
     ) -> dict[str, object]:
+        user_id: int = caller_user_id(settings, authorization, SUBSCRIPTIONS)
         created: dict[str, object] = create_route(
             settings,
-            caller_user_id(settings, authorization),
+            user_id,
             source=payload.source,
             name=payload.name,
             filter_data=payload.filter.model_dump(),
@@ -102,17 +105,20 @@ def register_subscription_routes(router: APIRouter, settings: Settings) -> None:
             webhook_url=payload.webhook_url,
         )
         FEEDER.reload(settings)
+        announce_list_changed(user_id)
         return created
 
     @router.get(PREFIX)
     def listing(authorization: Annotated[str | None, Header()] = None) -> dict[str, object]:
-        return list_routes(settings, caller_user_id(settings, authorization))
+        return list_routes(settings, caller_user_id(settings, authorization, SUBSCRIPTIONS))
 
     @router.get(f"{PREFIX}/{{route_id}}")
     def detail(
         route_id: int, authorization: Annotated[str | None, Header()] = None
     ) -> dict[str, object]:
-        return get_route(settings, caller_user_id(settings, authorization), route_id).to_dict()
+        return get_route(
+            settings, caller_user_id(settings, authorization, SUBSCRIPTIONS), route_id
+        ).to_dict()
 
     @router.patch(f"{PREFIX}/{{route_id}}")
     def update(
@@ -122,7 +128,7 @@ def register_subscription_routes(router: APIRouter, settings: Settings) -> None:
     ) -> dict[str, object]:
         updated: dict[str, object] = update_route(
             settings,
-            caller_user_id(settings, authorization),
+            caller_user_id(settings, authorization, SUBSCRIPTIONS),
             route_id,
             name=payload.name,
             status=payload.status,
@@ -137,10 +143,10 @@ def register_subscription_routes(router: APIRouter, settings: Settings) -> None:
     def remove(
         route_id: int, authorization: Annotated[str | None, Header()] = None
     ) -> dict[str, object]:
-        deleted: dict[str, object] = delete_route(
-            settings, caller_user_id(settings, authorization), route_id
-        )
+        user_id: int = caller_user_id(settings, authorization, SUBSCRIPTIONS)
+        deleted: dict[str, object] = delete_route(settings, user_id, route_id)
         FEEDER.reload(settings)
+        announce_list_changed(user_id)
         return deleted
 
     @router.post(f"{PREFIX}/{{route_id}}/ack")
@@ -148,7 +154,10 @@ def register_subscription_routes(router: APIRouter, settings: Settings) -> None:
         route_id: int, payload: AckBody, authorization: Annotated[str | None, Header()] = None
     ) -> dict[str, object]:
         return ack_route(
-            settings, caller_user_id(settings, authorization), route_id, payload.cursor
+            settings,
+            caller_user_id(settings, authorization, SUBSCRIPTIONS),
+            route_id,
+            payload.cursor,
         )
 
     @router.get(f"{PREFIX}/{{route_id}}/events")
@@ -160,7 +169,9 @@ def register_subscription_routes(router: APIRouter, settings: Settings) -> None:
         limit: int = Query(default=20, ge=1, le=100),
         authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, object]:
-        user_id: int = await anyio.to_thread.run_sync(caller_user_id, settings, authorization)
+        user_id: int = await anyio.to_thread.run_sync(
+            caller_user_id, settings, authorization, SUBSCRIPTIONS
+        )
         response.headers["Cache-Control"] = "no-store"
         return await wait_route(
             settings,
@@ -179,7 +190,9 @@ def register_subscription_routes(router: APIRouter, settings: Settings) -> None:
         authorization: Annotated[str | None, Header()] = None,
         last_event_id: Annotated[str | None, Header(alias="Last-Event-ID")] = None,
     ) -> StreamingResponse:
-        user_id: int = await anyio.to_thread.run_sync(caller_user_id, settings, authorization)
+        user_id: int = await anyio.to_thread.run_sync(
+            caller_user_id, settings, authorization, SUBSCRIPTIONS
+        )
         route: Route = await anyio.to_thread.run_sync(get_route, settings, user_id, route_id)
         if route.status != "active":
             raise RouteInvalidError(f"subscription {route_id} is paused")
