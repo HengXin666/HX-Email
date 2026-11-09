@@ -38,6 +38,7 @@ SENDABLE_TYPES: Final[frozenset[str]] = frozenset(
     {"private", "group", "temp", "qzonepost", "issue", "repo", "channel"}
 )
 MAX_SESSIONS: Final[int] = 200
+OFFICIAL_KINDS: Final[frozenset[str]] = frozenset({"github", "github_user"})
 
 
 def source_state(instance: InstanceRow) -> str:
@@ -65,10 +66,12 @@ def sources_list(settings: Settings, user_id: int, platform: str = "") -> dict[s
                 "address": f"{instance.kind}:{instance.id}",
                 "name": instance.name,
                 "state": source_state(instance),
-                "account_id": instance.config.get("app_slug", ""),
+                "account_id": instance.config.get(
+                    "login" if instance.kind == "github_user" else "app_slug", ""
+                ),
                 "outbound": outbound,
                 "held_until": held_until,
-                "risk_level": "official" if instance.kind == "github" else "third_party",
+                "risk_level": "official" if instance.kind in OFFICIAL_KINDS else "third_party",
             }
         )
     return {"sources": items}

@@ -91,25 +91,26 @@ address := <platform>:<instance_id>( /<kind>[/<id>] )*
 id      := 由该 kind 的 id_parts 个 "/" 分段组成 (GitHub repo 为 2: owner/name)
 ```
 
-| v2                                      | 含义                                 | 对应 v1                                                       |
-| --------------------------------------- | ------------------------------------ | ------------------------------------------------------------- |
-| `qq:3`                                  | 账号下全部会话 (选择器)              | `qq:3:`                                                       |
-| `qq:3/group`                            | 账号下全部群 (选择器)                | `qq:3:group:`                                                 |
-| `qq:3/group/555`                        | 群会话                               | `qq:3:group:555`                                              |
-| `qq:3/private/10001`                    | 好友私聊                             | `qq:3:private:10001`                                          |
-| `qq:3/temp/555-10001`                   | 群临时会话                           | `qq:3:temp:555-10001`                                         |
-| `github:7/repo/hx/HX-Email`             | 仓库本身, 作为选择器时含其下全部线程 | `github:7:repo:hx/HX-Email` 加 `github:7:issue:hx/HX-Email#*` |
-| `github:7/repo/hx/HX-Email/issue/42`    | issue 或 PR 线程                     | `github:7:issue:hx/HX-Email#42`                               |
-| `qqbot:5/guild/<频道>/channel/<子频道>` | QQ 频道的文字子频道 (官方机器人)     | `qqbot:5:channel:<频道>/<子频道>`                             |
-| `qq:3/qzone/10001`                      | 该 QQ 号空间的全部说说 (选择器)      | `qq:3:qzonepost:10001_*`                                      |
-| `qq:3/qzone/10001/post/<tid>`           | 一条说说及其评论                     | `qq:3:qzonepost:10001_<tid>`                                  |
+| v2                                        | 含义                                    | 对应 v1                                                       |
+| ----------------------------------------- | --------------------------------------- | ------------------------------------------------------------- |
+| `qq:3`                                    | 账号下全部会话 (选择器)                 | `qq:3:`                                                       |
+| `qq:3/group`                              | 账号下全部群 (选择器)                   | `qq:3:group:`                                                 |
+| `qq:3/group/555`                          | 群会话                                  | `qq:3:group:555`                                              |
+| `qq:3/private/10001`                      | 好友私聊                                | `qq:3:private:10001`                                          |
+| `qq:3/temp/555-10001`                     | 群临时会话                              | `qq:3:temp:555-10001`                                         |
+| `github:7/repo/hx/HX-Email`               | 仓库本身, 作为选择器时含其下全部线程    | `github:7:repo:hx/HX-Email` 加 `github:7:issue:hx/HX-Email#*` |
+| `github:7/repo/hx/HX-Email/issue/42`      | issue 或 PR 线程                        | `github:7:issue:hx/HX-Email#42`                               |
+| `qqbot:5/guild/<频道>/channel/<子频道>`   | QQ 频道的文字子频道 (官方机器人)        | `qqbot:5:channel:<频道>/<子频道>`                             |
+| `github_user:8/repo/hx/HX-Email/issue/42` | GitHub 用户账号 (gh CLI) 看到的同一线程 | `github_user:8:issue:hx/HX-Email#42`                          |
+| `qq:3/qzone/10001`                        | 该 QQ 号空间的全部说说 (选择器)         | `qq:3:qzonepost:10001_*`                                      |
+| `qq:3/qzone/10001/post/<tid>`             | 一条说说及其评论                        | `qq:3:qzonepost:10001_<tid>`                                  |
 
 - 区分规则: 实例号后紧跟 `/` 或结束为 v2, 紧跟 `:` 为 v1. 所有接受 session, sink, source 的入口两种都收, 以 v1 落库与去重, 所以同一会话用两种写法发送共享幂等键
 - 前缀按路径段匹配, 不按字符: `group/12` 不覆盖 `group/123`; 选择器可以停在一个 kind 上 (`qq:3/group`) 表示该 kind 全部对象, 停在一个对象上表示它及其下全部子对象
 - kind 的层级, id 段数, 正则, 与 v1 的映射 (`legacy_type`, `legacy_peer` 模板如 `{repo}#{issue}`) 全部写在平台声明里 (`server/contract/builtin.py`), 核心不再枚举平台与类型; 新平台或新层级只加声明与 provider
 - 所有返回 session 或 sink 的地方同时返回 `address` (v2); 一个无法映射的 v1 值返回空字符串而不是报错
-- `capabilities_list` (MCP) 与 `GET /api/v1/router/capabilities` (REST) 返回每个平台的地址层级, 事件种类, 已支持的信号与可用动作; 只声明已实现的能力; GitHub discussion 与 commit 已于 2026-11-08 加入声明 (只收不发), QQ 空间 (`qzone`, `post`) 于 2026-11-09 加入; QQ 频道是独立平台 `qqbot` (官方机器人, `guild`, `channel`), 同日加入, 见 ADR 0009 与 docs/providers/qq-bot.md
-- 风控等级与整形档位按平台声明, 可按 kind 覆盖: 每个地址层级在 capabilities 里带 `risk_level` 与 `rate_profile`. QQ 聊天为 `third_party` / `qq`, QQ 空间为 `unofficial_web` / `qzone`, QQ 频道为 `official` / `qqbot`, GitHub 为 `official` / `github`
+- `capabilities_list` (MCP) 与 `GET /api/v1/router/capabilities` (REST) 返回每个平台的地址层级, 事件种类, 已支持的信号与可用动作; 只声明已实现的能力; GitHub discussion 与 commit 已于 2026-11-08 加入声明 (只收不发), QQ 空间 (`qzone`, `post`) 于 2026-11-09 加入; QQ 频道是独立平台 `qqbot` (官方机器人, `guild`, `channel`), 同日加入, 见 ADR 0009 与 docs/providers/qq-bot.md; GitHub 用户账号是独立平台 `github_user` (经 gh CLI, 与 `github` 同一棵地址树与动作集, 投递方式 `pull`, 多一个事件种类 `ci`), 同日加入, 见 ADR 0010 与 docs/providers/github-user.md. 平台名允许下划线, v1 地址的平台段按 `[a-z0-9_]+` 校验
+- 风控等级与整形档位按平台声明, 可按 kind 覆盖: 每个地址层级在 capabilities 里带 `risk_level` 与 `rate_profile`. QQ 聊天为 `third_party` / `qq`, QQ 空间为 `unofficial_web` / `qzone`, QQ 频道为 `official` / `qqbot`, GitHub App 为 `official` / `github`, GitHub 用户账号为 `official` / `github_user` (数值同 App, 独立的桶)
 - 决策记录: `.agents/notes/implemented/feature/2026-11-08-router-contract-v2.md`, ADR 0006
 
 ## 3. 统一 envelope
@@ -516,7 +517,7 @@ MCP server 名为 `hx-router`, 传输为 streamable HTTP (`/mcp`) 与 stdio (`hx
 
 ### 5.6a `action_invoke`
 
-执行平台在 `capabilities_list` 里声明的动作 (每个动作带 `targets`, `requires` 与 `params`). 入参 `{target, action, params, idempotency_key, wait_seconds}`, `params` 是字符串到字符串的对象, 最多 8 个键; REST 对应 `POST /api/v1/router/actions`. `action=message_send` 等同于 `message_send`. 返回与 `message_send` 同形, 多一个 `action` 字段. 参数可声明 `required_if` (另一参数取某些值时才必填, 如 review 的 `body`). 实例配置 `disabled_actions` (逗号分隔) 可关掉某些动作, 关掉的返回 `action_not_supported`. GitHub 已声明的动作 (`comment_create`, `reaction_add`, `review_submit`, `discussion_create`, `discussion_comment_create`) 见 docs/providers/github-app.md 4.3
+执行平台在 `capabilities_list` 里声明的动作 (每个动作带 `targets`, `requires` 与 `params`). 入参 `{target, action, params, idempotency_key, wait_seconds}`, `params` 是字符串到字符串的对象, 最多 8 个键; REST 对应 `POST /api/v1/router/actions`. `action=message_send` 等同于 `message_send`. 返回与 `message_send` 同形, 多一个 `action` 字段. 参数可声明 `required_if` (另一参数取某些值时才必填, 如 review 的 `body`). 实例配置 `disabled_actions` (逗号分隔) 可关掉某些动作, 关掉的返回 `action_not_supported`. GitHub 已声明的动作 (`comment_create`, `reaction_add`, `review_submit`, `discussion_create`, `discussion_comment_create`) 见 docs/providers/github-app.md 4.3; `github_user` 声明同一组动作与参数, `requires` 写成 OAuth scope (`repo`, discussion 另列 `write:discussion`), 见 docs/providers/github-user.md 4
 
 ### 5.7 `route_subscribe`
 
@@ -842,6 +843,8 @@ MCP server 名为 `hx-router`, 传输为 streamable HTTP (`/mcp`) 与 stdio (`hx
 - 账号级 (每个 installation) 每分钟 30 次写操作, 突发 5 次, 不设每日上限, 同一 installation 的写入串行执行
 - 这是本项目经验值, 目的是给 GitHub 的二级速率限制留余量; GitHub 主速率与二级速率限制的当前数字需复核, 复核方法是查阅 docs.github.com 的 "Rate limits for the REST API" 页面并记录日期, 实现上以响应头 `Retry-After`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` 为准, 不硬编码平台数字
 - 单条评论正文上限按 65536 字符处理, 需复核, 复核方法是用测试仓库提交超长评论观察 422 的边界; `max_text_length` 取 4000 (入参上限) 与该值的较小者
+
+- GitHub 用户账号 (`github_user`) 用同样的数值但独立的桶: 与 App 是两个身份, 限额各算各的; 入站轮询每分钟一次, 以 `X-Poll-Interval` 为下限, 见 docs/providers/github-user.md 3
 
 ### 9.3 风控熔断
 

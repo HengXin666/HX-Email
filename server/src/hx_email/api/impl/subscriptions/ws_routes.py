@@ -15,10 +15,11 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Coroutine
 from typing import Final
 
 import anyio
+import anyio.abc
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
 from hx_email.api.impl.gateway.auth import caller_user_id
@@ -91,6 +92,13 @@ async def listen(channel: Channel, settings: Settings, user_id: int, route_id: i
         await channel.send({"type": "acked", "ack_cursor": route["ack_cursor"]})
 
 
+async def first_done(group: anyio.abc.TaskGroup, work: Coroutine[object, object, None]) -> None:
+    """Run one side of the socket; whichever side ends first stops the other."""
+    with contextlib.suppress(WebSocketDisconnect, RuntimeError):
+        await work
+    group.cancel_scope.cancel()
+
+
 # WebSocket 与 SSE 共用 iterate_source; 浏览器无法设 Authorization, 令牌可走 bearer.<token> 子协议
 # 决策记录: .agents/notes/implemented/feature/2026-11-08-router-push-transports.md
 def register_subscription_ws(router: APIRouter, settings: Settings) -> None:
@@ -124,16 +132,9 @@ def register_subscription_ws(router: APIRouter, settings: Settings) -> None:
                 "ack_cursor": route.cursor(),
             }
         )
-        tasks: set[asyncio.Task[None]] = {
-            asyncio.create_task(
-                pump(channel, route_batches(settings, user_id, route, start, auto_ack))
-            ),
-            asyncio.create_task(listen(channel, settings, user_id, route.id)),
-        }
-        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-        for task in pending:
-            task.cancel()
-        await asyncio.gather(*pending, return_exceptions=True)
-        for task in done:
-            with contextlib.suppress(WebSocketDisconnect, RuntimeError, asyncio.CancelledError):
-                task.result()
+        # 用 anyio 任务组, 不用裸 asyncio.wait/gather: 收尾靠 anyio 取消作用域,
+        # 混用时对端关闭与作用域取消赛跑, CancelledError 会漏出作用域
+        async with anyio.create_task_group() as group:
+            feed: AsyncIterator[Batch] = route_batches(settings, user_id, route, start, auto_ack)
+            group.start_soon(first_done, group, pump(channel, feed))
+            group.start_soon(first_done, group, listen(channel, settings, user_id, route.id))

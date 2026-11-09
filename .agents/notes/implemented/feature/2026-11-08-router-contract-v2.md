@@ -27,6 +27,7 @@ Decision-ID: router-contract-v2
 - 核心的平台与类型集合改为读注册表; MCP 新增 `capabilities_list`, REST 新增 `GET /router/capabilities`, platform enum 由注册表生成.
 - 读结果附加 `contract, address, thread, parent, kind, mentions, flags, segments`; 平台未上报的信号为 `null`, 与 `false` 区分, 让消费者知道 "没被 @" 和 "不知道有没有被 @" 不是一回事.
 - 只声明已实现的能力; QQ 频道, QQ 空间, GitHub discussion 与 commit 在实现它们的阶段加入声明.
+- 平台名可含下划线 (`github_user`): v1 地址的平台段按 `[a-z0-9_]+` 校验, 与能力声明的平台名规则一致.
 
 ## Alternatives considered
 

@@ -103,7 +103,7 @@ def test_reader_accepts_v2_sources() -> None:
 
 
 def test_registry_drives_platforms_and_listing() -> None:
-    assert REGISTRY.platform_names() == frozenset({"qq", "github", "qqbot"})
+    assert REGISTRY.platform_names() == frozenset({"qq", "github", "qqbot", "github_user"})
     assert REGISTRY.legacy_types() == frozenset(
         {
             "private",

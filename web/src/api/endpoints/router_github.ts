@@ -1,6 +1,7 @@
 import type {
   GithubAttachResult,
   GithubManifestStart,
+  GithubUserCheckResult,
   GithubVerifyResult,
   RouterActionSpec,
 } from "../../types/messaging";
@@ -14,8 +15,8 @@ interface CapabilitiesPage {
  * 出站动作开关的动作列表直接取能力声明, 前端不另写一份
  * 决策记录: .agents/notes/implemented/feature/2026-11-09-github-outbound-actions.md
  */
-function githubActions(): Promise<RouterActionSpec[]> {
-  return request<CapabilitiesPage>("/router/capabilities?platform=github").then(
+function githubActions(platform = "github"): Promise<RouterActionSpec[]> {
+  return request<CapabilitiesPage>(`/router/capabilities?platform=${platform}`).then(
     (page: CapabilitiesPage) => page.platforms[0]?.actions ?? [],
   );
 }
@@ -33,6 +34,23 @@ export const routerGithubApi = {
     }),
 
   githubActions,
+
+  // GitHub 用户账号 (gh CLI): 只提交 CLI 路径与仓库, 没有任何 token 字段
+  githubUserSave: (data: {
+    cli: string;
+    repository: string;
+    instance_id?: number;
+  }): Promise<GithubUserCheckResult> =>
+    request<GithubUserCheckResult>("/router/github_user/save", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  githubUserCheck: (instanceId: number): Promise<GithubUserCheckResult> =>
+    request<GithubUserCheckResult>("/router/github_user/check", {
+      method: "POST",
+      body: JSON.stringify({ instance_id: instanceId }),
+    }),
 
   githubAttach: (installationId: number, instanceId: number): Promise<GithubAttachResult> =>
     request<GithubAttachResult>(`/router/github/installations/${installationId}/attach`, {

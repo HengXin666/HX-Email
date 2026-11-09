@@ -138,6 +138,7 @@ def test_messaging_catalog_lists_four_platforms(tmp_path: Any) -> None:
         "qq",
         "github",
         "qqbot",
+        "github_user",
         "wechat",
         "telegram",
         "discord",

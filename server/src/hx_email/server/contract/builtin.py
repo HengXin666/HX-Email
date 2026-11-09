@@ -8,6 +8,8 @@ QQ (NapCat, OneBot 11) and GitHub (App) as implemented today. v1 mapping:
   ``qzone`` alone is a grouping level for "every post in this space")
 - ``qqbot:<iid>/guild/<guild>/channel/<channel>`` is ``qqbot:<iid>:channel:<guild>/<channel>``
   (QQ 频道走官方机器人 API, 是独立平台, 见 ADR 0009)
+- ``github_user:<iid>/...`` 与 ``github`` 同一棵地址树, 存储键只换平台前缀
+  (GitHub 用户账号经 gh CLI 接入, 是独立平台, 见 ADR 0010)
 - ``github:<iid>/repo/<owner>/<name>`` is ``github:<iid>:repo:<owner>/<name>``
 - ``github:<iid>/repo/<owner>/<name>/issue/<n>`` is ``github:<iid>:issue:<owner>/<name>#<n>``
   (issue and pull request share GitHub's number space, so one kind covers both threads)
@@ -28,6 +30,7 @@ from hx_email.server.contract.capabilities import (
     PlatformCapabilities,
 )
 from hx_email.server.contract.github_actions import GITHUB_ACTIONS
+from hx_email.server.contract.github_user.actions import GITHUB_USER_ACTIONS
 
 DIGITS: Final[str] = r"[0-9]+"
 REPO_NAME: Final[str] = r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+"
@@ -210,4 +213,19 @@ QQBOT: Final[PlatformCapabilities] = PlatformCapabilities(
     ),
 )
 
-REGISTRY: Final[CapabilityRegistry] = CapabilityRegistry((QQ, GITHUB, QQBOT))
+# 用户账号与 App 共用地址树, 事件种类与动作参数; 只换平台名, 投递方式 (轮询) 与权限写法
+GITHUB_USER: Final[PlatformCapabilities] = PlatformCapabilities(
+    platform="github_user",
+    title="GitHub 账号 (gh CLI)",
+    risk_level="official",
+    delivery="pull",
+    rate_profile="github_user",
+    kinds=GITHUB.kinds,
+    event_kinds=(*GITHUB.event_kinds, "ci"),
+    default_event_kind=GITHUB.default_event_kind,
+    signals=GITHUB.signals,
+    actions=GITHUB_USER_ACTIONS,
+    kind_rules=(*GITHUB.kind_rules, KindRule("ci:", "ci")),
+)
+
+REGISTRY: Final[CapabilityRegistry] = CapabilityRegistry((QQ, GITHUB, QQBOT, GITHUB_USER))

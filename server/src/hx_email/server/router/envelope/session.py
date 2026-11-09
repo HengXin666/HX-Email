@@ -22,7 +22,8 @@ Direction = Literal["inbound", "outbound"]
 PLATFORMS: Final[frozenset[str]] = REGISTRY.platform_names()
 SESSION_TYPES: Final[frozenset[str]] = REGISTRY.legacy_types()
 DIRECTIONS: Final[frozenset[str]] = frozenset({"inbound", "outbound"})
-SEGMENT_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[a-z0-9]+$")
+# 平台名可含下划线 (github_user), 与能力声明的 NAME_PATTERN 一致
+SEGMENT_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[a-z0-9_]+$")
 
 
 @dataclass(frozen=True)

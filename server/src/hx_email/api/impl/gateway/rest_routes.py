@@ -21,6 +21,7 @@ from hx_email.api.impl.gateway.admin_routes import register_gateway_admin_routes
 from hx_email.api.impl.gateway.auth import caller_user_id
 from hx_email.api.impl.gateway.mcp_server import register_mcp_route
 from hx_email.api.impl.router.errors import install_router_error_handler
+from hx_email.api.impl.router.github_user_routes import register_github_user_routes
 from hx_email.api.impl.subscriptions.subscription_routes import register_subscription_routes
 from hx_email.config import Settings
 from hx_email.server.gateway.catalog import (
@@ -30,6 +31,7 @@ from hx_email.server.gateway.catalog import (
     sources_list,
 )
 from hx_email.server.gateway.impl.dispatch import DISPATCHER, seconds_until_next
+from hx_email.server.gateway.impl.github_user_poll import GITHUB_USER_POLLER
 from hx_email.server.gateway.impl.qzone_poll import QZONE_POLLER
 from hx_email.server.gateway.listen import pull
 from hx_email.server.gateway.sending import delivery_status, invoke_action, send_message
@@ -75,6 +77,7 @@ def register_gateway(app: FastAPI, api: APIRouter, settings: Settings) -> None:
     register_gateway_rest_routes(api, settings)
     register_gateway_admin_routes(api, settings)
     register_subscription_routes(api, settings)
+    register_github_user_routes(api, settings)
     register_mcp_route(app, settings)
     install_router_error_handler(app)
 
@@ -91,6 +94,7 @@ def register_gateway(app: FastAPI, api: APIRouter, settings: Settings) -> None:
             DISPATCHER.wake(settings)
         FEEDER.start(settings)
         QZONE_POLLER.start(settings)
+        GITHUB_USER_POLLER.start(settings)
 
 
 def register_gateway_rest_routes(router: APIRouter, settings: Settings) -> None:

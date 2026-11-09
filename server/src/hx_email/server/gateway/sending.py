@@ -45,6 +45,7 @@ SENDABLE_BY_KIND: Final[dict[str, frozenset[str]]] = {
     "qq": QQ_TYPES,
     "github": GITHUB_TYPES,
     "qqbot": frozenset({"channel"}),
+    "github_user": GITHUB_TYPES,
 }
 
 

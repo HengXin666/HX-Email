@@ -27,6 +27,8 @@ function errorText(error: unknown, fallback: string): string {
 
 interface Props {
   instance: MessagingInstance;
+  /** 能力声明里的平台名; App 卡片不传, 即 github */
+  platform?: string;
 }
 
 /**
@@ -34,7 +36,7 @@ interface Props {
  * 默认空即全部开启; 后端 invoke_action 拒绝被关掉的动作 (422 action_not_supported)
  * 决策记录: .agents/notes/implemented/feature/2026-11-09-github-outbound-actions.md
  */
-export function GithubOutboundSettings({ instance }: Props) {
+export function GithubOutboundSettings({ instance, platform = "github" }: Props) {
   const { toast } = useToast();
   const [actions, setActions] = useState<RouterActionSpec[]>([]);
   const [disabled, setDisabled] = useState<Set<string>>(() =>
@@ -45,7 +47,7 @@ export function GithubOutboundSettings({ instance }: Props) {
   useEffect(() => {
     let alive = true;
     api
-      .githubActions()
+      .githubActions(platform)
       .then((found: RouterActionSpec[]) => {
         if (alive) setActions(found.filter((spec: RouterActionSpec) => !ALWAYS_ON.has(spec.name)));
       })
@@ -53,7 +55,7 @@ export function GithubOutboundSettings({ instance }: Props) {
     return () => {
       alive = false;
     };
-  }, [toast]);
+  }, [platform, toast]);
 
   const toggle = useCallback(
     async (name: string, enabled: boolean): Promise<void> => {

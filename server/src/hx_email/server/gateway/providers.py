@@ -22,6 +22,7 @@ from typing import cast
 
 from hx_email.config import Settings
 from hx_email.database import connect
+from hx_email.server.contract.github_user.config import GhUserConfig, parse_config
 from hx_email.server.messaging.registry import get_adapter
 from hx_email.server.messaging.store import get_instance_by_id
 from hx_email.server.messaging.types import MessagingAdapter, MessagingInstance
@@ -35,6 +36,7 @@ from hx_email.server.router.impl.shaper import (
 )
 from hx_email.server.router.provider import MessagingProvider
 from hx_email.server.router.providers.github import GitHubAppProvider
+from hx_email.server.router.providers.github_user import GitHubUserProvider
 from hx_email.server.router.providers.impl.github.github_auth import (
     GitHubAppConfig,
     open_app_config,
@@ -51,12 +53,16 @@ from hx_email.server.router.providers.qqbot import QQBotProvider
 from hx_email.server.router.providers.qzone import QzoneProvider
 
 LOGGER: logging.Logger = logging.getLogger("hx_email.gateway.providers")
-SUPPORTED_KINDS: tuple[str, ...] = ("qq", "github", "qqbot")
+SUPPORTED_KINDS: tuple[str, ...] = ("qq", "github", "qqbot", "github_user")
+# 实例配置明文可读的平台; GitHub App 的配置是加密的 App 凭据, 单独解密
+PLAIN_CONFIG_KINDS: tuple[str, ...] = ("qq", "qqbot", "github_user")
 QZONE_TYPES: frozenset[str] = frozenset({"qzonepost"})
 EMPTY_GITHUB: GitHubAppConfig = GitHubAppConfig("", "", "", "", "")
 # 实例配置里逗号分隔的关闭动作名; 默认空, 即声明的动作全部开启, 新动作上线也默认开启
 DISABLED_ACTIONS_KEY: str = "disabled_actions"
 GITHUB_PROFILE: RateProfile = from_provider_limits("github", GITHUB_LIMITS)
+# 用户账号与 App 是两个身份两份限额: 同样的数值, 独立的桶
+GITHUB_USER_PROFILE: RateProfile = from_provider_limits("github_user", GITHUB_LIMITS)
 
 # 整形器是进程级单例: REST, MCP, 前端发送与出站分发共用同一个桶, 否则各走各的桶就等于没限流
 SHAPER: Shaper = Shaper()
@@ -128,6 +134,8 @@ class ProviderHub:
                 instance.config.get("api_base", "") or API_BASE,
             )
             return cast(MessagingProvider, QQBotProvider(instance.id, config))
+        if instance.kind == "github_user":
+            return GitHubUserProvider(lambda instance_id: user_config(settings, instance_id))
         raise SessionNotFoundError(f"platform {instance.kind} has no router provider yet")
 
     def qzone_for(self, settings: Settings, instance: InstanceRow) -> QzoneProvider:
@@ -178,6 +186,8 @@ def profile_for(instance: InstanceRow, session_type: str = "") -> RateProfile:
         return GITHUB_PROFILE
     if instance.kind == "qqbot":
         return QQBOT_PROFILE
+    if instance.kind == "github_user":
+        return GITHUB_USER_PROFILE
     conservative: bool = instance.config.get("rate_profile") == "conservative"
     if session_type in QZONE_TYPES:
         return QZONE_CONSERVATIVE if conservative else QZONE_DEFAULT
@@ -212,7 +222,7 @@ def load_instance(settings: Settings, instance_id: int) -> InstanceRow | None:
     record: MessagingInstance | None = get_instance_by_id(settings, instance_id)
     if record is None:
         return None
-    config: dict[str, str] = dict(record.config) if record.kind in ("qq", "qqbot") else {}
+    config: dict[str, str] = dict(record.config) if record.kind in PLAIN_CONFIG_KINDS else {}
     if record.kind == "github":
         app: GitHubAppConfig = github_config(settings, instance_id)
         config = {
@@ -221,6 +231,14 @@ def load_instance(settings: Settings, instance_id: int) -> InstanceRow | None:
             DISABLED_ACTIONS_KEY: record.config.get(DISABLED_ACTIONS_KEY, ""),
         }
     return InstanceRow(record.id, record.user_id, record.kind, record.name, record.status, config)
+
+
+def user_config(settings: Settings, instance_id: int) -> GhUserConfig:
+    """GitHub 用户账号实例的当前配置; 每次现读, 改完配置立即生效."""
+    instance: InstanceRow | None = load_instance(settings, instance_id)
+    if instance is None or instance.kind != "github_user":
+        return parse_config({})
+    return parse_config(instance.config, instance.status)
 
 
 def require_owned(settings: Settings, user_id: int, instance_id: int) -> InstanceRow:

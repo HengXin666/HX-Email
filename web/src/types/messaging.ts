@@ -103,6 +103,25 @@ export interface GithubVerifyResult {
   app_config: GithubAppConfigSummary;
 }
 
+/**
+ * GitHub 用户账号 (gh CLI) 的 setup 检查结果: 只有登录名与错误码, 永远不含 token
+ * 决策记录: .agents/notes/implemented/feature/2026-11-09-github-cli-account.md
+ */
+export interface GithubUserReport {
+  ok: boolean;
+  code: string;
+  message: string;
+  hint: string;
+  login: string;
+  scopes: string[];
+  missing_scopes: string[];
+}
+
+export interface GithubUserCheckResult {
+  report: GithubUserReport;
+  instance: MessagingInstance;
+}
+
 export interface GithubAttachResult {
   attached: boolean;
   installation: GithubInstallation;

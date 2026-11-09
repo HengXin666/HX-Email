@@ -14,6 +14,7 @@ import type {
   MessagingPluginInfo,
 } from "../types";
 import { GithubAppConnect } from "./impl/GithubAppConnect";
+import { GithubUserConnect } from "./impl/GithubUserConnect";
 
 const STATUS_COLORS: Record<string, string> = {
   stopped: "#6e7681",
@@ -37,6 +38,10 @@ function statusLabel(status: string): string {
   return STATUS_LABELS[status] ?? status;
 }
 
+/**
+ * 消息插件页: 平台目录, GitHub App 与 GitHub 账号 (gh CLI) 两张接入卡片, 实例与会话
+ * 决策记录: .agents/notes/implemented/feature/2026-11-09-github-cli-account.md
+ */
 export const Messaging: React.FC = () => {
   const { toast } = useToast();
   const [plugins, setPlugins] = useState<MessagingPluginInfo[]>([]);
@@ -423,6 +428,7 @@ export const Messaging: React.FC = () => {
           </div>
 
           <GithubAppConnect />
+          <GithubUserConnect />
           <h2 className="mt-6 mb-2 text-sm font-semibold text-gh-text">我的实例</h2>
           {instances.length === 0 ? (
             <EmptyState message="还没有实例，点右上角「添加 QQ」即可开始" />

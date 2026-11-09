@@ -81,6 +81,22 @@ PLUGIN_KINDS: tuple[PluginKind, ...] = (
         router_only=True,
     ),
     PluginKind(
+        key="github_user",
+        display_name="GitHub 账号 (gh CLI)",
+        available=True,
+        capabilities=Capabilities(
+            supports_groups=True,
+            supports_history=True,
+            risk_level="official",
+            risk_notice="以真人或专用账号身份行动; token 只在 gh 包装脚本里, 本服务只记 CLI 路径。",
+        ),
+        adapter_factory=None,
+        description=(
+            "GitHub 用户账号 (官方 API, 经 gh CLI): 轮询本账号在一个仓库上的 notifications, "
+            "以账号身份回帖, review 与 discussion; 用下方「GitHub 账号 (gh CLI)」接入, 仅管理员。"
+        ),
+    ),
+    PluginKind(
         key="wechat",
         display_name="微信",
         available=False,

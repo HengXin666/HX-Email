@@ -31,7 +31,7 @@ Decision-ID: github-outbound-actions
   - `review_submit` 目标用 `issue` 地址 (PR 与 issue 共用编号, 地址模型没有单独的 PR 种类), 先用 GraphQL 只查 `__typename` 确认是 PR, 普通 issue 直接 `failed` (`invalid_payload`), 再 `POST /pulls/{n}/reviews`. 不可幂等, 写请求超时进 `unknown`.
   - `discussion_create` 与 `discussion_comment_create` 走 GraphQL. repositoryId, categoryId, discussion id 每次调用现查, 不缓存; 分类与评论列表按小页分页, 找到即停, 最多 20 页. 查询不写入, 超时可重试; mutation 超时进 `unknown`. `reply_to` 可以是 node id, 也可以是入站消息里看到的 `dc:<databaseId>` (分页查顶层评论换成 node id).
   - review 与 discussion 正文同样带隐藏投递标记, 留给以后的对账.
-- 按实例开关: 实例配置键 `disabled_actions` (逗号分隔, 默认空即全部开启, 以后新增的动作也默认开启), 经已有的 `PUT /messaging/instances/{id}/config` 合并写入, App 凭据字段不变. `invoke_action` 在校验目标前检查, 被关掉返回 `action_not_supported`. 前端 `GithubOutboundSettings` 从能力声明读动作列表, 每个动作一个开关; `message_send` 不在开关里.
+- 按实例开关: 实例配置键 `disabled_actions` (逗号分隔, 默认空即全部开启, 以后新增的动作也默认开启), 经已有的 `PUT /messaging/instances/{id}/config` 合并写入, App 凭据字段不变. `invoke_action` 在校验目标前检查, 被关掉返回 `action_not_supported`. 前端 `GithubOutboundSettings` 从能力声明读动作列表 (按 `platform` 取, 默认 `github`; GitHub 用户账号卡片传 `github_user` 复用同一组件), 每个动作一个开关; `message_send` 不在开关里.
 - 入口: MCP 工具 `action_invoke`, REST `POST /api/v1/router/actions`; 动作枚举来自 REGISTRY; `action=message_send` 转给原有 `send_message`.
 - 权限: manifest 的 Discussions 从只读改为读写. 已安装的 App 要所有者在 GitHub 上接受新权限后 discussion 动作才可用.
 - 内存: 不加任何缓存; `params` 最多 8 个键, 每个值有长度上限; GraphQL 只取需要的 id 字段.
