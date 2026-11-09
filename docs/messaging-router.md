@@ -764,6 +764,7 @@ scope: 见 8.3. `tools/list` 只列出该 key 有权调用的工具; 不足时�
 - outbound hold 与 resume 以及 API Key 管理只接受前端会话 token, 不接受路由 API Key, 防止一把泄漏的 Key 自己解除熔断或签发新 Key
 - 现有 `POST /api/v1/messaging/events/{kind}` 保留, 内部改为转发到同一套 ingress 处理, NapCat 配置不需要立即变更
 - 现有 `POST /api/v1/messaging/instances/{id}/send` 保留给前端, 内部改为调用 `facade.send`, 由服务端生成 `idempotency_key`, 共享整形与幂等
+- `GET /api/v1/messaging/instances/{id}` 对没有会话型 adapter 的 `github_user` 返回实例, 脱敏配置与目录声明的 capabilities (2026-11-10), 见 docs/providers/github-user.md 第 3 节
 - SSE 每 25 秒发送一次注释心跳 `:`, 只在有活跃 SSE 连接时存在, 无连接时没有任何定时器, 这一心跳计入 ADR 0005 的验收项 A2 的允许量
 
 出站 webhook 投递格式

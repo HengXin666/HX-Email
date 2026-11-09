@@ -8,10 +8,11 @@ from fastapi import HTTPException, status
 
 from hx_email.config import Settings
 from hx_email.server.gateway.impl.github_adapter import GitHubAppAdapter
-from hx_email.server.messaging.registry import get_adapter
+from hx_email.server.messaging.registry import get_adapter, get_kind
 from hx_email.server.messaging.store import get_instance
 from hx_email.server.messaging.types import (
     AdapterStatus,
+    Capabilities,
     LoginState,
     LoginTicket,
     MessagingAdapter,
@@ -24,6 +25,8 @@ from hx_email.server.router.providers.impl.github.github_auth import SECRET_CONF
 
 # GitHub 私钥与 webhook secret 和 QQ 的 event_token 一样只写不读
 MASKED_CONFIG_KEYS: frozenset[str] = frozenset({"event_token", "app_secret"}) | SECRET_CONFIG_KEYS
+# 没有会话型 adapter, 但实例详情可直接由目录声明回答的平台
+CATALOG_DETAIL_KINDS: frozenset[str] = frozenset({"github_user"})
 
 
 def require_instance(
@@ -58,6 +61,33 @@ def safe_adapter(settings: Settings, instance: MessagingInstance) -> MessagingAd
         return None
 
 
+# github_user 只经 gh CLI 轮询与路由网关工作, 没有 adapter; 详情的能力取目录声明, 配置照常脱敏
+# (与 routes.py 的拆分同一条决策, 锚点在 routes.py)
+def instance_detail(settings: Settings, instance: MessagingInstance) -> dict[str, Any]:
+    """Serialize one instance for ``GET /messaging/instances/{id}``."""
+    if instance.kind in CATALOG_DETAIL_KINDS:
+        kind = get_kind(instance.kind)
+        result: dict[str, Any] = instance_dict(instance)
+        if kind is not None:
+            result["capabilities"] = capabilities_dict(kind.capabilities)
+        return result
+    try:
+        adapter: MessagingAdapter = adapter_for(settings, instance)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+    return instance_dict(instance, adapter)
+
+
+def capabilities_dict(capability: Capabilities) -> dict[str, Any]:
+    return {
+        "supports_qr_login": capability.supports_qr_login,
+        "supports_groups": capability.supports_groups,
+        "supports_history": capability.supports_history,
+        "risk_level": capability.risk_level,
+        "risk_notice": capability.risk_notice,
+    }
+
+
 def instance_dict(
     instance: MessagingInstance,
     adapter: MessagingAdapter | None = None,
@@ -72,14 +102,7 @@ def instance_dict(
         "updated_at": instance.updated_at,
     }
     if adapter is not None:
-        capability = adapter.capabilities
-        result["capabilities"] = {
-            "supports_qr_login": capability.supports_qr_login,
-            "supports_groups": capability.supports_groups,
-            "supports_history": capability.supports_history,
-            "risk_level": capability.risk_level,
-            "risk_notice": capability.risk_notice,
-        }
+        result["capabilities"] = capabilities_dict(adapter.capabilities)
     return result
 
 

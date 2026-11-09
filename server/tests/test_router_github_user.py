@@ -610,3 +610,33 @@ def test_poll_error_backs_off(env: dict[str, Any]) -> None:
     assert asyncio.run(poll_account(settings, instance, state)) == 240
     assert state.last_modified == "old"
     assert os.environ.get("FAKE_GH_DIR")
+
+
+def test_instance_detail_over_messaging_rest(env: dict[str, Any]) -> None:
+    client, headers, gh = env["client"], env["headers"], env["gh"]
+    user_ok(gh)
+    saved = client.post(
+        f"{API}/router/github_user/save",
+        json={"cli": str(gh.path), "repository": REPO},
+        headers=headers,
+    ).json()
+    iid = saved["instance"]["id"]
+    client.put(
+        f"{API}/messaging/instances/{iid}/config",
+        json={"config": {"event_token": "leak-me", "observe_ci": "1"}},
+        headers=headers,
+    )
+    detail = client.get(f"{API}/messaging/instances/{iid}", headers=headers)
+    assert detail.status_code == 200, detail.text
+    instance = detail.json()["instance"]
+    assert instance["kind"] == "github_user" and instance["status"] == "online"
+    assert instance["config"]["login"] == "hx-agent" and instance["config"]["repository"] == REPO
+    assert instance["config"]["event_token"] == "***" and instance["config"]["observe_ci"] == "1"
+    caps = instance["capabilities"]
+    assert caps["risk_level"] == "official" and caps["supports_history"] is True
+    assert caps["supports_qr_login"] is False
+    listed = client.get(f"{API}/messaging/instances", headers=headers).json()["instances"]
+    assert [item["id"] for item in listed] == [iid]
+    assert client.get(f"{API}/messaging/instances/999", headers=headers).status_code == 404
+    login = client.post(f"{API}/messaging/instances/{iid}/login", headers=headers)
+    assert login.status_code == 400 and "not available yet" in login.json()["detail"]
