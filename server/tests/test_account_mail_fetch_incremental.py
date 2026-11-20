@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 from hx_email.app import create_app
 from hx_email.config import Settings
 from hx_email.database import connect, migrate
+from hx_email.server.mail.imap.impl.store.query import get_latest_message_uid
 from hx_email.server.mail.imap.message_store import legacy_body_hash
 from hx_email.server.mail.verification import MailboxMessage
 
@@ -111,3 +112,40 @@ def test_fetch_emails_backfills_uid_for_existing_cached_message(tmp_path):
     assert first_fetch.json()["messages_stored"] == 0
     assert second_fetch.json()["messages_stored"] == 1
     assert provider.since_uids == ["", "100"]
+
+
+def test_inbox_uid_watermark_ignores_other_folder_uids(tmp_path):
+    """垃圾箱是独立 UID 空间, 不能把收件箱的增量水位抬到垃圾箱量级 (issue #41)."""
+    settings = Settings(data_dir=tmp_path)
+    migrate(settings)
+    client = TestClient(create_app(settings, mailbox_provider=SequenceMailboxProvider([[]])))
+    headers = login_admin(client, settings)
+    account = create_account(client, headers)
+    primary_id = account["primary_usable_email"]["id"]
+    with connect(settings) as conn:
+        for uid, folder in (("8312", "inbox"), ("47317", "junk")):
+            conn.execute(
+                """
+                INSERT INTO fetched_messages (
+                    user_id, usable_email_id, email_account_id, from_address,
+                    recipient_address, subject, body, received_at, body_hash, folder
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    1,
+                    primary_id,
+                    account["id"],
+                    "security@example.com",
+                    "owner@example.com",
+                    f"cached {folder} message",
+                    "Your code is 100100",
+                    "2026-07-04 10:00:00",
+                    legacy_body_hash("Your code is 100100"),
+                    folder,
+                ),
+            )
+
+    # 收件箱水位只看收件箱, 垃圾箱的大 UID 不能参与
+    assert get_latest_message_uid(settings, account["id"]) == "8312"
+    assert get_latest_message_uid(settings, account["id"], "inbox") == "8312"
+    assert get_latest_message_uid(settings, account["id"], "junk") == "47317"

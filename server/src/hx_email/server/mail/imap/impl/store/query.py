@@ -40,18 +40,31 @@ def get_message_count(settings: Settings, usable_email_id: int) -> int:
     return row["cnt"] if row else 0
 
 
-def get_latest_message_uid(settings: Settings, email_account_id: int) -> str:
-    """Highest numeric UID seen for an account; drives incremental fetch."""
+def get_latest_message_uid(
+    settings: Settings,
+    email_account_id: int,
+    folder: str = "inbox",
+) -> str:
+    """Highest numeric UID seen in one folder; drives incremental fetch.
+
+    Every IMAP mailbox has its own UID space, so the watermark has to be scoped
+    to the folder it will filter. QQ/163/126 hand out UID numbers per mailbox and
+    the junk folder can sit far above the whole inbox range (measured: inbox
+    8306-8312 vs junk 47309-47317 on one QQ account); taking the account-wide
+    maximum as the inbox watermark filtered every new inbox message away and the
+    account stopped receiving mail with no error reported.
+    """
     with connect(settings) as conn:
         row = conn.execute(
             """
             SELECT message_id FROM fetched_messages
             WHERE email_account_id = ?
+              AND folder = ?
               AND message_id != ''
               AND message_id NOT GLOB '*[^0-9]*'
             ORDER BY CAST(message_id AS INTEGER) DESC LIMIT 1
             """,
-            (email_account_id,),
+            (email_account_id, folder),
         ).fetchone()
     return str(row["message_id"]) if row is not None else ""
 

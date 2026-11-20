@@ -75,15 +75,17 @@ def fetch_emails(
         return {"emails": [], "method": "none", "has_more": False}
 
     resolved_method = _resolve_method(account, method)
+    # read_messages already pages with skip/top at the provider layer, so what it
+    # returns *is* the requested page; slicing it again with the same skip shifted
+    # the window twice and every skip>0 request came back empty.
     raw_messages: list[Any] = mailbox_provider.read_messages(
         account, folder=folder, skip=skip, top=top
     )
 
-    all_messages: list[dict[str, object]] = []
+    paged: list[dict[str, object]] = []
     for idx, raw in enumerate(raw_messages):
-        all_messages.append(_build_message_dict(coerce_message(raw), idx))
-
-    paged, has_more = _paginate(all_messages, skip, top)
+        paged.append(_build_message_dict(coerce_message(raw), idx))
+    has_more = len(raw_messages) >= top
     return {"emails": paged, "method": resolved_method, "has_more": has_more}
 
 
