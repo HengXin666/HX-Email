@@ -15,6 +15,7 @@ line-length = 100
 # 排除非项目代码
 exclude = [
     "ref/",
+    ".github/scripts/",  # 仓库治理托管脚本, 由 HX-Workflows 生成
     ".claude/skills/",
     ".agents/skills/",
     ".codex/skills/",
